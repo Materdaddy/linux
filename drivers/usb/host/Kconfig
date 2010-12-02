@@ -148,3 +148,11 @@ config USB_SL811_CS
 	  To compile this driver as a module, choose M here: the
 	  module will be called "sl811_cs".
 
+config USB_IMX21_HCD
+       tristate "IMX21 HCD support"
+       depends on USB && ARCH_IMX21
+       default N
+       help
+         Enable this option if you want USB on the IMX21.
+
+

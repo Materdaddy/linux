@@ -42,6 +42,7 @@ int cramfs_uncompress_block(void *dst, int dstlen, void *src, int srclen)
 		zlib_inflateInit(&stream);
 	}
 
+	stream.msg = NULL;  // clear the message pointer so you don't get old messages
 	err = zlib_inflate(&stream, Z_FINISH);
 	if (err != Z_STREAM_END)
 		goto err;
@@ -50,6 +51,18 @@ int cramfs_uncompress_block(void *dst, int dstlen, void *src, int srclen)
 err:
 	printk("Error %d while decompressing!\n", err);
 	printk("%p(%d)->%p(%d)\n", src, srclen, dst, dstlen);
+	if( stream.msg != NULL ) {
+	  printk( "  debug--zlib stream message: %s\n", stream.msg );
+	  printk( "  debug--source data:\n" );
+	  int i;
+	  for( i = 0; i < srclen; i++ ) {
+	    if( (i % 16) == 0 )
+	      printk( "\n" );
+	    printk( "%02X ", *((unsigned char *)src + i) );
+	  }
+	  printk( "\n" );
+	} else
+	  printk( "  debug--no valid zlib stream message found.\n" );
 	return 0;
 }
 

@@ -23,8 +23,17 @@
 #include <linux/buffer_head.h>
 #include <linux/vfs.h>
 #include <asm/semaphore.h>
+#if CRAMFS_BADBLOCK
+#include <linux/mtd/mtd.h>
+#endif
 
 #include <asm/uaccess.h>
+
+#if CRAMFS_BADBLOCK
+static unsigned int *bbTable;
+static unsigned int bbTabMaxIndex = 0;
+static unsigned int bbBlockSize = 0;
+#endif
 
 static struct super_operations cramfs_ops;
 static struct inode_operations cramfs_dir_inode_operations;
@@ -111,6 +120,19 @@ static struct inode *get_cramfs_inode(struct super_block *sb,
 	return inode;
 }
 
+#if CRAMFS_BADBLOCK
+unsigned int cramfs_bb_xlat(unsigned int logicalAddr) {
+  unsigned int lsbs;
+
+  if( logicalAddr > bbTabMaxIndex * bbBlockSize ) {
+    return logicalAddr; // we can't translate out of bound requests!
+  }
+
+  lsbs = logicalAddr & (bbBlockSize - 1);  // we assume pow2 for blocksize
+  return( bbTable[(logicalAddr / bbBlockSize)]  | lsbs  );
+}
+#endif
+
 /*
  * We have our own block cache: don't fill up the buffer cache
  * with the rom-image, because the way the filesystem is set
@@ -152,9 +174,20 @@ static void *cramfs_read(struct super_block *sb, unsigned int offset, unsigned i
 	unsigned long devsize;
 	char *data;
 
+#if CRAMFS_BADBLOCK
+	unsigned int raw_offset = offset;
+	unsigned int xlat_blocknr = 0;
+
+	// printk( "cramfs_read: input addr %08X, output addr %08X\n", offset, cramfs_bb_xlat(offset));
+	offset = cramfs_bb_xlat(offset);  // do the bad block table translation
+	
+	//	if( (offset & ~0x3FFF) != ((offset + len) & ~0x3FFF) ) {
+	//	  printk( "  Debug: Read at offset 0x%08lX length 0x%lX will fall over eraseblock boundary.\n", offset, len );
+	//	}
+#endif
 	if (!len)
 		return NULL;
-	blocknr = offset >> PAGE_CACHE_SHIFT;
+	blocknr = offset >> PAGE_CACHE_SHIFT;  // (bunnie) this is 12 for ARM
 	offset &= PAGE_CACHE_SIZE - 1;
 
 	/* Check if an existing buffer already has the data.. */
@@ -179,10 +212,19 @@ static void *cramfs_read(struct super_block *sb, unsigned int offset, unsigned i
 	for (i = 0; i < BLKS_PER_BUF; i++) {
 		struct page *page = NULL;
 
+#if CRAMFS_BADBLOCK
+		xlat_blocknr = cramfs_bb_xlat(raw_offset + (i << PAGE_CACHE_SHIFT)) >> PAGE_CACHE_SHIFT;
+		//		printk("  Debug: blocknr + i: %X, xlat_blocknr: %X\n", blocknr + i, xlat_blocknr);
+		if (xlat_blocknr < devsize) {
+		  page = read_cache_page(mapping, xlat_blocknr,
+					 (filler_t *)mapping->a_ops->readpage,
+					 NULL);
+#else // original code
 		if (blocknr + i < devsize) {
-			page = read_cache_page(mapping, blocknr + i,
-				(filler_t *)mapping->a_ops->readpage,
-				NULL);
+		  page = read_cache_page(mapping, blocknr + i,
+					 (filler_t *)mapping->a_ops->readpage,
+					 NULL);
+#endif
 			/* synchronous error? */
 			if (IS_ERR(page))
 				page = NULL;
@@ -221,6 +263,101 @@ static void *cramfs_read(struct super_block *sb, unsigned int offset, unsigned i
 	return read_buffers[buffer] + offset;
 }
 
+#if CRAMFS_BADBLOCK
+static void cramfs_init_badblocks(struct mtd_info *mtd) {
+  int i;
+  // int j; // delete when if 0 is permanently removed below
+  int bbcount = 0;
+  unsigned char pagedat[1024];
+  int retlen;
+  int addr = 0;
+  unsigned int startOffset = 0;
+  int inc = 0;
+
+  // first thing to do, is to find where cramfs starts...
+  // you can have bad blocks in other partitions pushing the absolute
+  // address of this data "north"
+
+  printk( "cramfs with NAND flash bad block extensions.\n" );
+  printk( "Please remember to size your partitions with adequate margins for bad blocks.\n" );
+  // read one page at the beginning of each erase block
+  // because data can only be offset by a whole eraseblock
+  for( addr = 0; addr < mtd->size; addr += mtd->erasesize ) {
+    if( !mtd->block_isbad(mtd, addr) ) { // only consider good blocks!
+      if( 0 == mtd->read(mtd, addr, mtd->oobblock * 2, &retlen, (u_char *) pagedat ) ) {
+	if( *((unsigned long int *)pagedat) == CRAMFS_MAGIC ) {
+	  printk( "cramfs_init_badblock: found start of cramfs at addr 0x%X\n", addr );
+	  break;
+	}
+	if( *((unsigned long int *) &pagedat[512]) == CRAMFS_MAGIC ) {
+	  printk( "cramfs_init_badblock: found start of cramfs at addr 0x%X\n", addr );
+	  break;
+	}
+      } else {
+	printk( "cramfs_init_badblocks: hit unreadable block during scan at 0x%X\n", addr );
+	// for now, skip failed reads...could be a bad block, who knows.
+      }
+    }
+  }
+  // addr now has the residual "real" start of the cramfs filesystem
+
+  if( addr == mtd->size ) { // check in the case that the user didn't put cramfs here...
+    printk( "cramfs: fs magic number not found during badblock scan, filesystem is lost.\n" );
+    // put some abort code here, but for now move on because we are debugging
+    return;
+  }
+
+  startOffset = addr / mtd->erasesize; // because bad blocks in other partitions can cause this offset!
+  //printk( "Debug: net startOffset is %06X with addr %08X and size %08X\n", startOffset, addr, mtd->erasesize );
+
+  // then init the bad blocks to a default state (because the scan can "fall off the end")
+  // this doesn't really solve the falling off the end problem but it at least makes the failure deterministic
+  for( i = 0; i < bbTabMaxIndex; i++ ) {
+    bbTable[i] = (startOffset + i) * mtd->erasesize;
+  }
+
+  // now scan for bad blocks
+  // bad code, delete on final commit
+#if 0
+  inc = 1;
+  for( i = 0; i < bbTabMaxIndex - bbcount; i++ ) { // subtract bbcount to avoid reading off the end of the partition
+    if( (mtd->block_isbad( mtd, (i + bbcount + startOffset) * mtd->erasesize )) && (bbcount < bbTabMaxIndex) ) {
+      printk( "cramfs_init_badblocks: block 0x%X is bad.\n", i );
+      bbcount++; 
+      // compensate for non-causal bad blocks
+      // e.g., the blocks you didn't know about between you and your "real" good block
+      // back when you originally calculated the offset
+      for( j = 0; j < bbcount; j++ ) {
+	bbTable[i-j] += mtd->erasesize;
+      }
+    }
+    bbTable[i] = (startOffset + i + bbcount) * mtd->erasesize;
+  }
+#endif
+
+  // much improved code
+  addr = 0;
+  bbcount = 0;
+  for( i = 0; i < bbTabMaxIndex - bbcount; i++ ) { // subtract bbcount to avoid reading off the end of the partition
+    if( (mtd->block_isbad( mtd, (i + startOffset) * mtd->erasesize )) && (bbcount < bbTabMaxIndex) ) {
+      printk( "cramfs_init_badblocks: block 0x%X is bad.\n", i );
+      inc = 0;
+      bbcount++;
+    } else {
+      inc = 1; 
+    }
+    bbTable[addr] = (startOffset + i) * mtd->erasesize;
+    if( inc ) 
+      addr++;
+  }
+
+  //  printk( "Debug: bad block table for cramfs region:\n" );
+  //  for( i = 0; i < bbTabMaxIndex; i++ ) {
+  //    printk( "%04X: %04X\n", i, bbTable[i] / 0x4000 );
+  //  }
+}
+#endif
+
 static void cramfs_put_super(struct super_block *sb)
 {
 	kfree(sb->s_fs_info);
@@ -240,6 +377,21 @@ static int cramfs_fill_super(struct super_block *sb, void *data, int silent)
 	unsigned long root_offset;
 	struct cramfs_sb_info *sbi;
 	struct inode *root;
+
+#if CRAMFS_BADBLOCK
+	int minor;
+	struct mtd_info *mtd;                 // MTD driver pointer
+
+	minor = MINOR(sb->s_dev);
+	mtd = get_mtd_device(NULL, minor);
+	bbTable = kmalloc((mtd->size / mtd->erasesize) * sizeof(unsigned int), GFP_KERNEL);
+	bbTabMaxIndex = mtd->size / mtd->erasesize;
+	bbBlockSize = mtd->erasesize; // we have to keep this around because we lose the mtd structure later on...
+	if( NULL == bbTable ) 
+	  printk( "Could not allocate bad block table for cramfs, expect a panic...\n" );
+
+	cramfs_init_badblocks(mtd);
+#endif
 
 	sb->s_flags |= MS_RDONLY;
 
@@ -556,3 +708,54 @@ static void __exit exit_cramfs_fs(void)
 module_init(init_cramfs_fs)
 module_exit(exit_cramfs_fs)
 MODULE_LICENSE("GPL");
+
+
+/*
+  bad block test case record (delete on final submission)
+
+Bad eraseblock 236 at 0x003b0000
+Bad eraseblock 240 at 0x003c0000
+Bad eraseblock 244 at 0x003d0000
+Bad eraseblock 248 at 0x003e0000
+Bad eraseblock 249 at 0x003e4000
+Bad eraseblock 251 at 0x003ec000
+Bad eraseblock 2528 at 0x02780000
+
+
+Block 0x000000EC is bad.
+Block 0x000000F0 is bad.
+Block 0x000000F4 is bad.
+Block 0x000000F8 is bad.
+Block 0x000000F9 is bad.
+Block 0x000000FB is bad.
+Block 0x000009E0 is bad.
+
+240 X
+241
+242 <- startAddr=2   0  i = 0
+243                  1  i = 1
+244 X   bbcount = 1     i = 2
+245                  2  i = 3
+246                  3  i = 4
+247                  4  i = 5
+248 X   bbcount = 2     i = 6
+249 X   bbcount = 3     i = 7
+24A                  5  i = 8
+24B X   bbcount = 4     i = 9
+24C                  6  i = A
+24D
+24E
+
+            236, 240
+0000: 0002  242
+0001: 0003  243
+0002: 0005  245
+0003: 0006  246
+0004: 0008  247
+0005: 000A  24A
+0006: 000B  24C
+0007: 000C  24D
+0008: 000D  24E
+0009: 000E
+000A: 000F
+*/

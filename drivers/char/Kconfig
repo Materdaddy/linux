@@ -1006,6 +1006,23 @@ config MMTIMER
 	  The mmtimer device allows direct userspace access to the
 	  Altix system timer.
 
+config IMX_SPI
+	bool "SPI driver for i.MX processors"
+	depends on (ARCH_IMX || ARCH_IMX21)
+	default y
+	help
+	  The SPI driver gives access to this serial bus on the i.MX
+	  processors.
+
+config IMX_SPIDEV
+	bool "SPI device interface for i.MX processors"
+	depends on (ARCH_IMX || ARCH_IMX21) && IMX_SPI
+	default n
+	help
+	  The SPI driver gives user mode access to this serial 
+	  bus on the i.MX processors.
+
+
 source "drivers/char/tpm/Kconfig"
 
 config TELCLOCK

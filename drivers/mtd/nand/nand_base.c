@@ -1282,8 +1282,9 @@ int nand_do_read_ecc (struct mtd_info *mtd, loff_t from, size_t len,
 			}
 
 			if ((ecc_status == -1) || (ecc_status > (flags && 0xff))) {
-				DEBUG (MTD_DEBUG_LEVEL0, "nand_read_ecc: " "Failed ECC read, page 0x%08x\n", page);
-				ecc_failed++;
+			  // bunnie commented out...
+			  //DEBUG (MTD_DEBUG_LEVEL0, "[noinc-bunnie] nand_read_ecc: " "Failed ECC read, page 0x%08x, status %d\n", page, ecc_status);
+				//ecc_failed++;
 			}
 		}
 

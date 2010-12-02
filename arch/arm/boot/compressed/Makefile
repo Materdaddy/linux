@@ -50,6 +50,22 @@ ifeq ($(CONFIG_ARCH_AT91RM9200),y)
 OBJS		+= head-at91rm9200.o
 endif
 
+ifeq ($(CONFIG_MACH_CSB535),y)
+OBJS		+= head-csb535.o
+endif
+
+ifeq ($(CONFIG_MACH_CSB536),y)
+OBJS		+= head-csb536.o
+endif
+
+ifeq ($(CONFIG_MACH_MX21ADS),y)
+OBJS		+= head-mx21ads.o
+endif
+
+ifeq ($(CONFIG_MACH_TCMX21),y)
+OBJS		+= head-tcmx21.o
+endif
+
 ifeq ($(CONFIG_DEBUG_ICEDCC),y)
 OBJS            += ice-dcc.o
 endif

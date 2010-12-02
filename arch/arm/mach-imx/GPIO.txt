@@ -1,0 +1,164 @@
+IMX GPIO information
+
+The basic object for controlling the GPIO on the IMX is called the
+"mode". It is a bitmap the contains the port, pin, and pin
+configuration.
+
+Here's the description from the documentation:
+/*
+ *  GPIO Mode
+ *
+ *  The pin, port, data direction, pull-up enable, primary/alternate
+ *  function, output configuration, and input configuration are encoded in a 
+ *  single word as follows.
+ *
+ *  4:0 Pin (31-0)
+ *  7:5 Port (F-A, KP)
+ *  8 Direction
+ *  9 PUEN
+ *  10:11 Primary Function,Alternate Function
+ *  13:12 OCR
+ *  15:14 ICONF
+ *  16    OC (KP only)
+ *  19:17 IRQ configuration
+ * 
+ *  [ 17 18 19 | 16 | 15 14 | 13 12 | 11 10 | 9  |  8  | 7 6 5 | 4 3 2 1 0 ]
+ *  [ IRQ CFG  | OC | ICONF |  OCR  | P/A   | PU | Dir | Port  |    Pin    ]
+ */
+
+
+The macros for the different fields are at the end of this document.
+
+There are 7 ports on the IMX21:
+      GPIO_PORTA
+      GPIO_PORTB
+      GPIO_PORTC
+      GPIO_PORTD
+      GPIO_PORTE
+      GPIO_PORTF
+      GPIO_PORTKP
+
+Technically, GPIO_PORTKP isn't a GPIO port. It's the Keypad
+Port. However it is treated like the real GPIO ports with some
+exceptions:
+	no interrupt support
+	Only 16 bits wide
+	The upper 8 bits have a pull up in input mode
+	The upper 8 bits can be open-collector on output
+
+The prototypes of the GPIO functions are later in this document.
+
+----------------------------------------------------------------------
+To configure a GPIO line, use imx_gpio_mode()
+
+Examples:
+	PORTA-0 configured as input
+	imx_gpio_mode(0 | GPIO_PORTA | GPIO_GPIO | GPIO_IN)
+
+	PORTC-5 configured as output
+	imx_gpio_mode(5 | GPIO_PORTC | GPIO_GPIO | GPIO_OUT)
+
+	PORTD-21 configured as input with active low interrupt
+	imx_gpio_mode(21 | GPIO_PORTD | GPIO_GPIO | GPIO_IN | GPIO_IRQ_LOW)
+
+
+NOTE: To use a GPIO as GPIO, instead of its other function, you need
+      GPIO_GPIO in the mode.
+
+NOTE: All of the other GPIO functions that need a GPIO_MODE only need
+      the port and bit set. None of the other components are needed.
+
+----------------------------------------------------------------------
+The state of a GPIO is set with 
+    void imx_gpio_write(int mode, int val);
+
+It is read with
+    int imx_gpio_read(int mode);
+
+
+----------------------------------------------------------------------
+To use a GPIO as an interrupt, you need to configure it (with
+imx_gpio_mode() ) for the correct type of interrupt and install an
+interrupt handler. The handler is installed with
+    int imx_gpio_request_irq(int mode,
+			     void (*handler)(int mode, void *data),
+			     void *data)
+
+    handler is the handler function.
+    data is a user defined datum passed to the handler.
+
+When the handler is called, it gets passed the mode and user defined
+data. The handler does not need to clear the interrupt. That is
+handled in the lower level GPIO ISR.
+
+When the GPIO is configured, the interrupt is disabled. To enable and
+disable interrupts, use the functions:
+	void imx_gpio_enable_irq(int mode);
+	void imx_gpio_disable_irq(int mode);
+
+
+
+----------------------------------------------------------------------
+GPIO Function prototypes.
+----------------------------------------------------------------------
+extern void imx_gpio_mode(int gpio_mode);
+extern void imx_gpio_write(int mode, int val);
+extern int imx_gpio_read(int mode);
+extern int imx_gpio_request_irq(int mode, 
+                                void (*handler)(int mode, void *data), 
+                                void *data);
+extern void imx_gpio_free_irq(int mode);
+extern void imx_gpio_enable_irq(int mode);
+extern void imx_gpio_disable_irq(int mode);
+
+
+----------------------------------------------------------------------
+GPIO Mode macros
+----------------------------------------------------------------------
+#define GPIO_PIN_MASK           (0x1f<<0)
+
+#define GPIO_PORT_POS           5
+#define GPIO_PORT_MASK          (0x7 << GPIO_PORT_POS)
+#define GPIO_PORTA              (0 << GPIO_PORT_POS)
+#define GPIO_PORTB              (1 << GPIO_PORT_POS)
+#define GPIO_PORTC              (2 << GPIO_PORT_POS)
+#define GPIO_PORTD              (3 << GPIO_PORT_POS)
+#define GPIO_PORTE              (4 << GPIO_PORT_POS)
+#define GPIO_PORTF              (5 << GPIO_PORT_POS)
+#define GPIO_PORTKP             (7 << GPIO_PORT_POS) /* For keyboard port */
+
+#define GPIO_DIR_MASK           (1<<8)
+#define GPIO_IN                 (0<<8)
+#define GPIO_OUT                (1<<8)
+
+#define GPIO_PU_MASK            (1<<9)
+#define GPIO_PUDIS              (0<<9)
+#define GPIO_PUEN               (1<<9)
+
+#define GPIO_FUNC_MASK          (0x3<<10)
+#define GPIO_PF                 (0<<10)
+#define GPIO_AF                 (1<<10)
+
+#define GPIO_OCR_POS            12
+#define GPIO_OCR_MASK           (0x3 << GPIO_OCR_POS)
+#define GPIO_AIN                (0 << GPIO_OCR_POS)
+#define GPIO_BIN                (1 << GPIO_OCR_POS)
+#define GPIO_CIN                (2 << GPIO_OCR_POS)
+#define GPIO_GPIO               (3 << GPIO_OCR_POS)
+
+#define GPIO_ICONF_MASK         (0x3<<14)
+#define GPIO_AOUT               (1<<14)
+#define GPIO_BOUT               (2<<14)
+
+#define GPIO_OC_MASK            (1<<16)
+#define GPIO_OCDIS              (0<<16)
+#define GPIO_OCEN               (1<<16)
+
+#define GPIO_IRQ_MASK           (7 << 17)
+#define GPIO_IRQ_RISING         ((0 << 18) | (1 << 17))
+#define GPIO_IRQ_FALLING        ((1 << 18) | (1 << 17))
+#define GPIO_IRQ_HIGH           ((2 << 18) | (1 << 17))
+#define GPIO_IRQ_LOW            ((3 << 18) | (1 << 17))
+#define GPIO_IRQ_CFG_MASK       (0x3 << 18)
+#define GPIO_IRQ_CFG_POS        18
+

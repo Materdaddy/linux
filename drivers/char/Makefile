@@ -9,6 +9,15 @@ FONTMAPFILE = cp437.uni
 
 obj-y	 += mem.o random.o tty_io.o n_tty.o tty_ioctl.o
 
+obj-m := chumby_sense1.o
+chumby-sense1-objs := chumby_sense1.o
+
+obj-m += chumby_accel.o
+chumby-accel-objs := chumby_accel.o
+
+obj-m += chumby_timer.o
+chumby-timer-objs := chumby_timer.o
+
 obj-$(CONFIG_LEGACY_PTYS)	+= pty.o
 obj-$(CONFIG_UNIX98_PTYS)	+= pty.o
 obj-y				+= misc.o
@@ -85,6 +94,8 @@ obj-$(CONFIG_CS5535_GPIO) += cs5535_gpio.o
 obj-$(CONFIG_GPIO_VR41XX) += vr41xx_giu.o
 obj-$(CONFIG_TANBAC_TB0219) += tb0219.o
 obj-$(CONFIG_TELCLOCK) += tlclk.o
+obj-$(CONFIG_IMX_SPI) += imx_spi.o
+obj-$(CONFIG_IMX_SPIDEV) += imx_spidev.o
 
 obj-$(CONFIG_WATCHDOG)	+= watchdog/
 obj-$(CONFIG_MWAVE) += mwave/

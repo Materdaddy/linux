@@ -346,6 +346,7 @@ static void tsdev_event(struct input_handle *handle, unsigned int type,
 		x = tsdev->x;
 		y = tsdev->y;
 
+#if 0
 		/* Calibration */
 		if (!list->raw) {
 			x = ((x * tsdev->cal.xscale) >> 8) + tsdev->cal.xtrans;
@@ -354,6 +355,7 @@ static void tsdev_event(struct input_handle *handle, unsigned int type,
 				tmp = x; x = y; y = tmp;
 			}
 		}
+#endif
 
 		list->event[list->head].x = x;
 		list->event[list->head].y = y;

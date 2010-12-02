@@ -554,6 +554,7 @@ static void mmc_decode_csd(struct mmc_card *card)
 		csd->read_partial = UNSTUFF_BITS(resp, 79, 1);
 		csd->write_misalign = UNSTUFF_BITS(resp, 78, 1);
 		csd->read_misalign = UNSTUFF_BITS(resp, 77, 1);
+		csd->r2w_factor = UNSTUFF_BITS(resp, 26, 3);
 		csd->write_blkbits = UNSTUFF_BITS(resp, 22, 4);
 		csd->write_partial = UNSTUFF_BITS(resp, 21, 1);
 	} else {
@@ -588,6 +589,7 @@ static void mmc_decode_csd(struct mmc_card *card)
 		csd->read_partial = UNSTUFF_BITS(resp, 79, 1);
 		csd->write_misalign = UNSTUFF_BITS(resp, 78, 1);
 		csd->read_misalign = UNSTUFF_BITS(resp, 77, 1);
+		csd->r2w_factor = UNSTUFF_BITS(resp, 26, 3);
 		csd->write_blkbits = UNSTUFF_BITS(resp, 22, 4);
 		csd->write_partial = UNSTUFF_BITS(resp, 21, 1);
 	}
@@ -927,8 +929,7 @@ static void mmc_read_scrs(struct mmc_host *host)
 			mmc_card_set_dead(card);
 			continue;
 		}
-
-		memset(&cmd, 0, sizeof(struct mmc_command));
+                memset(&cmd, 0, sizeof(struct mmc_command));
 
 		cmd.opcode = SD_APP_SEND_SCR;
 		cmd.arg = 0;
@@ -949,7 +950,7 @@ static void mmc_read_scrs(struct mmc_host *host)
 		mrq.cmd = &cmd;
 		mrq.data = &data;
 
-		sg_init_one(&sg, (u8*)card->raw_scr, 8);
+                sg_init_one(&sg, (u8*)card->raw_scr, 8);
 
 		mmc_wait_for_req(host, &mrq);
 

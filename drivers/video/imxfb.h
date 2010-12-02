@@ -26,7 +26,8 @@ struct imxfb_rgb {
 
 #define RGB_16	(0)
 #define RGB_8	(1)
-#define NR_RGB	2
+#define RGB_32	(2)
+#define NR_RGB	3
 
 struct imxfb_info {
 	struct device		*dev;
@@ -44,12 +45,15 @@ struct imxfb_info {
 	u_char *		map_cpu;
 	u_int			map_size;
 
+	dma_addr_t		ov_map_dma;
+	u_char *		ov_map_cpu;
+	u_int			ov_map_size;
+
 	u_char *		screen_cpu;
 	dma_addr_t		screen_dma;
+	u_char *		ov_screen_cpu;
+	dma_addr_t		ov_screen_dma;
 	u_int			palette_size;
-
-	dma_addr_t		dbar1;
-	dma_addr_t		dbar2;
 
 	u_int			pcr;
 	u_int			pwmr;

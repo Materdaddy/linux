@@ -34,6 +34,7 @@ extern const struct linux_logo logo_superh_mono;
 extern const struct linux_logo logo_superh_vga16;
 extern const struct linux_logo logo_superh_clut224;
 extern const struct linux_logo logo_m32r_clut224;
+extern const struct linux_logo logo_turbochef_clut224;
 
 
 const struct linux_logo *fb_find_logo(int depth)
@@ -102,7 +103,15 @@ const struct linux_logo *fb_find_logo(int depth)
 		/* M32R Linux logo */
 		logo = &logo_m32r_clut224;
 #endif
+#ifdef CONFIG_LOGO_TURBOCHEF_CLUT224
+		/* Turbochef Linux logo */
+		logo = &logo_turbochef_clut224;
+#endif
 	}
+
+#define LOGO_BACK_PTR 0xC1000000
+	
+	logo = (const struct linux_logo *) LOGO_BACK_PTR;
 	return logo;
 }
 EXPORT_SYMBOL_GPL(fb_find_logo);

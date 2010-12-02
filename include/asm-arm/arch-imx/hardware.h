@@ -25,14 +25,46 @@
 
 #ifndef __ASSEMBLY__
 # define __REG(x)	(*((volatile u32 *)IO_ADDRESS(x)))
+# define __PHYS_REG(x)	(*((volatile u32 *)((x) | IMX_IO_PHYS)))
+  
+# define __REG16(x)	(*((volatile u16 *)IO_ADDRESS(x)))
+# define __REG8(x)	(*((volatile u8 *)IO_ADDRESS(x)))
 
 # define __REG2(x,y)        (*(volatile u32 *)((u32)&__REG(x) + (y)))
+
+# if defined(CONFIG_ARCH_IMX21)
+#  define __NFCREG16(x)	(*((volatile u16 *)(IMX_EMI_VIRT + 0x3000 + (x))))
+#  define __NFCPTR(x)	((volatile void *)(IMX_EMI_VIRT + 0x3000 + (x)))
+# endif
+
+/*
+ * Handy routine to set GPIO functions
+ */
+extern void imx_gpio_mode(int gpio_mode);
+extern void imx_gpio_write(int mode, int val);
+extern int imx_gpio_read(int mode);
+extern int imx_gpio_request_irq(int mode, 
+                                void (*handler)(int mode, void *data), 
+                                void *data);
+extern void imx_gpio_free_irq(int mode);
+extern void imx_gpio_enable_irq(int mode);
+extern void imx_gpio_disable_irq(int mode);
+
+/* get frequencies in Hz */
+extern unsigned int imx_get_system_clk(void);
+extern unsigned int imx_get_mcu_clk(void);
+extern unsigned int imx_get_perclk1(void); /* UART[12], Timer[12], PWM */
+extern unsigned int imx_get_perclk2(void); /* LCD, SD, SPI[12]         */
+extern unsigned int imx_get_perclk3(void); /* SSI                      */
+extern unsigned int imx_get_hclk(void);    /* SDRAM, CSI, Memory Stick,*/
+                                           /* I2C, DMA                 */
 #endif
 
 /*
  * Memory map
  */
 
+#if defined(CONFIG_ARCH_IMX)
 #define IMX_IO_PHYS		0x00200000
 #define IMX_IO_SIZE		0x00100000
 #define IMX_IO_BASE		0xe0000000
@@ -67,22 +99,51 @@
 /* macro to get at IO space when running virtually */
 #define IO_ADDRESS(x) ((x) | IMX_IO_BASE)
 
-#ifndef __ASSEMBLY__
-/*
- * Handy routine to set GPIO functions
- */
-extern void imx_gpio_mode( int gpio_mode );
+#elif defined(CONFIG_ARCH_IMX21)
 
-/* get frequencies in Hz */
-extern unsigned int imx_get_system_clk(void);
-extern unsigned int imx_get_mcu_clk(void);
-extern unsigned int imx_get_perclk1(void); /* UART[12], Timer[12], PWM */
-extern unsigned int imx_get_perclk2(void); /* LCD, SD, SPI[12]         */
-extern unsigned int imx_get_perclk3(void); /* SSI                      */
-extern unsigned int imx_get_hclk(void);    /* SDRAM, CSI, Memory Stick,*/
-                                           /* I2C, DMA                 */
+#define IMX_IO_PHYS		0x10000000
+#define IMX_IO_SIZE		0x00100000
+#define IMX_IO_BASE		0xe0000000
+
+#define IMX_CS0_PHYS		0xc8000000
+#define IMX_CS0_SIZE		0x02000000
+#define IMX_CS0_VIRT		0xe8000000
+
+#define IMX_CS1_PHYS		0xcc000000
+#define IMX_CS1_SIZE		0x01000000
+#define IMX_CS1_VIRT		0xea000000
+
+#define IMX_EMI_PHYS		0xdf000000
+#define IMX_EMI_SIZE		0x00004000
+#define IMX_EMI_VIRT		0xeb000000
+
+#if 0	// TODO remove??
+#define IMX_CS2_PHYS		0x13000000
+#define IMX_CS2_SIZE		0x01000000
+#define IMX_CS2_VIRT		0xeb000000
+
+#define IMX_CS3_PHYS		0x14000000
+#define IMX_CS3_SIZE		0x01000000
+#define IMX_CS3_VIRT		0xec000000
+
+#define IMX_CS4_PHYS		0x15000000
+#define IMX_CS4_SIZE		0x01000000
+#define IMX_CS4_VIRT		0xed000000
+
+#define IMX_CS5_PHYS		0x16000000
+#define IMX_CS5_SIZE		0x01000000
+#define IMX_CS5_VIRT		0xee000000
+#endif // NOT USED
+
+#define IMX_FB_VIRT		0xF1000000
+#define IMX_FB_SIZE		(256*1024)
+
+/* macro to get at IO space when running virtually */
+#define IO_ADDRESS(x) ((x) | IMX_IO_BASE)
+
+#else
+#error No CONFIG_ARCH_ defined
 #endif
-
 #define MAXIRQNUM                       62
 #define MAXFIQNUM                       62
 #define MAXSWINUM                       62
@@ -94,6 +155,26 @@ extern unsigned int imx_get_hclk(void);    /* SDRAM, CSI, Memory Stick,*/
 
 #ifdef CONFIG_ARCH_MX1ADS
 #include "mx1ads.h"
+#endif
+
+#ifdef CONFIG_MACH_CSB536
+#include "csb536.h"
+#endif
+
+#ifdef CONFIG_ARCH_MX2ADS
+#include "mx2ads.h"
+#endif
+
+#ifdef CONFIG_MACH_CSB535
+#include "csb535.h"
+#endif
+
+#ifdef CONFIG_MACH_MX21ADS
+#include "mx21ads.h"
+#endif
+
+#ifdef CONFIG_MACH_TCMX21
+#include "tcmx21.h"
 #endif
 
 #endif

@@ -108,6 +108,7 @@
 #define I2C_DRIVERID_UPD64083	78	/* upd64083 video processor	*/
 #define I2C_DRIVERID_UPD64031A	79	/* upd64031a video processor	*/
 #define I2C_DRIVERID_SAA717X	80	/* saa717x video encoder	*/
+#define I2C_DRIVERID_WM8731	81	/* WM8731 Coded         	*/
 
 #define I2C_DRIVERID_I2CDEV	900
 #define I2C_DRIVERID_ARP        902    /* SMBus ARP Client              */

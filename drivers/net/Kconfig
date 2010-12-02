@@ -1398,6 +1398,18 @@ config CS89x0
 	  <file:Documentation/networking/net-modules.txt>.  The module will be
 	  called cs89x0.
 
+config CIRRUS
+	tristate "CS89x0 support (ARM driver)"
+	depends on ARM
+	help
+	  Support for CS89x0 chipsets based Ethernet cards. If you have a
+	  network (Ethernet) card of this type, say Y and read the
+	  Ethernet-HOWTO, available from
+	  <http://www.tldp.org/docs.html#howto> as well as
+	  <file:Documentation/networking/cs89x0.txt>.
+
+	  This is the ARM driver from 2.4.
+
 config TC35815
 	tristate "TOSHIBA TC35815 Ethernet support"
 	depends on NET_PCI && PCI && TOSHIBA_JMR3927

@@ -14,7 +14,10 @@
  *  only.  This way all non constant variables will end up in the bss segment,
  *  which should point to addresses in RAM and cleared to 0 on start.
  *  This allows for a much quicker boot time.
- */
+ *
+ * Modified By: Ron Melvin (ron.melvin@timesys.com)
+ * Copyright (C) 2005 TimeSys Corporation 
+*/
 
 unsigned int __machine_arch_type;
 
@@ -298,6 +301,60 @@ static void error(char *x)
 	while(1);	/* Halt */
 }
 
+#ifdef CONFIG_ARCH_IMX21
+#include <asm/setup.h>
+
+static struct tag *params; /* used to point at the current tag */
+
+static void
+setup_core_tag(void * address,long pagesize)
+{
+    params = (struct tag *)address;         /* Initialise parameters to start at given address */
+
+    params->hdr.tag = ATAG_CORE;            /* start with the core tag */
+    params->hdr.size = tag_size(tag_core); /* size the tag */
+
+    params->u.core.flags = 1;               /* ensure read-only */
+    params->u.core.pagesize = pagesize;     /* systems pagesize (4k) */
+    params->u.core.rootdev = 0;             /* zero root device (typicaly overidden from commandline )*/
+
+    params = tag_next(params);              /* move pointer to next tag */
+}
+
+static void
+setup_mem_tag(unsigned int start, unsigned int len)
+{
+    params->hdr.tag = ATAG_MEM;             /* Memory tag */
+    params->hdr.size = tag_size(tag_mem32);  /* size tag */
+
+    params->u.mem.start = start;            /* Start of memory area (physical address) */
+    params->u.mem.size = len;               /* Length of area */
+
+    params = tag_next(params);              /* move pointer to next tag */
+}
+
+static void
+setup_end_tag(void)
+{
+    params->hdr.tag = ATAG_NONE;            /* Empty tag ends list */
+    params->hdr.size = 0;                   /* zero length */
+}
+
+
+static void
+setup_tags(void)
+{
+#if 0
+    putstr("Creating MX21 tags...");
+    setup_core_tag((int *)0xc0000100, 4096);  /* standard core tag 4k pagesize */
+    setup_mem_tag(0xc0000000, 0x4000000); /* 64MB @0xc0000000 */
+    setup_end_tag();                    /* end of tags */
+    putstr("Done.\n");
+#endif
+}
+
+#endif /* CONFIG_ARCH_IMX21 */
+
 #ifndef STANDALONE_DEBUG
 
 ulg
@@ -311,10 +368,23 @@ decompress_kernel(ulg output_start, ulg free_mem_ptr_p, ulg free_mem_ptr_end_p,
 
 	arch_decomp_setup();
 
+#if defined(CONFIG_ARCH_IMX21)
+ 	putstr("ArchID=");
+ 	puthex(arch_id);
+ 	putstr("\n");
+ 	putstr("output_data: ");
+ 	puthex((int)output_data);
+ 	putstr("\n");
+#endif
 	makecrc();
 	putstr("Uncompressing Linux...");
 	gunzip();
 	putstr(" done, booting the kernel.\n");
+
+ #if defined(CONFIG_ARCH_IMX21) && !defined(CONFIG_MACH_CSB535)
+ 	setup_tags();
+ #endif /* CONFIG_ARCH_IMX21 */
+
 	return output_ptr;
 }
 #else

@@ -173,7 +173,8 @@ SUBARCH := $(shell uname -m | sed -e s/i.86/i386/ -e s/sun4u/sparc64/ \
 # Note: Some architectures assign CROSS_COMPILE in their arch/*/Makefile
 
 ARCH		?= $(SUBARCH)
-CROSS_COMPILE	?=
+#CROSS_COMPILE	?=
+CROSS_COMPILE = arm-linux-
 
 # Architecture as present in compile.h
 UTS_MACHINE := $(ARCH)
@@ -324,7 +325,7 @@ CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ -Wbitwise $(C
 MODFLAGS	= -DMODULE
 CFLAGS_MODULE   = $(MODFLAGS)
 AFLAGS_MODULE   = $(MODFLAGS)
-LDFLAGS_MODULE  = -r
+LDFLAGS_MODULE  = -r -S
 CFLAGS_KERNEL	=
 AFLAGS_KERNEL	=
 

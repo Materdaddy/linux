@@ -223,7 +223,7 @@ config ARCH_REALVIEW
 	help
 	  This enables support for ARM Ltd RealView boards.
 
-config ARCH_IMX
+config FAMILY_IMX
 	bool "IMX"
 	help
 	  Support for Motorola's i.MX family of processors (MX1, MXL).

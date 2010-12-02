@@ -71,3 +71,7 @@ obj-$(CONFIG_MTD_PLATRAM)	+= plat-ram.o
 obj-$(CONFIG_MTD_OMAP_NOR)	+= omap_nor.o
 obj-$(CONFIG_MTD_MTX1)		+= mtx-1_flash.o
 obj-$(CONFIG_MTD_TQM834x)	+= tqm834x.o
+obj-$(CONFIG_MTD_CSB535)	+= csbxxx.o
+obj-$(CONFIG_MTD_CSB536)	+= csbxxx.o
+obj-$(CONFIG_MTD_MX21ADS)	+= mx21ads.o
+obj-$(CONFIG_MTD_TCMX21)	+= mx21ads.o

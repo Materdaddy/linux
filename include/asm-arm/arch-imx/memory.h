@@ -21,7 +21,14 @@
 #ifndef __ASM_ARCH_MMU_H
 #define __ASM_ARCH_MMU_H
 
-#define PHYS_OFFSET	UL(0x08000000)
+#if defined(CONFIG_ARCH_IMX)
+# define PHYS_OFFSET	(0x08000000)
+#elif defined(CONFIG_ARCH_IMX21)
+# define PHYS_OFFSET	(0xc0000000)
+#else
+# error No CONFIG_ARCH_ defined
+#endif
+
 
 /*
  * Virtual view <-> DMA view memory address translations

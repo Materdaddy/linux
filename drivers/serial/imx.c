@@ -47,10 +47,14 @@
 #include <asm/hardware.h>
 
 /* We've been assigned a range on the "Low-density serial ports" major */
+#if defined(USE_TTYSMX)
 #define SERIAL_IMX_MAJOR	204
 #define MINOR_START		41
+#else
+#define MINOR_START		64
+#endif
 
-#define NR_PORTS		2
+#define NR_PORTS		3
 
 #define IMX_ISR_PASS_LIMIT	256
 
@@ -73,7 +77,11 @@ struct imx_port {
 	struct uart_port	port;
 	struct timer_list	timer;
 	unsigned int		old_status;
+#if defined(CONFIG_ARCH_IMX)
 	int txirq,rxirq,rtsirq;
+#elif defined(CONFIG_ARCH_IMX21)
+	int irq;
+#endif /* defined(CONFIG_ARCH_IMX21) */
 };
 
 /*
@@ -154,6 +162,9 @@ static inline void imx_transmit_buffer(struct imx_port *sport)
 	struct circ_buf *xmit = &sport->port.info->xmit;
 
 	do {
+	  //	  if( (u32)sport->port.membase == 0xC000 ) {
+	  //	    printk( "0xC000: %c\n", xmit->buf[xmit->tail] );
+	  //	  }
 		/* send xmit->buf[xmit->tail]
 		 * out the port here */
 		URTX0((u32)sport->port.membase) = xmit->buf[xmit->tail];
@@ -181,6 +192,7 @@ static void imx_start_tx(struct uart_port *port)
 		imx_transmit_buffer(sport);
 }
 
+#if defined(CONFIG_ARCH_IMX)
 static irqreturn_t imx_rtsint(int irq, void *dev_id, struct pt_regs *regs)
 {
 	struct imx_port *sport = (struct imx_port *)dev_id;
@@ -196,6 +208,7 @@ static irqreturn_t imx_rtsint(int irq, void *dev_id, struct pt_regs *regs)
 	spin_unlock_irqrestore(&sport->port.lock, flags);
 	return IRQ_HANDLED;
 }
+#endif /* defined(CONFIG_ARCH_IMX) */
 
 static irqreturn_t imx_txint(int irq, void *dev_id, struct pt_regs *regs)
 {
@@ -235,6 +248,12 @@ static irqreturn_t imx_rxint(int irq, void *dev_id, struct pt_regs *regs)
 
 	rx = URXD0((u32)sport->port.membase);
 	spin_lock_irqsave(&sport->port.lock,flags);
+
+#if 0	
+	if( (u32)sport->port.membase == 0xc000 ) {
+	  printk( ".%c", rx );
+	}
+#endif
 
 	do {
 		flg = TTY_NORMAL;
@@ -294,6 +313,44 @@ handle_error:
 	goto error_return;
 }
 
+#if defined(CONFIG_ARCH_IMX21)
+/*
+ * Determine if this is a TX or RX int, call appropriate handler
+ */
+static irqreturn_t imx21_int(int irq, void *dev_id, struct pt_regs *regs)
+{
+    	struct imx_port *sport = dev_id;
+
+#if 0
+	if( (u32)sport->port.membase == 0xc000 ) {
+	  printk( "+" );
+	  printk( "URXD0(x) : %08lX\n", URXD0((u32)sport->port.membase) );
+	  printk( "URTX0(x) : %08lX\n", URTX0((u32)sport->port.membase) );
+	  printk( "UCR1(x)  : %08lX\n", UCR1((u32)sport->port.membase)  );
+	  printk( "UCR2(x)  : %08lX\n", UCR2((u32)sport->port.membase)  );
+	  printk( "UCR3(x)  : %08lX\n", UCR3((u32)sport->port.membase)  );
+	  printk( "UCR4(x)  : %08lX\n", UCR4((u32)sport->port.membase)  );
+	  printk( "UFCR(x)  : %08lX\n", UFCR((u32)sport->port.membase)  );
+	  printk( "USR1(x)  : %08lX\n", USR1((u32)sport->port.membase)  );
+	  printk( "USR2(x)  : %08lX\n", USR2((u32)sport->port.membase)  );
+	  printk( "UESC(x)  : %08lX\n", UESC((u32)sport->port.membase)  );
+	  printk( "UTIM(x)  : %08lX\n", UTIM((u32)sport->port.membase)  );
+	  printk( "UBIR(x)  : %08lX\n", UBIR((u32)sport->port.membase)  );
+	  printk( "UBMR(x)  : %08lX\n", UBMR((u32)sport->port.membase)  );
+	  printk( "UBRC(x)  : %08lX\n", UBRC((u32)sport->port.membase)  );
+	  printk( "ONMES(x) : %08lX\n", ONMES((u32)sport->port.membase) );
+	  printk( "UTS(x)   : %08lX\n", UTS((u32)sport->port.membase)   );
+
+	}
+#endif
+
+	if ( USR1((u32)sport->port.membase) & USR1_TRDY )
+	    imx_txint(irq, dev_id, regs);
+	if ( USR1((u32)sport->port.membase) & USR1_RRDY )
+	    imx_rxint(irq, dev_id, regs);
+	return IRQ_HANDLED;
+}
+#endif /* defined(CONFIG_ARCH_IMX21) */
 /*
  * Return TIOCSER_TEMT when transmitter is not busy.
  */
@@ -371,6 +428,9 @@ static int imx_setup_ufcr(struct imx_port *sport, unsigned int mode)
 	else
 		ufcr_rfdiv = 6 - ufcr_rfdiv;
 
+	// ... hack     // divide by 1 so we have PCLK1 = 16 MHz
+	ufcr_rfdiv = 5; // 5 is divide by 1 for some odd reason
+
 	val |= UFCR_RFDIV & (ufcr_rfdiv << 7);
 
 	UFCR((u32)sport->port.membase) = val;
@@ -394,6 +454,7 @@ static int imx_startup(struct uart_port *port)
 	/*
 	 * Allocate the IRQ
 	 */
+#if defined(CONFIG_ARCH_IMX)
 	retval = request_irq(sport->rxirq, imx_rxint, 0,
 			     DRIVER_NAME, sport);
 	if (retval) goto error_out1;
@@ -406,7 +467,11 @@ static int imx_startup(struct uart_port *port)
 			     SA_TRIGGER_FALLING | SA_TRIGGER_RISING,
 			     DRIVER_NAME, sport);
 	if (retval) goto error_out3;
-
+#elif defined(CONFIG_ARCH_IMX21)
+	retval = request_irq(sport->irq, imx21_int, 0,
+			     DRIVER_NAME, sport);
+	if (retval) goto error_out1;
+#endif
 	/*
 	 * Finally, clear and enable interrupts
 	 */
@@ -422,13 +487,36 @@ static int imx_startup(struct uart_port *port)
 	spin_lock_irqsave(&sport->port.lock,flags);
 	imx_enable_ms(&sport->port);
 	spin_unlock_irqrestore(&sport->port.lock,flags);
+	
+	UCR3((u32)sport->port.membase) |= UCR3_RXDMUXSEL;
+#if 0	
+	printk( "UART %08lX\n", (u32)sport->port.membase);
+	  printk( "URXD0(x) : %08lX\n", URXD0((u32)sport->port.membase) );
+	  printk( "URTX0(x) : %08lX\n", URTX0((u32)sport->port.membase) );
+	  printk( "UCR1(x)  : %08lX\n", UCR1((u32)sport->port.membase)  );
+	  printk( "UCR2(x)  : %08lX\n", UCR2((u32)sport->port.membase)  );
+	  printk( "UCR3(x)  : %08lX\n", UCR3((u32)sport->port.membase)  );
+	  printk( "UCR4(x)  : %08lX\n", UCR4((u32)sport->port.membase)  );
+	  printk( "UFCR(x)  : %08lX\n", UFCR((u32)sport->port.membase)  );
+	  printk( "USR1(x)  : %08lX\n", USR1((u32)sport->port.membase)  );
+	  printk( "USR2(x)  : %08lX\n", USR2((u32)sport->port.membase)  );
+	  printk( "UESC(x)  : %08lX\n", UESC((u32)sport->port.membase)  );
+	  printk( "UTIM(x)  : %08lX\n", UTIM((u32)sport->port.membase)  );
+	  printk( "UBIR(x)  : %08lX\n", UBIR((u32)sport->port.membase)  );
+	  printk( "UBMR(x)  : %08lX\n", UBMR((u32)sport->port.membase)  );
+	  printk( "UBRC(x)  : %08lX\n", UBRC((u32)sport->port.membase)  );
+	  printk( "ONMES(x) : %08lX\n", ONMES((u32)sport->port.membase) );
+	  printk( "UTS(x)   : %08lX\n", UTS((u32)sport->port.membase)   );
+#endif
 
 	return 0;
 
+#if defined(CONFIG_ARCH_IMX)
 error_out3:
 	free_irq(sport->txirq, sport);
 error_out2:
 	free_irq(sport->rxirq, sport);
+#endif /* defined(CONFIG_ARCH_IMX) */
 error_out1:
 	return retval;
 }
@@ -445,9 +533,13 @@ static void imx_shutdown(struct uart_port *port)
 	/*
 	 * Free the interrupts
 	 */
+#if defined(CONFIG_ARCH_IMX)
 	free_irq(sport->rtsirq, sport);
 	free_irq(sport->txirq, sport);
 	free_irq(sport->rxirq, sport);
+#elif defined(CONFIG_ARCH_IMX21)
+	free_irq(sport->irq, sport);
+#endif /* defined(CONFIG_ARCH_IMX21) */
 
 	/*
 	 * Disable all interrupts, port and break condition.
@@ -562,8 +654,21 @@ imx_set_termios(struct uart_port *port, struct termios *termios,
 	 * --------- = --------
 	 *  uartclk    UBMR - 1
 	 */
-	UBIR((u32)sport->port.membase) = (baud / 100) - 1;
-	UBMR((u32)sport->port.membase) = 10000 - 1;
+	UBIR((u32)sport->port.membase) = (baud / 100) - 1;   // <<< this code is flawed
+	UBMR((u32)sport->port.membase) = 10000 - 1;          // <<< this code is flawed
+
+#if 0	// ...hack...for 38400...
+	MPCTL0 = 0x01ff297c;  // 352 MHz
+	CSCR =  0x17180A0F;
+	CSCR = 0x17380A0F;
+	while (CSCR & 0x00200000)
+	  ; // wait for stabilization
+#endif
+	PCDR1 &= ~PCDR1_PERDIV1_MASK;   // << this forces 38400, always, no matter what.
+	PCDR1 |= PCDR1_PERDIV1(21);
+	UBIR((u32)sport->port.membase) = 999;
+	UBMR((u32)sport->port.membase) = 26041;
+
 
 	UCR1((u32)sport->port.membase) = old_ucr1;
 	UCR2((u32)sport->port.membase) |= old_txrxen;
@@ -661,17 +766,30 @@ static struct uart_ops imx_pops = {
 	.verify_port	= imx_verify_port,
 };
 
+////////////////////////
+//////////// THIS IS NOT THE ONLY PLACE YOU NEED TO LOOK
+//////////// change/add imx21_uartX_resources and imx21_uartX_device (where X is uart number)
+//////////// to keep a consistent state.
+///////////////////////
 static struct imx_port imx_ports[] = {
 	{
+#if defined(CONFIG_ARCH_IMX)
 	.txirq  = UART1_MINT_TX,
 	.rxirq  = UART1_MINT_RX,
 	.rtsirq = UART1_MINT_RTS,
+#elif defined(CONFIG_ARCH_IMX21)
+	.irq  = INT_UART1,
+#endif /* defined(CONFIG_ARCH_IMX21) */
 	.port	= {
 		.type		= PORT_IMX,
 		.iotype		= UPIO_MEM,
 		.membase	= (void *)IMX_UART1_BASE,
 		.mapbase	= IMX_UART1_BASE, /* FIXME */
+#if defined(CONFIG_ARCH_IMX)
 		.irq		= UART1_MINT_RX,
+#elif defined(CONFIG_ARCH_IMX21)
+		.irq		= INT_UART1,
+#endif /* defined(CONFIG_ARCH_IMX21) */
 		.uartclk	= 16000000,
 		.fifosize	= 8,
 		.flags		= UPF_BOOT_AUTOCONF,
@@ -679,20 +797,52 @@ static struct imx_port imx_ports[] = {
 		.line		= 0,
 	},
 	}, {
+#if defined(CONFIG_ARCH_IMX)
 	.txirq  = UART2_MINT_TX,
 	.rxirq  = UART2_MINT_RX,
 	.rtsirq = UART2_MINT_RTS,
+#elif defined(CONFIG_ARCH_IMX21)
+	.irq  = INT_UART2,
+#endif /* defined(CONFIG_ARCH_IMX21) */
 	.port	= {
 		.type		= PORT_IMX,
 		.iotype		= UPIO_MEM,
 		.membase	= (void *)IMX_UART2_BASE,
 		.mapbase	= IMX_UART2_BASE, /* FIXME */
+#if defined(CONFIG_ARCH_IMX)
 		.irq		= UART2_MINT_RX,
+#elif defined(CONFIG_ARCH_IMX21)
+		.irq		= INT_UART2,
+#endif /* defined(CONFIG_ARCH_IMX21) */
 		.uartclk	= 16000000,
 		.fifosize	= 8,
 		.flags		= UPF_BOOT_AUTOCONF,
 		.ops		= &imx_pops,
 		.line		= 1,
+	},
+	}, {
+#if defined(CONFIG_ARCH_IMX)
+	.txirq  = UART3_MINT_TX,
+	.rxirq  = UART3_MINT_RX,
+	.rtsirq = UART3_MINT_RTS,
+#elif defined(CONFIG_ARCH_IMX21)
+	.irq  = INT_UART3,
+#endif /* defined(CONFIG_ARCH_IMX21) */
+	.port	= {
+		.type		= PORT_IMX,
+		.iotype		= UPIO_MEM,
+		.membase	= (void *)IMX_UART3_BASE,
+		.mapbase	= IMX_UART3_BASE, /* FIXME */
+#if defined(CONFIG_ARCH_IMX)
+		.irq		= UART3_MINT_RX,
+#elif defined(CONFIG_ARCH_IMX21)
+		.irq		= INT_UART3,
+#endif /* defined(CONFIG_ARCH_IMX21) */
+		.uartclk	= 16000000,
+		.fifosize	= 8,
+		.flags		= UPF_BOOT_AUTOCONF,
+		.ops		= &imx_pops,
+		.line		= 2,
 	},
 	}
 };
@@ -715,11 +865,13 @@ static void __init imx_init_ports(void)
 	first = 0;
 
 	for (i = 0; i < ARRAY_SIZE(imx_ports); i++) {
+	  //	  printk( "Init serial port %d...\n", i );  // bunnie
 		init_timer(&imx_ports[i].timer);
 		imx_ports[i].timer.function = imx_timeout;
 		imx_ports[i].timer.data     = (unsigned long)&imx_ports[i];
 	}
 
+#if defined(CONFIG_ARCH_IMX)
 	imx_gpio_mode(PC9_PF_UART1_CTS);
 	imx_gpio_mode(PC10_PF_UART1_RTS);
 	imx_gpio_mode(PC11_PF_UART1_TXD);
@@ -738,7 +890,26 @@ static void __init imx_init_ports(void)
 	imx_gpio_mode(PD9_AF_UART2_RI);
 	imx_gpio_mode(PD10_AF_UART2_DSR);
 #endif
+#elif defined(CONFIG_ARCH_IMX21)
+	/* See section 37.2 in I.MX21 RM */
+	imx_gpio_mode(PE14_PF_UART1_CTS);
+	imx_gpio_mode(PE15_PF_UART1_RTS);
+	imx_gpio_mode(PE12_PF_UART1_TXD);
+	imx_gpio_mode(PE13_PF_UART1_RXD);
 
+#if 0
+	imx_gpio_mode(PB28_PF_UART2_CTS);
+	imx_gpio_mode(PB29_PF_UART2_RTS);
+	imx_gpio_mode(PB30_PF_UART2_TXD);
+	imx_gpio_mode(PB31_PF_UART2_RXD);
+#endif
+
+#endif /* defined(CONFIG_ARCH_IMX21) */
+
+	imx_gpio_mode( GPIO_PORTE | 9 | GPIO_PF | GPIO_IN ); // UART3 Rxd
+	imx_gpio_mode( GPIO_PORTE | 8 | GPIO_PF | GPIO_OUT );// UART3 Txd
+	imx_gpio_mode( GPIO_PORTE | 11 | GPIO_PF | GPIO_IN ); // UART3 Rts
+	imx_gpio_mode( GPIO_PORTE | 10 | GPIO_PF | GPIO_OUT );// UART3 Cts
 
 }
 
@@ -760,7 +931,11 @@ imx_console_write(struct console *co, const char *s, unsigned int count)
 	old_ucr2 = UCR2((u32)sport->port.membase);
 
 	UCR1((u32)sport->port.membase) =
+#if defined(CONFIG_ARCH_IMX)
 	                   (old_ucr1 | UCR1_UARTCLKEN | UCR1_UARTEN)
+#elif defined(CONFIG_ARCH_IMX21)
+	                   (old_ucr1 | UCR1_UARTEN)
+#endif /* defined(CONFIG_ARCH_IMX21) */
 	                   & ~(UCR1_TXMPTYEN | UCR1_RRDYEN | UCR1_RTSDEN);
 	UCR2((u32)sport->port.membase) = old_ucr2 | UCR2_TXEN;
 
@@ -885,7 +1060,11 @@ imx_console_setup(struct console *co, char *options)
 
 static struct uart_driver imx_reg;
 static struct console imx_console = {
+#if defined(USE_TTYSMX)
 	.name		= "ttySMX",
+#else
+	.name		= "ttyS",
+#endif
 	.write		= imx_console_write,
 	.device		= uart_console_device,
 	.setup		= imx_console_setup,
@@ -909,10 +1088,17 @@ console_initcall(imx_rs_console_init);
 
 static struct uart_driver imx_reg = {
 	.owner          = THIS_MODULE,
-	.driver_name    = DRIVER_NAME,
+#if defined(USE_TTYSMX)
+	.driver_name    = DRIVER_NAME, 
 	.dev_name       = "ttySMX",
 	.devfs_name	= "ttsmx/",
 	.major          = SERIAL_IMX_MAJOR,
+#else
+	.driver_name    = "ttyS",
+	.dev_name       = "ttyS",
+	.devfs_name	= "ttyS",
+	.major          = TTY_MAJOR,
+#endif
 	.minor          = MINOR_START,
 	.nr             = ARRAY_SIZE(imx_ports),
 	.cons           = IMX_CONSOLE,

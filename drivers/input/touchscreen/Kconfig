@@ -11,6 +11,13 @@ menuconfig INPUT_TOUCHSCREEN
 
 if INPUT_TOUCHSCREEN
 
+config TOUCHSCREEN_CSB535
+        tristate "CSB535 touchscreen"
+        depends on INPUT && INPUT_TOUCHSCREEN && MACH_CSB535
+        help
+          Say Y here for the CSB535's touchscreen
+
+
 config TOUCHSCREEN_ADS7846
 	tristate "ADS 7846 based touchscreens"
 	depends on SPI_MASTER

@@ -1,11 +1,51 @@
 menu "IMX Implementations"
-	depends on ARCH_IMX
+	depends on FAMILY_IMX
+
+choice
+	prompt "Select IMX-based board"
+	default ARCH_MX1ADS
 
 config ARCH_MX1ADS
 	bool "mx1ads"
-	depends on ARCH_IMX
+	depends on FAMILY_IMX
+	select ARCH_IMX
 	select ISA
 	help
 	  Say Y here if you are using the Motorola MX1ADS board
 
+config MACH_CSB535
+	bool "Cogent CSB535FS board"
+	depends on FAMILY_IMX
+	select ARCH_IMX21
+	help
+	  Say Y here if you are using the Cogent CSB535 board.
+
+config MACH_MX21ADS
+	bool "Freescale MX21 ADS board"
+	depends on FAMILY_IMX
+	select ARCH_IMX21
+	help
+	  Say Y here if you are using the Freescale MX21 ADS board.
+
+config MACH_TCMX21
+	bool "Turbochef i.MX21 board"
+	depends on FAMILY_IMX
+	select ARCH_IMX21
+	help
+	  Say Y here if you are using the Turbochef i.MX21 board.
+
+config MACH_CSB536
+	bool "Cogent CSB536FS board"
+	depends on FAMILY_IMX
+	select ARCH_IMX
+	help
+	  Say Y here if you are using the Cogent CSB536FS board.
+endchoice
+
+
 endmenu
+
+config ARCH_IMX
+	bool
+config ARCH_IMX21
+	bool

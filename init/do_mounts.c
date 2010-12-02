@@ -168,6 +168,14 @@ dev_t name_to_dev_t(char *name)
 	res = Root_RAM0;
 	if (strcmp(name, "ram") == 0)
 		goto done;
+	// bunnie
+	res = Root_SDB;
+	if (strcmp(name, "sdb") == 0)
+		goto done;
+	res = Root_SDB1;
+	if (strcmp(name, "sdb1") == 0)
+		goto done;
+	// end bunnie
 
 	if (strlen(name) > 31)
 		goto fail;

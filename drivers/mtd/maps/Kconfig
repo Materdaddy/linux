@@ -425,6 +425,46 @@ config MTD_CDB89712
 	  This enables access to the flash or ROM chips on the CDB89712 board.
 	  If you have such a board, say 'Y'.
 
+config MTD_CSB535
+	tristate "CFI Flash device mapped on Cogent CSB535"
+	depends on ARM && MTD_CFI && MACH_CSB535
+	help
+	  This enables access to the flash chip on the Cogent CSB535
+	  single board computer.  The default behavior of the startup
+	  script the comes with BSPs for that board is to pass the address
+	  of a file romfs.img, which is assumed to be a romfs filesystem image
+	  to be used as the initial root filesystem.
+
+config MTD_CSB536
+	tristate "CFI Flash device mapped on Cogent CSB536"
+	depends on ARM && MTD_CFI && MACH_CSB536
+	help
+	  This enables access to the flash chip on the Cogent CSB536
+	  single board computer.  The default behavior of the startup
+	  script the comes with BSPs for that board is to pass the address
+	  of a file romfs.img, which is assumed to be a romfs filesystem image
+	  to be used as the initial root filesystem.
+
+config MTD_MX21ADS
+	tristate "CFI Flash device mapped on Freescale MX21 ADS"
+	depends on ARM && MTD_CFI && MACH_MX21ADS
+	help
+	  This enables access to the flash chip on the Freescale MX21 ADS
+	  single board computer.  The default behavior of the startup
+	  script the comes with BSPs for that board is to pass the address
+	  of a file romfs.img, which is assumed to be a romfs filesystem image
+	  to be used as the initial root filesystem.
+
+config MTD_TCMX21
+	tristate "CFI Flash device mapped on Turbochef MX21 board"
+	depends on ARM && MTD_CFI && MACH_TCMX21
+	help
+	  This enables access to the flash chip on the Turbochef MX21
+	  single board computer.  The default behavior of the startup
+	  script the comes with BSPs for that board is to pass the address
+	  of a file romfs.img, which is assumed to be a romfs filesystem image
+	  to be used as the initial root filesystem.
+
 config MTD_SA1100
 	tristate "CFI Flash device mapped on StrongARM SA11x0"
 	depends on MTD_CFI && ARCH_SA1100 && MTD_PARTITIONS

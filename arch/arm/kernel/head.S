@@ -85,6 +85,15 @@ ENTRY(stext)
 	bl	__lookup_processor_type		@ r5=procinfo r9=cpuid
 	movs	r10, r5				@ invalid processor (r5=0)?
 	beq	__error_p			@ yes, error 'p'
+
+	/// hack alert [now fixed in the bootloader, yes!]
+	//	mov     r1,#0x300                       @ force processor type for now, r1 isn't sticking!
+	//	add     r1,r1,#0x53
+	// do something like    (adapted from head-mx21ads.S in compressed loader) 
+	// 1:	 .word MACH_TYPE_MX21
+	//       ldr r1, 1b
+	/// figure out how to set this correctly from bootloader!!!
+
 	bl	__lookup_machine_type		@ r5=machinfo
 	movs	r8, r5				@ invalid machine (r5=0)?
 	beq	__error_a			@ yes, error 'a'

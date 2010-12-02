@@ -34,7 +34,13 @@ arch_idle(void)
 static inline void
 arch_reset(char mode)
 {
-	cpu_reset(0);
+#if defined(CONFIG_ARCH_IMX21)
+    /* Enable watchdog and assert reset */
+    PCCR1 |= PCCR1_WDT_EN;
+    WCR = WCR_WDE;
+#else /* !defined(CONFIG_ARCH_IMX21) */
+    cpu_reset(0);
+#endif /* !defined(CONFIG_ARCH_IMX21) */
 }
 
 #endif

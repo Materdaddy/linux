@@ -21,8 +21,18 @@
 #include <asm/irq.h>
 #include <asm/mach/time.h>
 
-/* Use timer 1 as system timer */
-#define TIMER_BASE IMX_TIM1_BASE
+/*
+ * On most boards, we use Timer 1 as the system timer. However,
+ * the Turbochef board needs timer 1's output for a perifperal, so
+ * it uses Timer 2 as the sytem timer.
+ */
+#if defined(CONFIG_MACH_TCMX21)
+#  define TIMER_BASE IMX_TIM2_BASE
+#  define TIMER_INT  TIM2_INT
+#else
+#  define TIMER_BASE IMX_TIM1_BASE
+#  define TIMER_INT  TIM1_INT
+#endif
 
 /*
  * Returns number of us since last clock interrupt.  Note that interrupts
@@ -62,8 +72,11 @@ imx_timer_interrupt(int irq, void *dev_id, struct pt_regs *regs)
 
 	/* clear the interrupt */
 	if (IMX_TSTAT(TIMER_BASE))
+#if defined(CONFIG_ARCH_IMX)
 		IMX_TSTAT(TIMER_BASE) = 0;
-
+#elif defined(CONFIG_ARCH_IMX21)
+                IMX_TSTAT(TIMER_BASE) = TSTAT_CAPT | TSTAT_COMP;
+#endif
 	timer_tick(regs);
 	write_sequnlock(&xtime_lock);
 
@@ -92,7 +105,7 @@ static void __init imx_timer_init(void)
 	/*
 	 * Make irqs happen for the system timer
 	 */
-	setup_irq(TIM1_INT, &imx_timer_irq);
+	setup_irq(TIMER_INT, &imx_timer_irq);
 }
 
 struct sys_timer imx_timer = {

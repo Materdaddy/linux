@@ -14,6 +14,8 @@ enum {
 	Root_SDA2 = MKDEV(SCSI_DISK0_MAJOR, 2),
 	Root_HDC1 = MKDEV(IDE1_MAJOR, 1),
 	Root_SR0 = MKDEV(SCSI_CDROM_MAJOR, 0),
+	Root_SDB = MKDEV(SCSI_DISK0_MAJOR, 16),  // bunnie--USB
+	Root_SDB1 = MKDEV(SCSI_DISK0_MAJOR, 17), // bunnie--USB
 };
 
 extern dev_t ROOT_DEV;

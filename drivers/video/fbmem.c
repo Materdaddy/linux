@@ -544,7 +544,9 @@ int fb_show_logo(struct fb_info *info, int rotate)
 }
 #else
 int fb_prepare_logo(struct fb_info *info, int rotate) { return 0; }
-int fb_show_logo(struct fb_info *info, int rotate) { return 0; }
+int fb_show_logo(struct fb_info *info, int rotate) { 
+  return 0;
+}
 #endif /* CONFIG_LOGO */
 
 static int fbmem_read_proc(char *buf, char **start, off_t offset,
@@ -842,6 +844,8 @@ int
 fb_blank(struct fb_info *info, int blank)
 {	
  	int ret = -EINVAL;
+	
+	printk( "fbmem.c: fb_blank called" );
 
  	if (blank > FB_BLANK_POWERDOWN)
  		blank = FB_BLANK_POWERDOWN;
@@ -1332,6 +1336,7 @@ register_framebuffer(struct fb_info *fb_info)
 	event.info = fb_info;
 	notifier_call_chain(&fb_notifier_list,
 			    FB_EVENT_FB_REGISTERED, &event);
+
 	return 0;
 }
 

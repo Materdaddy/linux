@@ -49,6 +49,12 @@ config MTD_NAND_SPIA
 	help
 	  If you had to ask, you don't have one. Say 'N'.
 
+config MTD_NAND_MX21ADS
+	tristate "NAND Flash device on i.MX21 ADS board"
+	depends on MACH_MX21ADS && MTD_NAND
+	help
+	  This enables the driver for the i.MX21 ADS's NAND flash.
+
 config MTD_NAND_TOTO
 	tristate "NAND Flash device on TOTO board"
 	depends on ARCH_OMAP && MTD_NAND

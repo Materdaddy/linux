@@ -613,6 +613,8 @@ static void __init do_basic_setup(void)
 #endif
 
 	do_initcalls();
+
+
 }
 
 static void do_pre_smp_initcalls(void)

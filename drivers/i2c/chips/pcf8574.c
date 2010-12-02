@@ -105,6 +105,56 @@ static ssize_t set_write(struct device *dev, struct device_attribute *attr, cons
 
 static DEVICE_ATTR(write, S_IWUSR | S_IRUGO, show_write, set_write);
 
+static ssize_t show_in(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct pcf8574_data *data = i2c_get_clientdata(client);
+	i2c_smbus_write_byte(client, 0);
+	return sprintf(buf, "%u\n", i2c_smbus_read_byte(client));
+}
+
+static DEVICE_ATTR(in, S_IWUSR | S_IRUGO, show_in, NULL);
+
+static ssize_t show_out(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct pcf8574_data *data = i2c_get_clientdata(client);
+	i2c_smbus_write_byte(client, 1);
+        return sprintf(buf, "%u\n", i2c_smbus_read_byte(client));
+}
+
+static ssize_t set_out(struct device *dev, struct device_attribute *attr, const char *buf,
+			 size_t count)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct pcf8574_data *data = i2c_get_clientdata(client);
+	data->write = simple_strtoul(buf, NULL, 10);
+	i2c_smbus_write_byte_data(client, 1, data->write);
+	return count;
+}
+
+static DEVICE_ATTR(out, S_IWUSR | S_IRUGO, show_out, set_out);
+
+static ssize_t show_config(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct pcf8574_data *data = i2c_get_clientdata(client);
+	i2c_smbus_write_byte(client, 3);
+        return sprintf(buf, "%u\n", i2c_smbus_read_byte(client));
+}
+
+static ssize_t set_config(struct device *dev, struct device_attribute *attr, const char *buf,
+			 size_t count)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct pcf8574_data *data = i2c_get_clientdata(client);
+	data->write = simple_strtoul(buf, NULL, 10);
+	i2c_smbus_write_byte_data(client, 3, data->write);
+	return count;
+}
+
+static DEVICE_ATTR(config, S_IWUSR | S_IRUGO, show_config, set_config);
+
 /*
  * Real code
  */
@@ -168,6 +218,9 @@ static int pcf8574_detect(struct i2c_adapter *adapter, int address, int kind)
 	/* Register sysfs hooks */
 	device_create_file(&new_client->dev, &dev_attr_read);
 	device_create_file(&new_client->dev, &dev_attr_write);
+	device_create_file(&new_client->dev, &dev_attr_in);
+	device_create_file(&new_client->dev, &dev_attr_out);
+	device_create_file(&new_client->dev, &dev_attr_config);
 	return 0;
 
 /* OK, this is not exactly good programming practice, usually. But it is
