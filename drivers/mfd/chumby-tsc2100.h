@@ -200,6 +200,7 @@ struct tsc2100_data {
 	spinlock_t                      lock;
     int                             tson;
   int   touchclick;
+  int   misc_pending;
 	int                             pendown;
  	/* count of timer-triggered interrupt calls with no data available.
 	 * Used to work around problem with irq enable going dead.
@@ -314,16 +315,25 @@ static inline void spi_write_zeros(int zeros)
         SSP_TX_REG(TSC2100_SPIDEV) = 0;
 }
 
+static inline void spi_wait_for_txspace( void ) {
+
+  while( !(SSP_INT_REG(TSC2100_SPIDEV) & SSP_INT_TH ) )
+    ndelay(50); // wait 50 nsecs...
+    
+}
 
 static inline int spi_write( int regaddr, int regdata )
 {
     unsigned long flags;
 
     spin_lock_irqsave(&tsc2100_devdata->lock, flags);
+    spi_wait_for_txspace(); // check added due to ambiguity in datasheet about XCHG operation
     spi_wait_for_idle();
     spi_flush_fifo();
     SSP_TX_REG(TSC2100_SPIDEV) = regaddr | TSC2100_WRITE;
     SSP_TX_REG(TSC2100_SPIDEV) = regdata;
+    if( !(((SSP_TEST_REG(TSC2100_SPIDEV) & 0xF) == 1)) )
+      printk( "***** (w)TX fifo count: %d\n", SSP_TEST_REG(TSC2100_SPIDEV) & 0xF );
     SSP_CTRL_REG(TSC2100_SPIDEV) |= SSP_XCH;
     spin_unlock_irqrestore(&tsc2100_devdata->lock, flags);
     return 0;
@@ -338,10 +348,13 @@ static inline int spi_read( int regaddr, int* rxdata, int rxlen )
     spin_lock_irqsave(&tsc2100_devdata->lock, flags);
     if ( rxlen > 7 )  
         rxlen = 7;
+    spi_wait_for_txspace(); // check added due to ambiguity in datasheet about XCHG operation
     spi_wait_for_idle();
     spi_flush_fifo();
     SSP_TX_REG(TSC2100_SPIDEV) = regaddr | TSC2100_READ;
     spi_write_zeros(rxlen);
+    if( !(((SSP_TEST_REG(TSC2100_SPIDEV) & 0xF) == 1) || ((SSP_TEST_REG(TSC2100_SPIDEV) & 0xF) == 4)) )
+      printk( "***** (r)TX fifo count: %d\n", SSP_TEST_REG(TSC2100_SPIDEV) & 0xF );
     SSP_CTRL_REG(TSC2100_SPIDEV) |= SSP_XCH;
     spi_read_fifo(&junk, 1);
     spi_read_fifo(rxdata, rxlen);

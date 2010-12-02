@@ -34,6 +34,9 @@
 #include <asm/dma.h>
 #include <asm/arch/imx-dma.h>
 
+#ifdef MAKE_L22 // needed to compile with linux 2.6.22+ compatibility
+#include <sound/typedefs.h>
+#endif
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/control.h>
@@ -41,6 +44,9 @@
 
 #include "chumby-tsc2100.h"
 
+
+#define BUNDBG 0
+#define ACCURATE_PTR_MATH 0
 
 //#define TS_DEBUG
 #ifdef TS_DEBUG
@@ -81,6 +87,14 @@ MODULE_PARM_DESC(id, "Chumby iMX21/TSC2100");
 /***********************************************************************
  * Constants
  ***********************************************************************/
+#define BUN_PERIODS         3
+#define MAX_BUFFER_SIZE     (256 * 1024)
+#define MAX_PERIOD_SIZE     MAX_BUFFER_SIZE
+#define MIN_PERIOD_SIZE     (16 * 1024)
+#define PERIODS_MIN         BUN_PERIODS     // DON'T CHANGE -- BUNNIE CALIBRATED
+#define PERIODS_MAX         BUN_PERIODS     // DON'T CHANGE -- BUNNIE CALIBRATED
+
+
 // TouchScreen Constants
 #define X_AXIS_MAX		    3830
 #define X_AXIS_MIN		    150
@@ -197,6 +211,7 @@ static snd_pcm_hw_constraint_list_t hw_constraints_rates = {
     .mask  = 0,
 };
 
+
 static snd_pcm_hardware_t snd_tsc2100_playback_hw = {
     .info = (SNDRV_PCM_INFO_INTERLEAVED    |
              SNDRV_PCM_INFO_BLOCK_TRANSFER |
@@ -210,11 +225,11 @@ static snd_pcm_hardware_t snd_tsc2100_playback_hw = {
     .rate_max = 48000,
     .channels_min = 1,
     .channels_max = 2,
-    .buffer_bytes_max = 0x10000,
-    .period_bytes_min = 0x4000,
-    .period_bytes_max = 0x8000,
-    .periods_min = 1,
-    .periods_max = 2,
+    .buffer_bytes_max = /*0x10000*/ MAX_BUFFER_SIZE,
+    .period_bytes_min = /*0x4000*/ MIN_PERIOD_SIZE,
+    .period_bytes_max = /*0x8000*/ MAX_PERIOD_SIZE,
+    .periods_min = /*1*/ PERIODS_MIN,
+    .periods_max = /*2*/ PERIODS_MAX,
 };
 
 static snd_pcm_hardware_t snd_tsc2100_capture_hw = {
@@ -230,11 +245,11 @@ static snd_pcm_hardware_t snd_tsc2100_capture_hw = {
     .rate_max = 48000,
     .channels_min = 1,
     .channels_max = 2,
-    .buffer_bytes_max = 0x10000,
-    .period_bytes_min = 0x4000,
-    .period_bytes_max = 0x8000,
-    .periods_min = 1,
-    .periods_max = 2,
+    .buffer_bytes_max = 0x10000 /*MAX_BUFFER_SIZE*/,
+    .period_bytes_min = 0x4000 /*MIN_PERIOD_SIZE*/,
+    .period_bytes_max = 0x8000 /*MAX_PERIOD_SIZE*/,
+    .periods_min = 1 /*PERIODS_MIN*/,
+    .periods_max = 2 /*PERIODS_MAX*/,
 };
 
 
@@ -509,6 +524,9 @@ static int snd_tsc2100_pcm_playback_trigger(snd_pcm_substream_t *substream, int 
             printk("TRIGGER_START while DMA is already enabled\n");
         }
         DBG("addr=%lx size=%x\n", runtime->dma_addr, chip->p_per_size);
+#if BUNDBG
+	printk( "trigger  a: %lx s:%x\n", runtime->dma_addr, chip->p_per_size );
+#endif
         setup_dma_xfer(chip->p_dma,
                        runtime->dma_addr, (u32)&SSI1_STX0_PHYS,
                        chip->p_per_size);
@@ -518,11 +536,14 @@ static int snd_tsc2100_pcm_playback_trigger(snd_pcm_substream_t *substream, int 
         SSI1_SIER |= SSI_SIER_TDMAE;
         imx_dma_enable(chip->p_dma);
 
-        if ((runtime->periods == 2)) {
+        if ((runtime->periods >= 2)) {
             CCR(chip->p_dma) |= CCR_RPT;
             DBG("addr=%lx size=%x\n", runtime->dma_addr+chip->p_per_size, chip->p_per_size);
+#if BUNDBG
+	    printk( "trigger2 a: %lx s:%x\n", runtime->dma_addr + chip->p_per_size * (BUN_PERIODS - 1), chip->p_per_size );
+#endif
             setup_dma_xfer(chip->p_dma,
-                           runtime->dma_addr + chip->p_per_size,
+                           runtime->dma_addr + chip->p_per_size * (BUN_PERIODS - 2),
                            (u32)&SSI1_STX0_PHYS,
                            chip->p_per_size);
             chip->p_period = 0;
@@ -544,7 +565,7 @@ static int snd_tsc2100_pcm_playback_trigger(snd_pcm_substream_t *substream, int 
     return 0;
 }
 
-
+#if ACCURATE_PTR_MATH
 static snd_pcm_uframes_t snd_tsc2100_pcm_playback_pointer(
                                         snd_pcm_substream_t *substream)
 {
@@ -552,12 +573,31 @@ static snd_pcm_uframes_t snd_tsc2100_pcm_playback_pointer(
     snd_pcm_runtime_t *runtime = substream->runtime;
     unsigned int offset;
 
-    offset = bytes_to_frames(runtime, chip->p_pos % (2 * chip->p_per_size));
+    // uncomment both comments at once to see the alt number correctly
+    //    offset = bytes_to_frames(runtime, chip->p_pos % (2 * chip->p_per_size));
+    offset = bytes_to_frames(runtime, (CHCNTR(chip->p_dma) + SAR(chip->p_dma) ) % (BUN_PERIODS * chip->p_per_size));
+    if (offset >= runtime->buffer_size)
+        offset = 0;
+
+    //    printk( "playback pointer offset: %d (alt %d).\n", offset, bytes_to_frames(runtime, chip->p_pos % (2 * chip->p_per_size)) );
+
+    return offset;
+}
+# else 
+#define FUDGE 64 // some samples to represent some fixed delays in calling this function, emperically optimized
+static snd_pcm_uframes_t snd_tsc2100_pcm_playback_pointer(
+                                        snd_pcm_substream_t *substream)
+{
+    tsc2100_chip_t *chip = snd_pcm_substream_chip(substream);
+    snd_pcm_runtime_t *runtime = substream->runtime;
+    unsigned int offset;
+
+    offset = bytes_to_frames(runtime, (chip->p_pos + FUDGE) % (BUN_PERIODS * chip->p_per_size));
     if (offset >= runtime->buffer_size)
         offset = 0;
     return offset;
 }
-
+#endif
 
 static int snd_tsc2100_capture_open(snd_pcm_substream_t *substream)
 {
@@ -756,7 +796,7 @@ static int __init snd_tsc2100_pcm_new(tsc2100_chip_t *chip)
 
     snd_pcm_lib_preallocate_pages_for_all(pcm, SNDRV_DMA_TYPE_CONTINUOUS,
                                           snd_dma_continuous_data(GFP_KERNEL),
-                                          64*1024, 64*1024);
+                                          MAX_BUFFER_SIZE, MAX_BUFFER_SIZE);
 
     snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_PLAYBACK, &snd_tsc2100_playback_ops);
     snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_CAPTURE, &snd_tsc2100_capture_ops);
@@ -1123,12 +1163,15 @@ static void tsc2100_dma_play_isr(int irq, void *data, struct pt_regs *regs)
     DBG("addr=%lx size=%x\n",
         runtime->dma_addr + (chip->p_period * chip->p_per_size),
         chip->p_per_size);
+#if BUNDBG
+    printk( "isr      a: %lx s:%x\n", runtime->dma_addr + (chip->p_period * chip->p_per_size), chip->p_per_size );
+#endif
     setup_dma_xfer(chip->p_dma,
                    runtime->dma_addr + (chip->p_period * chip->p_per_size),
                    (u32)&SSI1_STX0_PHYS,
                    chip->p_per_size);
     CCR(chip->p_dma) |= CCR_RPT;
-    chip->p_period = (chip->p_period + 1) & 0x1;
+    chip->p_period = (chip->p_period + 1) % BUN_PERIODS;
 
     snd_pcm_period_elapsed(substream);
 }
@@ -1149,9 +1192,9 @@ static void tsc2100_dma_capture_isr(int irq, void *data, struct pt_regs *regs)
     cntr = CNTR(chip->c_dma);
     chip->c_pos += (cntr);
 
-    DBG("addr=%lx size=%x\n",
-        runtime->dma_addr + (chip->p_period * chip->p_per_size),
-        chip->p_per_size);
+    DBG("addr=%lx size=%x\n", 
+        runtime->dma_addr + (chip->c_period * chip->c_per_size), 
+        chip->c_per_size);
     setup_dma_xfer(chip->c_dma,
                    (u32)&SSI1_SRX0_PHYS,
                    runtime->dma_addr + (chip->c_period * chip->c_per_size),

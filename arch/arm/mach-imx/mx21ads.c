@@ -404,6 +404,7 @@ mx21ads_init(void)
     imx_gpio_mode(26 | GPIO_PORTB | GPIO_PF | GPIO_OUT );   /* USBH1 FS */
     imx_gpio_mode(27 | GPIO_PORTB | GPIO_PF | GPIO_OUT );   // USBH1_OE
     imx_gpio_mode(25 | GPIO_PORTB | GPIO_PF | GPIO_OUT );   // USBH_ON
+    PUEN(1) |= 0x08000000; // enable pull-up on OE line
 
     printk( "DDIR(1): %08X\n", DDIR(1));
     printk( "OCR2(1): %08X\n", OCR2(1));

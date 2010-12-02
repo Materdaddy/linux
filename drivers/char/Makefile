@@ -18,6 +18,12 @@ chumby-accel-objs := chumby_accel.o
 obj-m += chumby_timer.o
 chumby-timer-objs := chumby_timer.o
 
+obj-m += chumby_udma.o
+chumby-udma-objs := chumby_udma.c
+
+obj-m += chumby_emma.o
+chumby-emma-objs := chumby_emma.c
+
 obj-$(CONFIG_LEGACY_PTYS)	+= pty.o
 obj-$(CONFIG_UNIX98_PTYS)	+= pty.o
 obj-y				+= misc.o

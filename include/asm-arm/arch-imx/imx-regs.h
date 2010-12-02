@@ -1986,9 +1986,63 @@
 #define KPP_KDDR            __REG16(IMX_KPP_BASE + 0x4)
 #define KPP_KPDR            __REG16(IMX_KPP_BASE + 0x6)
 
+
+// enhanced MultiMedia Accelerator (eMMA)
+
+#define EMMA_PP_CNTL                    __REG(IMX_EMMA_BASE + 0x000)
+#define EMMA_PP_INTRCNTL                __REG(IMX_EMMA_BASE + 0x004)
+#define EMMA_PP_INTRSTATUS              __REG(IMX_EMMA_BASE + 0x008)
+#define EMMA_PP_SOURCE_Y_PTR            __REG(IMX_EMMA_BASE + 0x00C)
+#define EMMA_PP_SOURCE_CB_PTR           __REG(IMX_EMMA_BASE + 0x010)
+#define EMMA_PP_SOURCE_CR_PTR           __REG(IMX_EMMA_BASE + 0x014)
+#define EMMA_PP_DEST_RGB_PTR            __REG(IMX_EMMA_BASE + 0x018)
+#define EMMA_PP_QUANTIZER_PTR           __REG(IMX_EMMA_BASE + 0x01C)
+#define EMMA_PP_PROCESS_FRAME_PARA      __REG(IMX_EMMA_BASE + 0x020)
+#define EMMA_PP_SOURCE_FRAME_WIDTH      __REG(IMX_EMMA_BASE + 0x024)
+#define EMMA_PP_DEST_DISPLAY_WIDTH      __REG(IMX_EMMA_BASE + 0x028)
+#define EMMA_PP_DEST_IMAGE_SIZE         __REG(IMX_EMMA_BASE + 0x02C)
+#define EMMA_PP_DEST_FRAME_FMT_CNTL     __REG(IMX_EMMA_BASE + 0x030)
+#define EMMA_PP_RESIZE_TBL_INDEX        __REG(IMX_EMMA_BASE + 0x034)
+#define EMMA_PP_CSC_COEF_0123           __REG(IMX_EMMA_BASE + 0x038)
+#define EMMA_PP_CSC_COEF_4              __REG(IMX_EMMA_BASE + 0x03C)
+#define EMMA_PP_RESIZE_COEF_TBL(x)      __REG2(IMX_EMMA_BASE + 0x100, (x<<2))
+
+#define EMMA_PrP_CNTL                   __REG(IMX_EMMA_BASE + 0x400)
+#define EMMA_PrP_INTRCNTL               __REG(IMX_EMMA_BASE + 0x404)
+#define EMMA_PrP_INTRSTATUS             __REG(IMX_EMMA_BASE + 0x408)
+#define EMMA_PrP_SOURCE_Y_PTR           __REG(IMX_EMMA_BASE + 0x40C)
+#define EMMA_PrP_SOURCE_CB_PTR          __REG(IMX_EMMA_BASE + 0x410)
+#define EMMA_PrP_SOURCE_CR_PTR          __REG(IMX_EMMA_BASE + 0x414)
+#define EMMA_PrP_DEST_RGB1_PTR          __REG(IMX_EMMA_BASE + 0x418)
+#define EMMA_PrP_DEST_RGB2_PTR          __REG(IMX_EMMA_BASE + 0x41C)
+#define EMMA_PrP_DEST_Y_PTR             __REG(IMX_EMMA_BASE + 0x420)
+#define EMMA_PrP_DEST_CB_PTR            __REG(IMX_EMMA_BASE + 0x424)
+#define EMMA_PrP_DEST_CR_PTR            __REG(IMX_EMMA_BASE + 0x428)
+#define EMMA_PrP_SOURCE_FRAME_SIZE      __REG(IMX_EMMA_BASE + 0x42C)
+#define EMMA_PrP_CH1_LINE_STRIDE        __REG(IMX_EMMA_BASE + 0x430)
+#define EMMA_PrP_SRC_PIXEL_FORMAT_CNTL  __REG(IMX_EMMA_BASE + 0x434)
+#define EMMA_PrP_CH1_PIXEL_FORMAT_CNTL  __REG(IMX_EMMA_BASE + 0x438)
+#define EMMA_PrP_CH1_OUT_IMAGE_SIZE     __REG(IMX_EMMA_BASE + 0x43C)
+#define EMMA_PrP_CH2_OUT_IMAGE_SIZE     __REG(IMX_EMMA_BASE + 0x440)
+#define EMMA_PrP_SOURCE_LINE_STRIDE     __REG(IMX_EMMA_BASE + 0x444)
+#define EMMA_PrP_CSC_COEF_012           __REG(IMX_EMMA_BASE + 0x448)
+#define EMMA_PrP_CSC_COEF_345           __REG(IMX_EMMA_BASE + 0x44C)
+#define EMMA_PrP_CSC_COEF_678           __REG(IMX_EMMA_BASE + 0x450)
+#define EMMA_PrP_CH1_RZ_HORI_COEF1      __REG(IMX_EMMA_BASE + 0x454)
+#define EMMA_PrP_CH1_RZ_HORI_COEF2      __REG(IMX_EMMA_BASE + 0x458)
+#define EMMA_PrP_CH1_RZ_HORI_VALID      __REG(IMX_EMMA_BASE + 0x45C)
+#define EMMA_PrP_CH1_RZ_VERT_COEF1      __REG(IMX_EMMA_BASE + 0x460)
+#define EMMA_PrP_CH1_RZ_VERT_COEF2      __REG(IMX_EMMA_BASE + 0x464)
+#define EMMA_PrP_CH1_RZ_VERT_VALID      __REG(IMX_EMMA_BASE + 0x468)
+#define EMMA_PrP_CH2_RZ_HORI_COEF1      __REG(IMX_EMMA_BASE + 0x46C)
+#define EMMA_PrP_CH2_RZ_HORI_COEF2      __REG(IMX_EMMA_BASE + 0x470)
+#define EMMA_PrP_CH2_RZ_HORI_VALID      __REG(IMX_EMMA_BASE + 0x474)
+#define EMMA_PrP_CH2_RZ_VERT_COEF1      __REG(IMX_EMMA_BASE + 0x478)
+#define EMMA_PrP_CH2_RZ_VERT_COEF2      __REG(IMX_EMMA_BASE + 0x47C)
+#define EMMA_PrP_CH2_RZ_VERT_VALID      __REG(IMX_EMMA_BASE + 0x480)
+
 #else
 #error No CONFIG_ARCH_ defined
-#endif
-
+#endif       
 
 #endif                          // _IMX_REGS_H

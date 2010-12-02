@@ -120,11 +120,19 @@ static void spi_exit( void )
     PCCR1 &= ~PCCR1_CSPI3_EN; // disable PERCLK to CSPI3
 }
 
+static int spi_wait_for_txspace( void ) {
+
+  while( !(SSP_CTRL_REG(SPIDEV) & SSP_INT_TH) )
+    ndelay(50); // wait 50 nsecs...
+    
+}
+
 
 static int spi_write( int regaddr, int regdata )
 {
     spi_wait_for_idle();
     spi_flush_fifo();
+    spi_wait_for_txspace();
     SSP_TX_REG(SPIDEV) = regaddr | TSC2100_WRITE;
     SSP_TX_REG(SPIDEV) = regdata;
     SSP_CTRL_REG(SPIDEV) |= SSP_XCH;
