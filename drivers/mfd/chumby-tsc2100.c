@@ -472,14 +472,14 @@ static void spi_exit( void )
 // if N == 0 -> 48000 sample clock
 // if N == 7 --> 8000 sample clock
 
-static void pll_fsref_48000( int D, int A )
+static void pll_fsref_48000( int N )
 {
     u16 val = tsc2100_devdata->reg.control1 & ~0x3F;
-    val |= ( ( D & 7 ) << 3 ) | ( A & 7 );
+    val |= ( ( N & 7 ) << 3 ) | ( N & 7 );
     tsc2100_devdata->reg.control1 = val;
     tsc2100_devdata->reg.control3 &= ~( 1 << 13 );
-    tsc2100_devdata->dac_sample_rate = D;
-    tsc2100_devdata->adc_sample_rate = A;
+    tsc2100_devdata->dac_sample_rate = N;
+    tsc2100_devdata->adc_sample_rate = N;
     tsc2100_regwrite(TSC2100_REG_CONTROL1, tsc2100_devdata->reg.control1);
     tsc2100_regwrite(TSC2100_REG_CONTROL3, tsc2100_devdata->reg.control3);
 
@@ -487,58 +487,44 @@ static void pll_fsref_48000( int D, int A )
     if( CSCR & CSCR_MCU_SEL ) { // detect clock version by looking at where CPU gets its clock
       // we are in 16 MHz land (hardware version 1.6 and higher)
       // K/P = 6.144
-      // P = 1
-      // J = 6
-      // D = 1440
-      tsc2100_regwrite(TSC2100_REG_PLL1,
-		       1 << 15 |  // enable PLL
-		       1 << 8  |  // P value is 1 for 48.0 kHz
-		       6 << 2);   // J value is 6 for 48.0 kHz
-      tsc2100_regwrite(TSC2100_REG_PLL2,
-		       1440<<2);  // D value is 1440 for 48.0 kHz
+      tsc2100_regwrite(TSC2100_REG_PLL1, 1 << 15 |  // enable PLL
+		                                 1 << 8  |  // P value is 1 for 48.0 kHz
+		                                 6 << 2);   // J value is 6 for 48.0 kHz
+      tsc2100_regwrite(TSC2100_REG_PLL2, 1440<<2);  // D value 1440 for 48.0 kHz
     } else {
       // we are in 12 MHz land (hardware version 1.5 and less)
-      tsc2100_regwrite(TSC2100_REG_PLL1,
-		       1 << 15 |  // enable PLL
-		       1 << 8  |  // P value is 1 for 48.0 kHz
-		       8 << 2);   // J value is 8 for 48.0 kHz
-      tsc2100_regwrite(TSC2100_REG_PLL2,
-		       1920<<2);  // D value is 1920 for 48.0 kHz
+      tsc2100_regwrite(TSC2100_REG_PLL1, 1 << 15 |  // enable PLL
+		                                 1 << 8  |  // P value is 1 for 48.0 kHz
+		                                 8 << 2);   // J value is 8 for 48.0 kHz
+      tsc2100_regwrite(TSC2100_REG_PLL2, 1920<<2);  // D value 1920 for 48.0 kHz
     }
 }
 
 
-static void pll_fsref_44100( int D, int A )
+static void pll_fsref_44100( int N )
 {
     u16 val = tsc2100_devdata->reg.control1 & ~0x3F;
-    val |= ( ( D & 7 ) << 3 ) | ( A & 7 );
+    val |= ( ( N & 7 ) << 3 ) | ( N & 7 );
     tsc2100_devdata->reg.control1 = val;
     tsc2100_devdata->reg.control3 |= ( 1 << 13 );
-    tsc2100_devdata->dac_sample_rate = D;
-    tsc2100_devdata->adc_sample_rate = A;
+    tsc2100_devdata->dac_sample_rate = N;
+    tsc2100_devdata->adc_sample_rate = N;
     tsc2100_regwrite(TSC2100_REG_CONTROL1, tsc2100_devdata->reg.control1);
     tsc2100_regwrite(TSC2100_REG_CONTROL3, tsc2100_devdata->reg.control3);
 
     if( CSCR & CSCR_MCU_SEL ) { // detect clock version by looking at where CPU gets its clock
       // we are in 16 MHz land (hardware version 1.6 and higher)
       // K/P = 5.6448
-      // P = 1
-      // J = 5
-      // D = 6448
-      tsc2100_regwrite(TSC2100_REG_PLL1,
-		       1 << 15 |  // enable PLL
-		       1 << 8  |  // P value is 1 for 44.1 kHz
-		       5 << 2);   // J value is 5 for 44.1 kHz
-      tsc2100_regwrite(TSC2100_REG_PLL2,
-		       6448<<2);  // D value is 6448 for 44.1 kHz
+      tsc2100_regwrite(TSC2100_REG_PLL1, 1 << 15 |  // enable PLL
+		                                 1 << 8  |  // P value is 1 for 44.1 kHz
+		                                 5 << 2);   // J value is 5 for 44.1 kHz
+      tsc2100_regwrite(TSC2100_REG_PLL2, 6448<<2);  // D value 6448 for 44.1 kHz
     } else {
       // we are in 12 MHz land (hardware version 1.5 and less)
-      tsc2100_regwrite(TSC2100_REG_PLL1,
-		       1 << 15 |  // enable PLL
-		       1 << 8  |  // P value is 1 for 44.1 kHz
-		       7 << 2);   // J value is 7 for 44.1 kHz
-      tsc2100_regwrite(TSC2100_REG_PLL2,
-		       5264<<2);  // D value is 5264 for 44.1 kHz
+      tsc2100_regwrite(TSC2100_REG_PLL1, 1 << 15 |  // enable PLL
+		                                 1 << 8  |  // P value is 1 for 44.1 kHz
+		                                 7 << 2);   // J value is 7 for 44.1 kHz
+      tsc2100_regwrite(TSC2100_REG_PLL2, 5264<<2);  // D value 5264 for 44.1 kHz
     }
 }
 
@@ -616,69 +602,21 @@ static int snd_tsc2100_pcm_playback_prepare(snd_pcm_substream_t *substream)
     tsc2100_regwrite(TSC2100_REG_AUDIODAC, tsc2100_devdata->reg.audiodac);
     tsc2100_regwrite(TSC2100_REG_POWERCON, tsc2100_devdata->reg.powercon);
 
+    printk( KERN_DEBUG "%s(): rate=%d\n", __FUNCTION__, runtime->rate); 
+
+    SSI1_STCCR = (SSI_STCCR_WL(16) | SSI_STCCR_DC(3) | SSI_STCCR_PM(0));
+    SSI1_SRCCR = (SSI_SRCCR_WL(16) | SSI_SRCCR_DC(3) | SSI_SRCCR_PM(0));
+    SSI1_STMSK = ~((1 << 0) | (1 << 2));
+    SSI1_SRMSK = ~((1 << 0) | (1 << 2));
+
     switch(runtime->rate) {
-    case 8000:
-        /* 16 bit, 8KHz, 24 samples/frame */
-        SSI1_STCCR = (SSI_STCCR_WL(16) | SSI_STCCR_DC(23) | SSI_STCCR_PM(0));
-        SSI1_SRCCR = (SSI_SRCCR_WL(16) | SSI_SRCCR_DC(23) | SSI_SRCCR_PM(0));
-        SSI1_STMSK = ~((1 << 0) | (1 << 12));
-        SSI1_SRMSK = ~((1 << 0) | (1 << 12));
-        pll_fsref_48000(7, tsc2100_devdata->adc_sample_rate);
-        break;
-
-    case 11025:
-        /* 16 bit, 44.1KHz, 16 samples/frame */
-        SSI1_STCCR = (SSI_STCCR_WL(16) | SSI_STCCR_DC(15) | SSI_STCCR_PM(0));
-        SSI1_SRCCR = (SSI_SRCCR_WL(16) | SSI_SRCCR_DC(15) | SSI_SRCCR_PM(0));
-        SSI1_STMSK = ~((1 << 0) | (1 << 2));
-        SSI1_SRMSK = ~((1 << 0) | (1 << 2));
-        pll_fsref_44100(4, tsc2100_devdata->adc_sample_rate);
-        break;
-
-    case 16000:
-        /* 16 bit, 48KHz, 4 samples/frame */
-        SSI1_STCCR = (SSI_STCCR_WL(16) | SSI_STCCR_DC(11) | SSI_STCCR_PM(0));
-        SSI1_SRCCR = (SSI_SRCCR_WL(16) | SSI_SRCCR_DC(11) | SSI_SRCCR_PM(0));
-        SSI1_STMSK = ~((1 << 0) | (1 << 2));
-        SSI1_SRMSK = ~((1 << 0) | (1 << 2));
-        pll_fsref_48000(3, tsc2100_devdata->adc_sample_rate);
-        break;
-
-    case 22050:
-        /* 16 bit, 44.1KHz, 8 samples/frame */
-        SSI1_STCCR = (SSI_STCCR_WL(16) | SSI_STCCR_DC(7) | SSI_STCCR_PM(0));
-        SSI1_SRCCR = (SSI_SRCCR_WL(16) | SSI_SRCCR_DC(7) | SSI_SRCCR_PM(0));
-        SSI1_STMSK = ~((1 << 0) | (1 << 2));
-        SSI1_SRMSK = ~((1 << 0) | (1 << 2));
-        pll_fsref_44100(2, tsc2100_devdata->adc_sample_rate);
-        break;
-
-    case 32000:
-        /* 16 bit, 48KHz, 4 samples/frame */
-        SSI1_STCCR = (SSI_STCCR_WL(16) | SSI_STCCR_DC(5) | SSI_STCCR_PM(0));
-        SSI1_SRCCR = (SSI_SRCCR_WL(16) | SSI_SRCCR_DC(5) | SSI_SRCCR_PM(0));
-        SSI1_STMSK = ~((1 << 0) | (1 << 2));
-        SSI1_SRMSK = ~((1 << 0) | (1 << 2));
-        pll_fsref_48000(1, tsc2100_devdata->adc_sample_rate);
-        break;
-
-    case 44100:
-        /* 16 bit, 44.1KHz, 4 samples/frame */
-        SSI1_STCCR = (SSI_STCCR_WL(16) | SSI_STCCR_DC(3) | SSI_STCCR_PM(0));
-        SSI1_SRCCR = (SSI_SRCCR_WL(16) | SSI_SRCCR_DC(3) | SSI_SRCCR_PM(0));
-        SSI1_STMSK = ~((1 << 0) | (1 << 2));
-        SSI1_SRMSK = ~((1 << 0) | (1 << 2));
-        pll_fsref_44100(0, tsc2100_devdata->adc_sample_rate);
-        break;
-
-    case 48000:
-        /* 16 bit, 48KHz, 4 samples/frame */
-        SSI1_STCCR = (SSI_STCCR_WL(16) | SSI_STCCR_DC(3) | SSI_STCCR_PM(0));
-        SSI1_SRCCR = (SSI_SRCCR_WL(16) | SSI_SRCCR_DC(3) | SSI_SRCCR_PM(0));
-        SSI1_STMSK = ~((1 << 0) | (1 << 2));
-        SSI1_SRMSK = ~((1 << 0) | (1 << 2));
-        pll_fsref_48000(0, tsc2100_devdata->adc_sample_rate);
-        break;
+    case 8000: pll_fsref_48000(7); break;
+    case 11025:pll_fsref_44100(4); break;
+    case 16000:pll_fsref_48000(3); break;
+    case 22050:pll_fsref_44100(2); break;
+    case 32000:pll_fsref_48000(1); break;
+    case 44100:pll_fsref_44100(0); break;
+    case 48000:pll_fsref_48000(0); break;
 
     default:
         printk( KERN_ERR "%s/%s(): Can't handle rate of %d\n", 
@@ -899,13 +837,17 @@ static void tsc2100_dma_play_isr(int irq, void *data, struct pt_regs *regs)
     // hopefully it will not have to wait long for the CHCNTR(chip->p_dma) to
     // be within the next period.
     {
-        int i;
-        for (i=0; CHCNTR(chip->p_dma) > chip->p_per_size/2 && i < 1000; ++i) {
+        int i, tout = 1000;
+
+        if (runtime->rate <= 16000)
+            tout *= 4;
+
+        for (i=0; CHCNTR(chip->p_dma) > chip->p_per_size/2 && i < tout; ++i) {
             ADBG("%s(): %d -- CHCNTR(%d)=%x\n", 
                  __FUNCTION__, i, chip->p_dma, CHCNTR(chip->p_dma));
             continue;
         }
-        if (i == 1000) {
+        if (i == tout) {
             printk(KERN_ERR "%s/%s(): timed-out wating for DMA to start.\n",
                    __FILE__, __FUNCTION__);
         }
@@ -954,69 +896,21 @@ static int snd_tsc2100_pcm_capture_prepare(snd_pcm_substream_t *substream)
     tsc2100_regwrite(TSC2100_REG_AUDIOADC, tsc2100_devdata->reg.audioadc);
     tsc2100_regwrite(TSC2100_REG_POWERCON, tsc2100_devdata->reg.powercon);
 
+    printk( KERN_DEBUG "%s(): rate=%d\n", __FUNCTION__, runtime->rate); 
+
+    SSI1_STCCR = (SSI_STCCR_WL(16) | SSI_STCCR_DC(3) | SSI_STCCR_PM(0));
+    SSI1_SRCCR = (SSI_SRCCR_WL(16) | SSI_SRCCR_DC(3) | SSI_SRCCR_PM(0));
+    SSI1_STMSK = ~((1 << 0) | (1 << 2));
+    SSI1_SRMSK = ~((1 << 0) | (1 << 2));
+
     switch(runtime->rate) {
-    case 8000:
-        /* 16 bit, 8KHz, 24 samples/frame */
-        SSI1_STCCR = (SSI_STCCR_WL(16) | SSI_STCCR_DC(23) | SSI_STCCR_PM(0));
-        SSI1_SRCCR = (SSI_SRCCR_WL(16) | SSI_SRCCR_DC(23) | SSI_SRCCR_PM(0));
-        SSI1_STMSK = ~((1 << 0) | (1 << 12));
-        SSI1_SRMSK = ~((1 << 0) | (1 << 12));
-        pll_fsref_48000(tsc2100_devdata->dac_sample_rate,7);
-        break;
-
-    case 11025:
-        /* 16 bit, 44.1KHz, 16 samples/frame */
-        SSI1_STCCR = (SSI_STCCR_WL(16) | SSI_STCCR_DC(15) | SSI_STCCR_PM(0));
-        SSI1_SRCCR = (SSI_SRCCR_WL(16) | SSI_SRCCR_DC(15) | SSI_SRCCR_PM(0));
-        SSI1_STMSK = ~((1 << 0) | (1 << 2));
-        SSI1_SRMSK = ~((1 << 0) | (1 << 2));
-        pll_fsref_44100(tsc2100_devdata->dac_sample_rate, 4);
-        break;
-
-    case 16000:
-        /* 16 bit, 48KHz, 4 samples/frame */
-        SSI1_STCCR = (SSI_STCCR_WL(16) | SSI_STCCR_DC(11) | SSI_STCCR_PM(0));
-        SSI1_SRCCR = (SSI_SRCCR_WL(16) | SSI_SRCCR_DC(11) | SSI_SRCCR_PM(0));
-        SSI1_STMSK = ~((1 << 0) | (1 << 2));
-        SSI1_SRMSK = ~((1 << 0) | (1 << 2));
-        pll_fsref_48000(tsc2100_devdata->dac_sample_rate, 3);
-        break;
-
-    case 22050:
-        /* 16 bit, 44.1KHz, 8 samples/frame */
-        SSI1_STCCR = (SSI_STCCR_WL(16) | SSI_STCCR_DC(7) | SSI_STCCR_PM(0));
-        SSI1_SRCCR = (SSI_SRCCR_WL(16) | SSI_SRCCR_DC(7) | SSI_SRCCR_PM(0));
-        SSI1_STMSK = ~((1 << 0) | (1 << 2));
-        SSI1_SRMSK = ~((1 << 0) | (1 << 2));
-        pll_fsref_44100(tsc2100_devdata->dac_sample_rate, 2);
-        break;
-
-    case 32000:
-        /* 16 bit, 48KHz, 4 samples/frame */
-        SSI1_STCCR = (SSI_STCCR_WL(16) | SSI_STCCR_DC(5) | SSI_STCCR_PM(0));
-        SSI1_SRCCR = (SSI_SRCCR_WL(16) | SSI_SRCCR_DC(5) | SSI_SRCCR_PM(0));
-        SSI1_STMSK = ~((1 << 0) | (1 << 2));
-        SSI1_SRMSK = ~((1 << 0) | (1 << 2));
-        pll_fsref_48000(tsc2100_devdata->dac_sample_rate, 1);
-        break;
-
-    case 44100:
-        /* 16 bit, 44.1KHz, 4 samples/frame */
-        SSI1_STCCR = (SSI_STCCR_WL(16) | SSI_STCCR_DC(3) | SSI_STCCR_PM(0));
-        SSI1_SRCCR = (SSI_SRCCR_WL(16) | SSI_SRCCR_DC(3) | SSI_SRCCR_PM(0));
-        SSI1_STMSK = ~((1 << 0) | (1 << 2));
-        SSI1_SRMSK = ~((1 << 0) | (1 << 2));
-        pll_fsref_44100(tsc2100_devdata->dac_sample_rate,0);
-        break;
-
-    case 48000:
-        /* 16 bit, 48KHz, 4 samples/frame */
-        SSI1_STCCR = (SSI_STCCR_WL(16) | SSI_STCCR_DC(3) | SSI_STCCR_PM(0));
-        SSI1_SRCCR = (SSI_SRCCR_WL(16) | SSI_SRCCR_DC(3) | SSI_SRCCR_PM(0));
-        SSI1_STMSK = ~((1 << 0) | (1 << 2));
-        SSI1_SRMSK = ~((1 << 0) | (1 << 2));
-        pll_fsref_48000(tsc2100_devdata->dac_sample_rate,0);
-        break;
+    case 8000: pll_fsref_48000(7); break;
+    case 11025:pll_fsref_44100(4); break;
+    case 16000:pll_fsref_48000(3); break;
+    case 22050:pll_fsref_44100(2); break;
+    case 32000:pll_fsref_48000(1); break;
+    case 44100:pll_fsref_44100(0); break;
+    case 48000:pll_fsref_48000(0); break;
 
     default:
         printk( KERN_WARNING "%s/%s(): Can't handle rate of %d\n", 
@@ -3846,14 +3740,14 @@ static int __init alsa_audio_init(void)
     if ((rc = snd_tsc2100_pcm_new(chip)) != 0)   goto init_err1;
     if ((rc = snd_card_register(card)) != 0)     goto init_err1;
 
-    pll_fsref_48000(0,0);
+    pll_fsref_48000(0);
     tsc2100_regwrite(TSC2100_REG_SIDETONE,tsc2100_devdata->reg.sidetone);
     tsc2100_regwrite(TSC2100_REG_CONTROL4,tsc2100_devdata->reg.control4);
     tsc2100_regwrite(TSC2100_REG_CONTROL5,tsc2100_devdata->reg.control5);
     tsc2100_regwrite(TSC2100_REG_AUDIOADC,tsc2100_devdata->reg.audioadc);
     tsc2100_regwrite(TSC2100_REG_AUDIODAC,tsc2100_devdata->reg.audiodac);
 
-    printk(KERN_INFO "Chumby TI-TSC2100 ALSA Audio Driver v1.01 initialized\n");
+    printk(KERN_INFO "Chumby TI-TSC2100 ALSA Audio Driver v1.02 initialized\n");
     tsc2100_sndcard = card;
     return 0;
 

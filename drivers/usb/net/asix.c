@@ -865,6 +865,10 @@ static const struct usb_device_id	products [] = {
 	USB_DEVICE (0x077b, 0x2226),
 	.driver_info =	(unsigned long) &ax8817x_info,
 }, {
+        // Apple USB Ethernet Adapter
+        USB_DEVICE(0x05ac, 0x1402),
+	.driver_info =  (unsigned long) &ax8817x_info,
+}, {
 	// Netgear FA120
 	USB_DEVICE (0x0846, 0x1040),
 	.driver_info =  (unsigned long) &netgear_fa120_info,
@@ -911,6 +915,10 @@ static const struct usb_device_id	products [] = {
 }, {
 	// ASIX AX88772 10/100
         USB_DEVICE (0x0b95, 0x7720),
+        .driver_info = (unsigned long) &ax88772_info,
+}, {
+	// ASIX AX88x72A 10/100
+        USB_DEVICE (0x0b95, 0x772a),
         .driver_info = (unsigned long) &ax88772_info,
 }, {
 	// Linksys USB200M Rev 2
