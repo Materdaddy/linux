@@ -11,9 +11,4 @@ ifeq ($(CONFIG_SA1100_ASSABET),y)
 obj-$(CONFIG_MCP_UCB1200)	+= ucb1x00-assabet.o
 endif
 
-#obj-m := tsc2100.o
-#tsc2100-objs := tsc2100-core.o tsc2100-ts.o
-
-#obj-m := snd-imx21-tsc2100.o
-#snd-imx21-tsc2100-objs	:= imx21-tsc2100.o
-obj-m := chumby-tsc2100.o chumby-tsc2100_v38.o
+obj-m := chumby-tsc2100.o

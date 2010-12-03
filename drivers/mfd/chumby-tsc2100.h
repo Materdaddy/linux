@@ -20,14 +20,6 @@
 // speaker enable/disable is controlled by the other driver
 #define ENABLE_SPEAKER_KLUDGE_UNTIL_OTHER_DRIVER_PORTED
 
-/* Modes */
-#define TSC2100_MODE_TS   1
-#define TSC2100_MODE_MISC 2
-
-#define TSC2100_STATE_BAT1  0
-#define TSC2100_STATE_BAT2  1
-#define TSC2100_STATE_TEMP1 2
-#define TSC2100_STATE_TEMP2 3
 
 /* Address constructs */
 #define TSC2100_READ     (1 << 15)    /* Read Register */
@@ -158,22 +150,23 @@
 #define TSC2100_CONTROL1_DATFM_I2S     (0<<8)
 
 
+#define SCAN_XY      0x10           /* SCAN_XY issued */
+#define HAVE_X       0x20           /* received X value */
+#define HAVE_Y       0x40           /* received Y value */
+#define HAVE_XY      (HAVE_X|HAVE_Y)/* have boty X&Y values */
+#define REPORT_XY    0x80           /* generated PEN DOWN event to inputdev */
 
-struct tsc2100_ts_event {
-	short p;
-	short x;
+struct tsc2100_event {
+    short flags;    /* SCAN_XY ... REPORT_XY */
+	short p;        /* pen pressure */
+	short x;        
 	short y;
-    short pen;
-};
+    short pen;      /* non-zero if PEN DOWN */
 
-
-struct tsc2100_misc_data {
-	short bat1;
-    short bat2;
-	short aux1;
-	short aux2;
-	short temp1;
-	short temp2;
+    #ifdef REAL_PEN_PRESSURE
+    short z1;
+    short z2;
+    #endif
 };
 
 
@@ -201,60 +194,69 @@ struct tsc2100_regs {
 };
 
 
-#define TS_BAT1  0
-#define TS_BAT2  1
-#define TS_TEMP1 2
-#define TS_TEMP2 3
+/* scan mode */
+#define TS_IDLE     0   /* nothing happening */
+#define TS_SCANXY   1   /* scanning for X/Y coordinates */
+#define TS_SCAN     2   /* scanning for BAT1/BAT2/TEMP1/TEMP2 */
+#define TS_DISABLED 3   /* touchscreen is disabled */
 
-#define TS_IDLE  0
-#define TS_XMODE 1
-#define TS_YMODE 2
-#define TS_MISC  3
+/* scan state when in TS_SCAN scan mode */
+#define TS_TEMP1    0   /* scanning for temp1 */
+#define TS_TEMP2    1   /* scanning for temp2 */
+#define TS_DCLINE   2   /* scanning for DC power */
+#define TS_BATTERY  3   /* scanning for battery power */
 
-struct tsc2100_data {
-    spinlock_t                      lock;
-    int                             tson;
-    int                             touchclick;
-    int                             misc_pending;
-    int                             misc_state; /* TS_BAT1...TS_TEMP2 */
-    int                             pendown;
 
-    /* count of timer-triggered interrupt calls with no data available.
-     * Used to work around problem with irq enable going dead.
-     */
-    unsigned int                    inactive_count;
-    int                             mode;
-    int                             state;  /* TS_IDLE...TS_MISC */
+struct tsc2100_context {
+    spinlock_t              lock;
+    struct tasklet_struct   tasklet;
+    struct timer_list       oneshot;
+    struct timer_list       timer;
 
-    int                             dac_sample_rate;
-    int                             adc_sample_rate;
+    int                     interrupt;
+    int                     oneshot_expired;
+    int                     timer_expired;
+    int                     tson;
 
-    struct tsc2100_regs             reg;
+    int                     scan_mode;  /* TS_IDLE...TS_SCAN */
+    int                     scan_state; /* TS_TEMP1...TS_BATTERY */
+    unsigned long           scan_start; /* scan start in jiffies */
+    int                     scan_sample;/* average TSC2100 provided raw data */
+    u16                     scan_data[8];
 
-    struct tsc2100_ringbuf          ring_x;
-    struct tsc2100_ringbuf          ring_y;
-    struct tsc2100_ringbuf          ring_p;
-    struct tsc2100_ringbuf          ring_pen;
-    struct tsc2100_ringbuf          ring_bat1;
-    struct tsc2100_ringbuf          ring_bat2;
-    struct tsc2100_ringbuf          ring_temp1;
-    struct tsc2100_ringbuf          ring_temp2;
+    int                     penup;           /* # 10ms ticks pen has been up */
+    int                     pendown_active;  /* non-zero if processing pen down */
+    int                     pendown_reports; /* # of pendown reports for this PEN DOWN event */
+    int                     pendown_total;   /* total # of pendown reports */
 
-    struct input_dev*               inputdevice;
-    struct timer_list               ts_timer;
-    struct timer_list               misc_timer;
+    int                     touchclick;
 
-    struct tsc2100_ts_event         tsdata;
-    struct tsc2100_misc_data        miscdata;
+    int                     dac_sample_rate;
+    int                     adc_sample_rate;
+
+    struct tsc2100_regs     reg;
+
+    struct tsc2100_ringbuf  ring_x;
+    struct tsc2100_ringbuf  ring_y;
+    struct tsc2100_ringbuf  ring_p;
+    struct tsc2100_ringbuf  ring_pen;
+    struct tsc2100_ringbuf  ring_bat1;
+    struct tsc2100_ringbuf  ring_bat2;
+    struct tsc2100_ringbuf  ring_temp1;
+    struct tsc2100_ringbuf  ring_temp2;
+
+    struct input_dev*       inputdevice;
+
+    struct tsc2100_event    event;
     
-    struct proc_dir_entry*          proc_dirs[ 16 ];
-    struct proc_dir_entry*          proc_files[ 48 ];
+    struct proc_dir_entry*  proc_dirs[ 16 ];
+    struct proc_dir_entry*  proc_files[ 64 ];
 };
 
 
 #define TSC2100_SPIDEV 2
 
-extern struct tsc2100_data *tsc2100_devdata;
+extern struct tsc2100_context *tsc2100_devdata;
 
 
 static inline void ringwrite( struct tsc2100_ringbuf* ring, u16 newdata )
@@ -372,8 +374,8 @@ static inline int spi_read( int regaddr, int* rxdata, int rxlen )
     spi_flush_fifo();
     SSP_TX_REG(TSC2100_SPIDEV) = regaddr | TSC2100_READ;
     spi_write_zeros(rxlen);
-    if( !(((SSP_TEST_REG(TSC2100_SPIDEV) & 0xF) == 1) || ((SSP_TEST_REG(TSC2100_SPIDEV) & 0xF) == 4)) )
-      printk( "***** (r)TX fifo count: %d\n", SSP_TEST_REG(TSC2100_SPIDEV) & 0xF );
+    if ( (SSP_TEST_REG(TSC2100_SPIDEV) & 0xF) != rxlen )
+      printk( "***** (r)TX fifo count: %d != %d\n", SSP_TEST_REG(TSC2100_SPIDEV) & 0xF, rxlen );
     SSP_CTRL_REG(TSC2100_SPIDEV) |= SSP_XCH;
     spi_read_fifo(&junk, 1);
     spi_read_fifo(rxdata, rxlen);

@@ -2,13 +2,45 @@
  *  Driver for Chumby (iMX21) TSC2100, both ALSA audio and TouchScreen
  *  Copyright (C) 2006 Jay Monkman <jtm@lopingdog.com>
  *                2007 Greg Hutchins <ghutchins@gmail.com>
+ *                2008 Greg Hutchins <ghutchins@gmail.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License.
  *
  *  NOTES:
- *    This driver configures the CODEC to generate the clock and frame
- *         signals.
+ *    This driver configures the CODEC to generate the clock and frame signals.
+ *
+ *    2008 version of the driver completely revamped to fix a number of 
+ *    deficiencies:
+ *        1. interrupts disabled in both the interrupt handler and timer
+ *           handler for extended period of time (the entire routine).
+ *        2. voltage measurement state machine was kludgey in previous version.
+ *        3. TSC2100-controlled mode was used to capture X/Y/Z data and 
+ *           host-controlled mode was used to capture BAT/TEMP data.  Switching
+ *           the TSC2100 between the two modes seems to occasionally put the 
+ *           TSC100 into a funny state where it no longer scans.
+ *        4. touchscreen events would stop working, presumably because of #3
+ *           above.
+ *        5. would play games with the interrupt type/level, switching from 
+ *           FALLING-EDGE to LEVEL-TRIGGERED (may have caused problems)
+ *
+ *    How were these problems resolved?
+ *        1. both interrupts and timer now schedule the same tasklet, so no
+ *           longer need to protect the code with IRQ SPIN LOCK  -- the only
+ *           IRQ SPIN LOCK is used to protect the SPI commands, making them
+ *           atomic so that both the AUDIO and TOUCHSCREEN sub-systems can use
+ *           them independently.
+ *        2. changed the way the state machine works, now have a scan_mode and
+ *           a scan_state.  The timer routine initiates a scan and the interrupt
+ *           (or oneshot timer) processes the result of the scan and steps to 
+ *           the next state in the state machine. 
+ *        3. TSC2100 now *ALWAYS* operates in host-controlled mode, so once the
+ *           PEN is down the X/Y coordinates must be scanned independently
+ *        4. always operate in host-controlled mode and put in some checks in
+ *           the state machine to detect problems where the TSC2100 stops
+ *           operating correctly
+ *        5. now always leave the IRQ as FALLING-EDGE (we control the number of
+ *           interrupts by manually specifying the X and Y SCAN conversations)
  *
  *  TODO:
  *     handle power management
@@ -34,6 +66,10 @@
 #include <asm/dma.h>
 #include <asm/arch/imx-dma.h>
 
+#include <asm/mach/arch.h>
+#include <asm/mach/irq.h>
+#include <asm/mach/time.h>
+
 #ifdef MAKE_L22 // needed to compile with linux 2.6.22+ compatibility
 #include <sound/typedefs.h>
 #endif
@@ -42,28 +78,40 @@
 #include <sound/control.h>
 #include <sound/initval.h>
 
-
-
-//#define TS_DEBUG
-#ifdef TS_DEBUG
-# define TSDBG(fmt, args...) printk( KERN_ERR fmt, args )
-#else
-# define TSDBG(stuff...) do {} while(0)
-#endif
-
-#define DEBUG
+//#define DEBUG
 #ifdef DEBUG
+extern int dbug_printk( const char* fmt, ... );
+
 #define DBG(fmt, args...)                                                      \
     do {                                                                       \
-        struct timeval now;                                                    \
-        do_gettimeofday(&now);                                                 \
-        dbug_printk("%ld.%ld-%s().%d: " fmt,                                   \
-                    now.tv_sec, now.tv_usec, __FUNCTION__, __LINE__, ## args); \
+        struct timeval _now_;                                                  \
+        do_gettimeofday(&_now_);                                               \
+        dbug_printk("%ld.%06ld-%s().%d: " fmt,                                 \
+                _now_.tv_sec, _now_.tv_usec, __FUNCTION__, __LINE__, ## args); \
     } while ( 0 )
+
 #else
 #define DBG(stuff...) do {} while(0)
 #endif
+
+#if 1
+#define DBG_PEN(fmt, args...) DBG(fmt, args)
+#else
+#define DBG_PEN(fmt, args...) do {} while (0)
+#endif
+
+#if 0
+#define DBG_SCAN(fmt, args...) DBG(fmt, args)
+#else
+#define DBG_SCAN(stuff...) do {} while (0)
+#endif
+
+#if 1
+#define ADBG(fmt, args...) DBG(fmt, args)
+#else
 #define ADBG(stuff...) do {} while(0)
+#endif
+
 #define ERR(fmt, args...)   \
             printk(KERN_ERR "ERROR!!! %s/%s().%d: " fmt, \
                    __FILE__, __FUNCTION__, __LINE__, ## args)
@@ -75,35 +123,33 @@
  * Module stuff
  ***********************************************************************/
 static char *id = NULL;
-static int timeout_workaround = 1;
-static int timeout_regdump = 0;
 module_param(id, charp, 0444);
-module_param(timeout_workaround, int, 1);
-module_param(timeout_regdump, int, 0 );
-
-MODULE_AUTHOR("Chumby <ghutchins@gmail.com>");
-MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("Chumby iMX21 TI-TSC2100 Driver (ALSA Audio & TouchScreen)");
-MODULE_PARM_DESC(id, "Chumby iMX21/TSC2100");
 
 
 /***********************************************************************
  * Constants
  ***********************************************************************/
+//#define FILL_WITH_SILENCE   1            // play ISR fills ring buf with silence
+#define SYSTEM_LATENCY      4            // 44.1Khz 16-bit stereo (22.7us delay)
 #define BUFFER_BYTES_MAX    (128 * 1024) // big mofo buffer (64K is probably more than enough)
-#define PERIOD_BYTES_MIN    (16 * 1024)  // based on Chumby iMX21 system latency
+#define PERIOD_BYTES_MIN    (8 * 1024)   // based on Chumby iMX21 system latency
 #define PERIODS_MIN         4            // based on ALSA ring buffer math (must be at least 3)
 #define PERIODS_MAX         (BUFFER_BYTES_MAX / PERIOD_BYTES_MIN)
 #define PERIOD_BYTES_MAX    (BUFFER_BYTES_MAX / PERIODS_MIN)
 
 
 // TouchScreen Constants
-#define X_AXIS_MAX          3830
-#define X_AXIS_MIN          150
-#define Y_AXIS_MAX          3830
-#define Y_AXIS_MIN          190
-#define PRESSURE_MIN        0
-#define PRESSURE_MAX        20000
+#define ADCMODE(mode)  (TSC2100_ADC_DEFAULT | TSC2100_ADC_ADMODE(mode))
+
+#define X_AXIS_MAX            3830
+#define X_AXIS_MIN            150
+#define Y_AXIS_MAX            3830
+#define Y_AXIS_MIN            190
+#define PRESSURE_MIN          0
+#define PRESSURE_MAX          20000
+
+#define SCAN_TIMEOUT          3     // # of jiffies before timeout 
+#define MIN_TIMER_INTERVAL    100   // minimum msec interval for SCAN timer
 
 #define PENIRQ              IRQ_GPIOE(19)
 
@@ -125,6 +171,8 @@ typedef struct {
     imx_dmach_t p_dma;
     snd_pcm_substream_t *p_substream;
     u32 p_pos;
+    u32 p_prevpos;
+    u32 p_ccnr;
     u32 p_buf_size;
     u32 p_per_size;
     int p_period;
@@ -143,7 +191,8 @@ typedef struct {
 /***********************************************************************
  * Global Variables
  ***********************************************************************/
-u16 reg_adc         = TSC2100_ADC_DEFAULT|TSC2100_ADC_PSM|TSC2100_ADC_ADMODE(2);
+int version038      = 0;            // non-zero if version 3.8 hardware
+u16 reg_adc         = ADCMODE(0);
 u16 reg_refctl      = 0x11;
 u16 reg_control1    = 0 << 14  |    // ADC high pass filter disabled
                       2 << 12  |    // ADC input mux single-ended AUX
@@ -181,11 +230,18 @@ u16 reg_pll1        = 1 << 15  |    // enable PLL
 u16 reg_pll2        = 1920<<2;      // D value is 1920 for 48.0 kHz
 u16 reg_control4    = 0;
 u16 reg_control5    = 0xFE00;
-int poll_interval   = 1;            // misc timer poll interval -- in seconds
-int voltage_poll_interval = 4;      // voltage measurement poll interval -- secs
-atomic_t voltage_poll_next          // measure voltage when this is 0, then
-                 = ATOMIC_INIT(-1); // reset to -voltage_poll_interval 
-int voltage_sample_interval = 10;   // interval between voltage measurements (msecs)
+
+int timer_interval  = 1000;         // timer poll interval in milliseconds
+u32 timer_interval_jiffies;         // msecs_to_jiffies(timer_interval)
+int unplugged_battery_poll_interval = 4000; // msecs between unplugged battery polls
+int pluggedin_battery_poll_interval = 4000; // msecs between pluggedin battery polls
+int dcline_poll_interval = 4000;    // msecs between DCLINE voltage polls
+int battery_poll_next = 0;          // measure battery voltage when this is 0,
+                                    // then reset to either unplugged_battery_poll_interval 
+                                    // or pluggedin_battery_poll_interval
+                                    // depending on the "unplugged" state
+int dcline_poll_next = 0;           // measure dcline voltage when this is 0,
+                                    // then reset to dcline_poll_interval
 int voltage_sample_count = 5;       // max # of samples to average (low pass filter)
 int voltage_samples = 0;            // current sample number 
 int unplugged = 0;                  // if non-zero, chumby is unplugged
@@ -201,6 +257,7 @@ static int sigpwr_holdoff = 30;     // # of secs to wait before generating
 static int sigpwr_pid = 0;          // PID to send SIGPWR signal to when line
                                     // power is lost (not battery power)
 
+module_param(version038, int, S_IRUGO|S_IWUSR);
 module_param(reg_adc,      ushort, S_IRUGO|S_IWUSR);
 module_param(reg_refctl,   ushort, S_IRUGO|S_IWUSR);
 module_param(reg_control1, ushort, S_IRUGO|S_IWUSR);
@@ -214,10 +271,12 @@ module_param(reg_pll1,     ushort, S_IRUGO|S_IWUSR);
 module_param(reg_pll2,     ushort, S_IRUGO|S_IWUSR);
 module_param(reg_control4, ushort, S_IRUGO|S_IWUSR);
 module_param(reg_control5, ushort, S_IRUGO|S_IWUSR);
-module_param(poll_interval, int, S_IRUGO|S_IWUSR);
-module_param(voltage_poll_interval, int, S_IRUGO|S_IWUSR);
+
+module_param(timer_interval, int, S_IRUGO|S_IWUSR);
+module_param(unplugged_battery_poll_interval, int, S_IRUGO|S_IWUSR);
+module_param(pluggedin_battery_poll_interval, int, S_IRUGO|S_IWUSR);
+module_param(dcline_poll_interval, int, S_IRUGO|S_IWUSR);
 module_param(voltage_sample_count, int, S_IRUGO|S_IWUSR);
-module_param(voltage_sample_interval, int, S_IRUGO|S_IWUSR);
 module_param(dc_unplugged_threshold, int, S_IRUGO|S_IWUSR);
 module_param(dc_and_battery_dead_threshold, int, S_IRUGO|S_IWUSR);
 module_param(battery_dead_threshold, int, S_IRUGO|S_IWUSR);
@@ -237,7 +296,7 @@ module_param(playback_periods_max, int, S_IRUGO|S_IWUSR);
 
 
 static snd_card_t           *tsc2100_sndcard = NULL;
-struct tsc2100_data         *tsc2100_devdata = NULL;
+struct tsc2100_context      *tsc2100_devdata = NULL;
 
 
 static snd_device_ops_t g_mixer_ops = {
@@ -303,10 +362,32 @@ static snd_pcm_hardware_t snd_tsc2100_capture_hw = {
 };
 
 
+#if 0
+static unsigned long microseconds( void )
+{
+    extern struct sys_timer *system_timer;
+    unsigned long flags;
+    unsigned long seq;
+    unsigned long usecs;
+
+    do {
+        seq = read_seqbegin_irqsave(&xtime_lock, flags);
+        usecs = jiffies_to_usecs(jiffies) + system_timer->offset();
+    } while (read_seqretry_irqrestore(&xtime_lock, seq, flags));
+
+    return usecs;
+}
+#endif
+
+
 static void gpio_init( void )
 {
     imx_gpio_write( 30 | GPIO_PORTC, 0 );  // turn off battery voltage gate
     imx_gpio_mode( 30 | GPIO_PORTC | GPIO_GPIO | GPIO_OUT );
+    if (version038) {
+        imx_gpio_mode( 28 | GPIO_PORTC | GPIO_GPIO | GPIO_OUT );
+        imx_gpio_write( 28 | GPIO_PORTC, 0 );  // turn off line voltage gate
+    }
 
     imx_gpio_mode( 18 | GPIO_PORTE | GPIO_AF | GPIO_IN );
     imx_gpio_mode( 21 | GPIO_PORTE | GPIO_AF | GPIO_OUT );
@@ -314,14 +395,25 @@ static void gpio_init( void )
     imx_gpio_mode( 23 | GPIO_PORTE | GPIO_AF | GPIO_OUT );
     imx_gpio_mode( 19 | GPIO_PORTE | GPIO_PF | GPIO_IN | GPIO_PUEN | GPIO_GPIO );
 
-    imx_gpio_mode( PC23_PF_SSI1_CLK );
-    imx_gpio_mode( PC22_PF_SSI1_TX );
-    imx_gpio_mode( PC21_PF_SSI1_RX );
-    imx_gpio_mode( PC20_PF_SSI1_FS );
-    imx_gpio_mode( PC27_PF_SSI2_CLK );
-    imx_gpio_mode( PC26_PF_SSI2_TX );
-    imx_gpio_mode( PC25_PF_SSI2_RX );
-    imx_gpio_mode( PC24_PF_SSI2_FS );
+    if (version038) {
+        imx_gpio_mode( PC23_PF_SSI1_CLK | GPIO_PUEN );
+        imx_gpio_mode( PC22_PF_SSI1_TX | GPIO_PUEN  );
+        imx_gpio_mode( PC21_PF_SSI1_RX | GPIO_PUEN  );
+        imx_gpio_mode( PC20_PF_SSI1_FS | GPIO_PUEN  );
+        imx_gpio_mode( PC27_PF_SSI2_CLK | GPIO_PUEN  );
+        imx_gpio_mode( PC26_PF_SSI2_TX | GPIO_PUEN  );
+        imx_gpio_mode( PC25_PF_SSI2_RX | GPIO_PUEN  );
+        imx_gpio_mode( PC24_PF_SSI2_FS | GPIO_PUEN  );
+    } else {
+        imx_gpio_mode( PC23_PF_SSI1_CLK );
+        imx_gpio_mode( PC22_PF_SSI1_TX );
+        imx_gpio_mode( PC21_PF_SSI1_RX );
+        imx_gpio_mode( PC20_PF_SSI1_FS );
+        imx_gpio_mode( PC27_PF_SSI2_CLK );
+        imx_gpio_mode( PC26_PF_SSI2_TX );
+        imx_gpio_mode( PC25_PF_SSI2_RX );
+        imx_gpio_mode( PC24_PF_SSI2_FS );
+    }
 
     #ifdef ENABLE_SPEAKER_KLUDGE_UNTIL_OTHER_DRIVER_PORTED
     imx_gpio_mode( GPIO_PORTKP | (4 + 8) | GPIO_OUT );
@@ -469,7 +561,8 @@ static int snd_tsc2100_playback_open(snd_pcm_substream_t *substream)
                                     SNDRV_PCM_HW_PARAM_RATE,
                                     &hw_constraints_rates);
     if (rc < 0) {
-        printk("Error setting rates constraint, rc %d\n", rc);
+        printk( KERN_ERR "%s/%s(): Error setting rates constraint, rc %d\n", 
+                __FILE__, __FUNCTION__, rc);
         return rc;
     }
     chip->p_pos = 0;
@@ -579,7 +672,8 @@ static int snd_tsc2100_pcm_playback_prepare(snd_pcm_substream_t *substream)
         break;
 
     default:
-        printk("%s: Can't handle rate of %d\n", __FUNCTION__, runtime->rate);
+        printk( KERN_ERR "%s/%s(): Can't handle rate of %d\n", 
+                __FILE__, __FUNCTION__, runtime->rate);
         return -ENODEV;
     }
 
@@ -587,6 +681,7 @@ static int snd_tsc2100_pcm_playback_prepare(snd_pcm_substream_t *substream)
     runtime->dma_addr = __pa(runtime->dma_area);
 
     chip->p_pos = 0;
+    chip->p_prevpos = -1;
     chip->p_period = 0;
     chip->p_per_size = snd_pcm_lib_period_bytes(substream);
     chip->p_buf_size = snd_pcm_lib_buffer_bytes(substream);
@@ -618,15 +713,15 @@ static int snd_tsc2100_pcm_playback_trigger(snd_pcm_substream_t *substream, int 
 
     switch(cmd) {
     case SNDRV_PCM_TRIGGER_START:
+        ADBG("%s", "TRIGGER_START\n");
         enable_speaker();
 
         /* If ALSA wants to give us two periods, set them both up  */
 
         while (CCR(chip->p_dma) & CCR_CEN) {
-            printk("TRIGGER_START while DMA is already enabled\n");
+            printk( KERN_ERR "%s/%s(): TRIGGER_START while DMA is already enabled\n",
+                    __FILE__, __FUNCTION__ );
         }
-        ADBG("%d: dma=%lx ack=%x\n", 
-             chip->p_period, chip->p_period * chip->p_per_size, chip->p_pos);
         setup_dma_xfer(chip->p_dma,
                        runtime->dma_addr + (chip->p_period * chip->p_per_size),
                        (u32)&SSI1_STX0_PHYS,
@@ -639,8 +734,6 @@ static int snd_tsc2100_pcm_playback_trigger(snd_pcm_substream_t *substream, int 
 
         if (runtime->periods >= 2) {
             CCR(chip->p_dma) |= CCR_RPT;
-            ADBG("%d: dma=%lx ack=%x\n", 
-                 chip->p_period, chip->p_period * chip->p_per_size, chip->p_pos);
             setup_dma_xfer(chip->p_dma,
                            runtime->dma_addr + (chip->p_period * chip->p_per_size),
                            (u32)&SSI1_STX0_PHYS,
@@ -649,6 +742,7 @@ static int snd_tsc2100_pcm_playback_trigger(snd_pcm_substream_t *substream, int 
         }
         break;
     case SNDRV_PCM_TRIGGER_STOP:
+        ADBG("%s", "TRIGGER_STOP\n");
         disable_speaker();
         imx_dma_disable(chip->p_dma);
         CCR(chip->p_dma) &= ~(CCR_RPT | CCR_ACRPT);
@@ -656,7 +750,8 @@ static int snd_tsc2100_pcm_playback_trigger(snd_pcm_substream_t *substream, int 
         SSI1_SCR &= ~SSI_SCR_TE;
         break;
     default:
-        printk("%s(): unknown command %d\n", __FUNCTION__, cmd);
+        printk(KERN_WARNING "%s/%s(): unknown command %d\n", 
+               __FILE__, __FUNCTION__, cmd);
         return -EINVAL;
         break;
     }
@@ -683,13 +778,65 @@ static int snd_tsc2100_pcm_playback_trigger(snd_pcm_substream_t *substream, int 
 //		size = slave_hw_ptr - dmix->slave_appl_ptr;
 //	if (! size)
 //		return;
+//
+// The note above was written before I started debugging the Simon Game 
+// audio glitches.  src/pcm/pcm_dmix.c:snd_pcm_dmix_start_timer() and
+// snd_pcm_dmix_reset() (same module), actually uses more than period 
+// granularity and will cause the system to overwrite AUDIO ring buffer if
+// the correct slave_hw_ptr is not returned (by the following routine).
+// 
+// The code below may look a bit odd, the CHCNTR(chip->p_dma) can actually
+// change to the next buffer *BEFORE* the DMA ISR routine services the interrupt
+// because we are taking advantage of DMA chaining.
+// So, we need to disable interrupts when sampling chip->p_pos (which is
+// updated by the tsc2100_dma_play_isr() ISR routine below) and we need to
+// verify CHCNTR(chip->p_dma) is relevant to the chip->p_pos period and *NOT*
+// the next period.
+// 
+// The SYSTEM_LATENCY helps a minute amount, but I don't think it is really
+// necessary, currently set to 4.  If it is set to 8 you will start to hear
+// audio glitches.  (The bytes_to_frames() routine basically divides by 4
+// in the standard Chumby configuration (44.1Khz, 16-bit stereo) so by setting
+// SYSTEM_LATENCY to a 4 we are only padding the pointer by 1, about 22.7us
+// delay.)
 
 static snd_pcm_uframes_t snd_tsc2100_pcm_playback_pointer(
                                         snd_pcm_substream_t *substream)
 {
     tsc2100_chip_t *chip = snd_pcm_substream_chip(substream);
-    size_t ptr = chip->p_pos % chip->p_buf_size;
-    return bytes_to_frames(substream->runtime, ptr);
+    size_t          ppos;
+    u32             ccnr;
+    unsigned long   flags;
+
+    local_irq_save(flags);
+    ppos = chip->p_pos;
+    ccnr = CHCNTR(chip->p_dma);
+    if (chip->p_prevpos == ppos && ccnr < chip->p_ccnr)
+        ccnr = chip->p_ccnr;
+    else {
+        chip->p_ccnr = ccnr;
+        chip->p_prevpos = ppos;
+    }
+    local_irq_restore(flags);
+    ppos = (ppos + ccnr + SYSTEM_LATENCY) % chip->p_buf_size;
+    return bytes_to_frames(substream->runtime, ppos);
+}
+
+
+static inline void report_dma_errors( const char* filename, const char* funcname )
+{
+    if (DBTOSR != 0) 
+        printk( KERN_ERR "%s/%s(): DMA Error: DBTOSR = 0x%x\n", 
+                filename, funcname, DBTOSR);
+    if (DRTOSR != 0) 
+        printk( KERN_ERR "%s/%s(): DMA Error: DRTOSR = 0x%x\n", 
+                filename, funcname, DRTOSR);
+    if (DSESR != 0)  
+        printk( KERN_ERR "%s/%s(): DMA Error: DSESR = 0x%x\n", 
+                filename, funcname, DSESR);
+    if (DBOSR != 0)  
+        printk( KERN_ERR "%s/%s(): DMA Error: DBOSR = 0x%x\n", 
+                filename, funcname, DBOSR);
 }
 
 
@@ -699,21 +846,49 @@ static void tsc2100_dma_play_isr(int irq, void *data, struct pt_regs *regs)
     snd_pcm_substream_t *substream = chip->p_substream;
     snd_pcm_runtime_t *runtime = substream->runtime;
 
-    if (DBTOSR != 0) printk("DMA Error: DBTOSR = 0x%x\n", DBTOSR);
-    if (DRTOSR != 0) printk("DMA Error: DRTOSR = 0x%x\n", DRTOSR);
-    if (DSESR != 0)  printk("DMA Error: DSESR = 0x%x\n", DSESR);
-    if (DBOSR != 0)  printk("DMA Error: DBOSR = 0x%x\n", DBOSR);
+    report_dma_errors( __FILE__, __FUNCTION__ );
 
-    chip->p_pos += chip->p_per_size;
+    ADBG("%d: ack=%x--%x [SAR=%04x CNTR=%x]\n", 
+         chip->p_period, chip->p_pos, chip->p_pos + chip->p_per_size-1,
+         chip->p_period * chip->p_per_size, chip->p_per_size);
 
-    ADBG("%d: dma=%lx ack=%x\n", 
-         chip->p_period, chip->p_period * chip->p_per_size, chip->p_pos);
     setup_dma_xfer(chip->p_dma,
                    runtime->dma_addr + (chip->p_period * chip->p_per_size),
                    (u32)&SSI1_STX0_PHYS,
                    chip->p_per_size);
     CCR(chip->p_dma) |= CCR_RPT;
-    chip->p_period = (chip->p_period + 1) % runtime->periods;
+
+    #ifdef FILL_WITH_SILENCE
+    memset( runtime->dma_area + (chip->p_pos % chip->p_buf_size), 0, 
+            chip->p_per_size );
+    #endif
+
+    chip->p_period   = (chip->p_period + 1) % runtime->periods;
+    chip->p_prevpos  = chip->p_pos;
+    chip->p_pos     += chip->p_per_size;
+
+
+    // wait until the next DMA starts to get CHCNTR(chip->p_dma) into the
+    // next period so we can set chip->p_ccnr to a valid intitial value  --
+    // at 22.7us/sample this should not take long.  Cannot put this code
+    // *AFTER* the snd_pcm_period_elapsed() call below because that code calls
+    // the snd_tsc2100_pcm_playback_pointer() routine which relies on 
+    // chip->p_ccnr.  However, we put this code at the end of the handler so
+    // hopefully it will not have to wait long for the CHCNTR(chip->p_dma) to
+    // be within the next period.
+    {
+        int i;
+        for (i=0; CHCNTR(chip->p_dma) > chip->p_per_size/2 && i < 1000; ++i) {
+            ADBG("%s(): %d -- CHCNTR(%d)=%x\n", 
+                 __FUNCTION__, i, chip->p_dma, CHCNTR(chip->p_dma));
+            continue;
+        }
+        if (i == 1000) {
+            printk(KERN_ERR "%s/%s(): timed-out wating for DMA to start.\n",
+                   __FILE__, __FUNCTION__);
+        }
+        chip->p_ccnr = CHCNTR(chip->p_dma);
+    }
 
     snd_pcm_period_elapsed(substream);
 }
@@ -732,7 +907,8 @@ static int snd_tsc2100_capture_open(snd_pcm_substream_t *substream)
                                     SNDRV_PCM_HW_PARAM_RATE,
                                     &hw_constraints_rates);
     if (rc < 0) {
-        printk("Error setting rates constraint\n");
+        printk( KERN_ERR "%s/%s(): Error setting rates constraint\n",
+                __FILE__, __FUNCTION__ );
         return rc;
     }
     chip->c_pos = 0;
@@ -821,7 +997,8 @@ static int snd_tsc2100_pcm_capture_prepare(snd_pcm_substream_t *substream)
         break;
 
     default:
-        printk("%s: Can't handle rate of %d\n", __FUNCTION__, runtime->rate);
+        printk( KERN_WARNING "%s/%s(): Can't handle rate of %d\n", 
+                __FILE__, __FUNCTION__, runtime->rate);
         return -ENODEV;
         break;
     }
@@ -859,7 +1036,8 @@ static int snd_tsc2100_pcm_capture_trigger(snd_pcm_substream_t *substream, int c
         /* If ALSA wants to give us two periods, set them both up  */
 
         while (CCR(chip->c_dma) & CCR_CEN) {
-            printk("TRIGGER_START while DMA is already enabled\n");
+            printk( KERN_ERR "%s/%s(): TRIGGER_START while DMA is already enabled\n",
+                    __FILE__, __FUNCTION__ );
         }
         ADBG("%d: dma=%lx ack=%x\n", 
              chip->c_period, chip->c_period * chip->c_per_size, chip->c_pos);
@@ -892,7 +1070,8 @@ static int snd_tsc2100_pcm_capture_trigger(snd_pcm_substream_t *substream, int c
         SSI1_SCR &= ~SSI_SCR_RE;
         break;
     default:
-        printk("%s(): unknown command %d\n", __FUNCTION__, cmd);
+        printk( KERN_WARNING "%s/%s(): unknown command %d\n", 
+                __FILE__, __FUNCTION__, cmd);
         return -EINVAL;
         break;
     }
@@ -916,11 +1095,7 @@ static void tsc2100_dma_capture_isr(int irq, void *data, struct pt_regs *regs)
     snd_pcm_substream_t *substream = chip->c_substream;
     snd_pcm_runtime_t *runtime = substream->runtime;
 
-    if (DBTOSR != 0) printk("DMA Error: DBTOSR = 0x%x\n", DBTOSR);
-    if (DRTOSR != 0) printk("DMA Error: DRTOSR = 0x%x\n", DRTOSR);
-    if (DSESR != 0)  printk("DMA Error: DSESR = 0x%x\n", DSESR);
-    if (DBOSR != 0)  printk("DMA Error: DBOSR = 0x%x\n", DBOSR);
-
+    report_dma_errors( __FILE__, __FUNCTION__ );
     chip->c_pos += chip->c_per_size;
 
     ADBG("%d: dma=%lx ack=%x\n", 
@@ -1320,43 +1495,271 @@ static int __init snd_tsc2100_mixer_new(tsc2100_chip_t *chip)
 /***********************************************************************
  * TouchScreen Driver Routines
  ***********************************************************************/
-static void tsc2100_touchscreen_report(struct tsc2100_data *tsc2100_ts,
-                                       int x, int y, int p, int pendown)
+static void touchscreen_reset(struct tsc2100_context *devdata)
 {
-    ringwrite( &tsc2100_ts->ring_x, x );
-    ringwrite( &tsc2100_ts->ring_y, y );
-    ringwrite( &tsc2100_ts->ring_p, p );
-    ringwrite( &tsc2100_ts->ring_pen, pendown );
-
-    input_report_abs(tsc2100_ts->inputdevice, ABS_X, y);
-    input_report_abs(tsc2100_ts->inputdevice, ABS_Y, x);
-    input_report_abs(tsc2100_ts->inputdevice, ABS_PRESSURE, p);
-    input_report_key(tsc2100_ts->inputdevice, BTN_TOUCH, pendown);
-    input_sync(tsc2100_ts->inputdevice);
+    tsc2100_regwrite(TSC2100_REG_RESETCTL, 0xbb00);
 }
 
 
-static void tsc2100_touchscreen_setup(struct device *dev)
+static void touchscreen_enable(struct tsc2100_context *devdata)
 {
-    struct tsc2100_data *tsc2100_ts = dev_get_drvdata(dev);
+    /* PINTDAV(active low) data available *OR* pen down (PINTDAV goes high
+     * once ADC conversion is complete)
+     */
+    tsc2100_regwrite(TSC2100_REG_STATUS, 0x8000);
 
-    tsc2100_ts->inputdevice->name = "tsc2100_ts";
-    tsc2100_ts->inputdevice->evbit[0] = BIT(EV_KEY) | BIT(EV_ABS);
-    tsc2100_ts->inputdevice->keybit[LONG(BTN_TOUCH)] |= BIT(BTN_TOUCH);
-    input_set_abs_params(tsc2100_ts->inputdevice,
+    /* Host-controlled conversions, 12-bit samples, scan mode disabled,
+     * average (mean) 4 samples per coordinate, 1 MHz internal
+     * conversion clock, 500 usec panel voltage stabilization delay
+     *
+     * NOTE: the previous driver switched back and forth between host
+     * and TSC2100 controlled conversions.  TSC2100 controlled conversions to
+     * get the X/Y values and host-controlled conversions to get the BAT/TEMP
+     * values.  This seemed to cause the TSC2100 to get into a locked state.
+     * So, this version of the driver always remains in host-controlled
+     * conversions.
+     */
+    tsc2100_regwrite(TSC2100_REG_ADC, ADCMODE(8));
+    devdata->scan_mode = TS_IDLE;
+
+    /* Initialize the reference voltage generator (this eliminates excess noise
+     * on sampling lines).
+     */
+    tsc2100_regwrite(TSC2100_REG_REFCTL, devdata->reg.refctl);
+}
+
+
+static void touchscreen_disable(struct tsc2100_context *devdata)
+{
+    /* should only occur with an explicit 1 write to /proc or at exit time. */
+    printk( KERN_WARNING "%s/%s() called!\n", __FILE__, __FUNCTION__ );
+
+    /* stop conversions and power down
+     */
+    tsc2100_regwrite(TSC2100_REG_ADC, 0x4000);
+    devdata->scan_mode = TS_DISABLED;
+}
+
+
+static void touchscreen_error_recovery( struct tsc2100_context* dev,
+                                        const char* funcname, 
+                                        const char* scanmode )
+{
+    printk( KERN_ERR "%s/%s(): %s took too long, resetting touchscreen\n",
+           __FILE__, funcname, scanmode );
+    touchscreen_disable(dev);
+    touchscreen_reset(dev);
+    touchscreen_enable(dev);
+}
+
+
+static int touchscreen_pendown( void )
+{
+    return (tsc2100_regread(TSC2100_REG_ADC) & TSC2100_ADC_PSM) != 0;
+}
+
+
+static void touchscreen_report(struct tsc2100_context *tsc2100,
+                               int x, int y, int p, int pendown)
+{
+    DBG_PEN("x=%d y=%d p=%d pendown=%d x[%d,%d,%d,%d] y[%d,%d,%d,%d]\n", 
+            x, y, p, pendown,
+            tsc2100->scan_data[0],
+            tsc2100->scan_data[2],
+            tsc2100->scan_data[4],
+            tsc2100->scan_data[6],
+            tsc2100->scan_data[1],
+            tsc2100->scan_data[3],
+            tsc2100->scan_data[5],
+            tsc2100->scan_data[7]);
+    if ( x != 0 || y != 0 ) {
+        tsc2100->pendown_reports++;
+        tsc2100->pendown_total++;
+    }
+    ringwrite( &tsc2100->ring_x, x );
+    ringwrite( &tsc2100->ring_y, y );
+    ringwrite( &tsc2100->ring_p, p );
+    ringwrite( &tsc2100->ring_pen, pendown );
+
+    input_report_abs(tsc2100->inputdevice, ABS_X, x);
+    input_report_abs(tsc2100->inputdevice, ABS_Y, y);
+    input_report_abs(tsc2100->inputdevice, ABS_PRESSURE, p);
+    input_report_key(tsc2100->inputdevice, BTN_TOUCH, pendown);
+    input_sync(tsc2100->inputdevice);
+}
+
+
+static void touchscreen_setup(struct device *dev)
+{
+    struct tsc2100_context *tsc2100 = dev_get_drvdata(dev);
+
+    tsc2100->inputdevice->name = "tsc2100_ts";
+    tsc2100->inputdevice->evbit[0] = BIT(EV_KEY) | BIT(EV_ABS);
+    tsc2100->inputdevice->keybit[LONG(BTN_TOUCH)] |= BIT(BTN_TOUCH);
+    input_set_abs_params(tsc2100->inputdevice,
                          ABS_X, X_AXIS_MIN, X_AXIS_MAX, 0, 0);
-    input_set_abs_params(tsc2100_ts->inputdevice,
+    input_set_abs_params(tsc2100->inputdevice,
                          ABS_Y, Y_AXIS_MIN, Y_AXIS_MAX, 0, 0);
-    input_set_abs_params(tsc2100_ts->inputdevice,
+    input_set_abs_params(tsc2100->inputdevice,
                          ABS_PRESSURE, PRESSURE_MIN, PRESSURE_MAX, 0, 0);
-    input_register_device(tsc2100_ts->inputdevice);
-    printk("Chumby TI-TSC2100 TouchScreen Driver initialized\n");
+    input_register_device(tsc2100->inputdevice);
 }
 
 
-static int tsc2100_pendown( void )
+static void start_x_scan( struct tsc2100_context* dev )
 {
-    return tsc2100_regread(TSC2100_REG_STATUS) & TSC2100_STATUS_DAVAIL;
+    // Would be nice if we could set the SCAN mode to 1 here and get both the
+    // X and Y values.  However, mode 1 will continue to send X/Y values until
+    // the PEN is lifted (even if the mode is changed!).  The values are sent
+    // approximately every 1.1ms, each generating an interrupt.  So, instead
+    // we use modes 3 and 4 which will send one X and one Y value respectively
+    // each on an interrupt.  But no interrupts after that.
+    
+    //DBG_PEN("%s", "...\n");
+    dev->event.flags = SCAN_XY;
+    dev->scan_mode   = TS_SCANXY;
+    dev->scan_start  = jiffies;
+    tsc2100_regwrite(TSC2100_REG_ADC, ADCMODE(0x3));
+}
+
+
+static void start_y_scan( struct tsc2100_context* dev )
+{
+    //DBG_PEN("%s", "...\n");
+    dev->scan_start = jiffies;
+    tsc2100_regwrite(TSC2100_REG_ADC, ADCMODE(0x4));
+}
+
+
+static void start_next_scan( struct tsc2100_context* dev )
+{
+    dev->scan_mode  = TS_SCAN;
+    dev->scan_start = jiffies;
+
+    switch ( dev->scan_state ) {
+    case TS_TEMP1:
+        DBG_SCAN("%s", "TEMP1\n");
+        tsc2100_regwrite(TSC2100_REG_ADC, ADCMODE(0xA));
+        break;
+    case TS_TEMP2:
+        DBG_SCAN("%s", "TEMP2\n");
+        tsc2100_regwrite(TSC2100_REG_ADC, ADCMODE(0xC));
+        break;
+    case TS_DCLINE:
+        DBG_SCAN("%s", "DCLINE\n");
+        if (version038)
+            imx_gpio_write( 28 | GPIO_PORTC, 1 );    // this is for the line voltage sense
+        else
+            imx_gpio_write( 30 | GPIO_PORTC, 1 );
+        tsc2100_regwrite(TSC2100_REG_ADC, ADCMODE(0x6));
+        break;
+    case TS_BATTERY:
+        DBG_SCAN("%s", "BATTERY\n");
+        imx_gpio_write( 30 | GPIO_PORTC, 1 );   // for battery voltage
+        tsc2100_regwrite(TSC2100_REG_ADC, ADCMODE(0x7));
+        break;
+    default:
+        printk( KERN_CRIT "OOPS! scan_state=0x%x\n", dev->scan_state );
+        BUG();
+    }
+}
+
+
+static u32 read_scan_data(struct tsc2100_context *devdata,
+                          struct tsc2100_event *event)
+{
+    u32 data;
+    u32 status = tsc2100_regread(TSC2100_REG_STATUS);
+    if ( (status & (TSC2100_STATUS_XSTAT  |
+                    TSC2100_STATUS_YSTAT  |
+                    TSC2100_STATUS_B1STAT |
+                    TSC2100_STATUS_B2STAT |
+                    TSC2100_STATUS_T1STAT |
+                    TSC2100_STATUS_T2STAT)) == 0 ) {
+        return status;
+    }
+
+    DBG_SCAN("status=%x (X=%d Y=%d B1=%d B2=%d T1=%d T2=%d)\n", 
+        status, 
+        (status & TSC2100_STATUS_XSTAT)!=0,
+        (status & TSC2100_STATUS_YSTAT)!=0,
+        (status & TSC2100_STATUS_B1STAT)!=0,
+        (status & TSC2100_STATUS_B2STAT)!=0,
+        (status & TSC2100_STATUS_T1STAT)!=0,
+        (status & TSC2100_STATUS_T2STAT)!=0);
+
+    if ( status & TSC2100_STATUS_XSTAT ) {
+        spi_read(TSC2100_REG_X, &data, 1);
+        event->x = data;
+        event->flags |= HAVE_X;
+    }
+    if ( status & TSC2100_STATUS_YSTAT ) {
+        spi_read(TSC2100_REG_Y, &data, 1);
+        event->y = data;
+        event->flags |= HAVE_Y;
+    }
+
+    #ifdef REAL_PEN_PRESSURE
+    if ( status & TSC2100_STATUS_Z1STAT ) {
+        spi_read(TSC2100_REG_Z1, &data, 1);
+        event->z1 = data;
+        event->flags |= HAVE_Z1;
+    }
+    if ( status & TSC2100_STATUS_Z2STAT ) {
+        spi_read(TSC2100_REG_Z2, &data, 1);
+        event->z1 = data;
+        event->flags |= HAVE_Z2;
+    }
+    #endif
+
+    if ( status & TSC2100_STATUS_B1STAT )
+    {
+        if (version038)
+            imx_gpio_write( 28 | GPIO_PORTC, 0 ); // turn off DC line gate
+        else
+            imx_gpio_write( 30 | GPIO_PORTC, 0 ); // turn off the battery gate FET
+        ringwrite( &devdata->ring_bat1, tsc2100_regread(TSC2100_REG_BAT1) );
+    }
+    if ( status & TSC2100_STATUS_B2STAT )
+    {
+        imx_gpio_write( 30 | GPIO_PORTC, 0 ); // turn off the battery gate FET
+        ringwrite( &devdata->ring_bat2, tsc2100_regread(TSC2100_REG_BAT2) );
+    }
+    if ( status & TSC2100_STATUS_T1STAT )
+        ringwrite( &devdata->ring_temp1, tsc2100_regread(TSC2100_REG_TEMP1) );
+    if ( status & TSC2100_STATUS_T2STAT )
+        ringwrite( &devdata->ring_temp2, tsc2100_regread(TSC2100_REG_TEMP2) );
+
+    return status;
+}
+
+
+static void discard_scan_data( struct tsc2100_context *devdata )
+{
+    u32 status = tsc2100_regread(TSC2100_REG_STATUS);
+    u32 trash;
+
+    DBG_SCAN("status=%x (X=%d Y=%d B1=%d B2=%d T1=%d T2=%d)\n", 
+        status, 
+        (status & TSC2100_STATUS_XSTAT)!=0,
+        (status & TSC2100_STATUS_YSTAT)!=0,
+        (status & TSC2100_STATUS_B1STAT)!=0,
+        (status & TSC2100_STATUS_B2STAT)!=0,
+        (status & TSC2100_STATUS_T1STAT)!=0,
+        (status & TSC2100_STATUS_T2STAT)!=0);
+
+    if ( status & TSC2100_STATUS_XSTAT )
+        spi_read(TSC2100_REG_X, &trash, 1);
+    if ( status & TSC2100_STATUS_YSTAT )
+        spi_read(TSC2100_REG_Y, &trash, 1);
+    if ( status & TSC2100_STATUS_B1STAT )
+        spi_read(TSC2100_REG_BAT1, &trash, 1);
+    if ( status & TSC2100_STATUS_B2STAT )
+        spi_read(TSC2100_REG_BAT2, &trash, 1);
+    if ( status & TSC2100_STATUS_T1STAT )
+        spi_read(TSC2100_REG_TEMP1, &trash, 1);
+    if ( status & TSC2100_STATUS_T2STAT )
+        spi_read(TSC2100_REG_TEMP2, &trash, 1);
 }
 
 
@@ -1374,454 +1777,428 @@ static int average_power( struct tsc2100_ringbuf* r )
 }
 
 
-static int average_dc_power( struct tsc2100_data* d )
+static int average_dc_power( struct tsc2100_context* d )
 {
     return average_power( &d->ring_bat1 );
 }
 
 
-static int average_battery_power( struct tsc2100_data* d )
+static int average_battery_power( struct tsc2100_context* d )
 {
     return average_power( &d->ring_bat2 );
 }
 
 
-static void tsc2100_readdata(struct tsc2100_data *devdata,
-                             struct tsc2100_ts_event *ts_data)
+static void process_dcline_measurement( struct tsc2100_context *devdata )
 {
-    u32 status = tsc2100_regread(TSC2100_REG_STATUS);
+    int avg_dc_power;
+    int previous;
 
-    #if 0
-    DBG("status=%x (X=%d Y=%d Z1=%d Z2=%d B1=%d B2=%d T1=%d T2=%d)\n", 
-        status, 
-        (status & TSC2100_STATUS_XSTAT)!=0,
-        (status & TSC2100_STATUS_YSTAT)!=0,
-        (status & TSC2100_STATUS_Z1STAT)!=0,
-        (status & TSC2100_STATUS_Z2STAT)!=0,
-        (status & TSC2100_STATUS_B1STAT)!=0,
-        (status & TSC2100_STATUS_B2STAT)!=0,
-        (status & TSC2100_STATUS_T1STAT)!=0,
-        (status & TSC2100_STATUS_T2STAT)!=0);
-    #endif
+    if ( ringcnt(&devdata->ring_bat1) < voltage_sample_count ) 
+        return;
 
-    if ( status & (TSC2100_STATUS_XSTAT  |
-                   TSC2100_STATUS_YSTAT  |
-                   TSC2100_STATUS_Z1STAT |
-                   TSC2100_STATUS_Z2STAT) ) {
-        int z1, z2;
-        u32 values[4];
+    avg_dc_power = average_dc_power(devdata);
+    previous = unplugged;
+    unplugged = avg_dc_power < dc_unplugged_threshold;
 
-        /* Read X, Y, Z1 and Z2
-         */
-        spi_read(TSC2100_REG_X, &values[0], 4);
-        ts_data->x=values[0];
-        ts_data->y=values[1];
-        z1=values[2];
-        z2=values[3];
+    if ( previous != unplugged ) {
+        printk( KERN_WARNING "%s/%s(): %s\n", __FILE__, __FUNCTION__, 
+                unplugged? "Chumby unplugged!" :  "Chumby plugged in!" );
 
-        /* Calculate Pressure
-         */
-        if ((z1 != 0) && (ts_data->x!=0) && (ts_data->y!=0))
-            ts_data->p = ((ts_data->x * (z2 - z1) / z1));
-        else
-            ts_data->p = 0;
+        battery_poll_next = 0;  // scan battery voltage now
     }
 
-    if ( status & TSC2100_STATUS_B1STAT )
+    if ( !unplugged && (raw9volts <= 0 || raw10volts <= 0) ) 
     {
-        imx_gpio_write( 30 | GPIO_PORTC, 0 ); // turn off the battery gate FET --
-                                              // turned on by tsc2100_get_miscdata
-        devdata->miscdata.bat1 = tsc2100_regread(TSC2100_REG_BAT1);
-        ringwrite( &devdata->ring_bat1, devdata->miscdata.bat1 );
+         if (raw9volts <= 0)  raw9volts  = (avg_dc_power * 9) / 12;
+         if (raw10volts <= 0) raw10volts = (avg_dc_power * 10) / 12;
 
-        if ( ringcnt(&devdata->ring_bat1) >= voltage_sample_count ) 
-        {
-            int avg_dc_power = average_dc_power(devdata);
-            unplugged = avg_dc_power < dc_unplugged_threshold;
+         if (raw9volts > 0) 
+         {
+             int raw8point5volts = ( raw9volts * 85 ) / 90;
+             int raw7point5volts = ( raw9volts * 75 ) / 90;
+             if ( battery_dead_threshold == -1 )
+                 battery_dead_threshold = raw7point5volts;
+             if ( battery_dead_threshold != raw7point5volts ) 
+             {
+                 int volts = (battery_dead_threshold * 900) / raw9volts;
+                 printk( KERN_WARNING
+                         "%s/%s(): battery-dead-threshold(%d) = %d.02%d volts, recommend(%d) 7.5 volts\n",
+                         __FILE__, __FUNCTION__,
+                         battery_dead_threshold, 
+                         volts / 100, volts % 100, raw7point5volts );
+             }
+             if ( dc_and_battery_dead_threshold == -1 )
+                 dc_and_battery_dead_threshold = raw8point5volts;
+             if ( battery_dead_threshold != raw7point5volts ) 
+             {
+                 int volts = (dc_and_battery_dead_threshold * 900) / raw9volts;
+                 printk( KERN_WARNING 
+                         "%s/%s(): dc_and_battery-dead-threshold(%d) = %d.02%d volts, recommend(%d) 8.5 volts\n",
+                         __FILE__, __FUNCTION__,
+                         dc_and_battery_dead_threshold, 
+                         volts / 100, volts % 100, raw8point5volts );
+             }
+             DBG("raw9volts=%d, raw10volts=%d, raw7point5volts=%d, battery_dead_threshold=%d\n",
+                 raw9volts, raw10volts, raw7point5volts, battery_dead_threshold);
+         }
+    }
 
-            if ( !unplugged && (raw9volts <= 0 || raw10volts <= 0) ) 
-            {
-                 if (raw9volts <= 0)  raw9volts  = (avg_dc_power * 9) / 12;
-                 if (raw10volts <= 0) raw10volts = (avg_dc_power * 10) / 12;
+    if ( sigpwr_pid != 0 && sigpwr_next == 0 && unplugged ) 
+    {
+        /*
+        ** Just performed a dc battery measurement and the power is less
+        ** than the minimum threshold (dc_unplugged_threshold).  If a SIGPWR 
+        ** signal has not been generated in sigpwr_holdoff seconds and a 
+        ** process has registered to received SIGPWR signals 
+        ** (sigpwr_pid != 0) -- generate a SIGPWR sig to the process that 
+        ** wrote its PID in the /proc/chumby/sigpwr_pid file 
+        */
+        sigpwr_next = sigpwr_holdoff;
+        kill_proc(sigpwr_pid, SIGPWR, 1);
+    }
+}
 
-                 if (raw9volts > 0) 
-                 {
-                     int raw8point5volts = ( raw9volts * 85 ) / 90;
-                     int raw7point5volts = ( raw9volts * 75 ) / 90;
-                     if ( battery_dead_threshold == -1 )
-                         battery_dead_threshold = raw7point5volts;
-                     if ( battery_dead_threshold != raw7point5volts ) 
-                     {
-                         int volts = (battery_dead_threshold * 900) / raw9volts;
-                         printk( "Chumby TI-TSC2100: battery-dead-threshold(%d) = %d.02%d volts, recommend(%d) 7.5 volts\n",
-                                 battery_dead_threshold, 
-                                 volts / 100, volts % 100, raw7point5volts );
-                     }
-                     if ( dc_and_battery_dead_threshold == -1 )
-                         dc_and_battery_dead_threshold = raw8point5volts;
-                     if ( battery_dead_threshold != raw7point5volts ) 
-                     {
-                         int volts = (dc_and_battery_dead_threshold * 900) / raw9volts;
-                         printk( "Chumby TI-TSC2100: dc_and_battery-dead-threshold(%d) = %d.02%d volts, recommend(%d) 8.5 volts\n",
-                                 dc_and_battery_dead_threshold, 
-                                 volts / 100, volts % 100, raw8point5volts );
-                     }
-                     DBG("raw9volts=%d, raw10volts=%d, raw7point5volts=%d, battery_dead_threshold=%d\n",
-                         raw9volts, raw10volts, raw7point5volts, battery_dead_threshold);
-                 }
+
+static void update_scan_state( struct tsc2100_context *dev, 
+                               u32 status, int pendown )
+{
+    if ( dev->scan_mode == TS_SCANXY ) {
+        if (!pendown) {
+            if ( status & (TSC2100_STATUS_XSTAT|TSC2100_STATUS_YSTAT) ) {
+                DBG("ABORTING XY SCAN, flags=%x\n", dev->event.flags);
+                dev->scan_mode = TS_IDLE;
+                dev->event.flags = 0;
+            }
+        } else {
+            if ( status & TSC2100_STATUS_XSTAT ) {
+                start_y_scan(dev);
+                return;
+            }
+
+            if ( (dev->event.flags & HAVE_XY) == HAVE_XY ) {
+                dev->event.p = 0;
+                if (dev->event.x != 0 && dev->event.y != 0) {
+                    #ifndef REAL_PEN_PRESSURE
+                    static int which = 0;
+                    static int ersatz[8] = { 
+                        4974, 5069, 5129, 5030, 4973, 4998, 4992, 5015
+                    };
+                    dev->event.p = ersatz[(which++) & (ARRAY_SIZE(ersatz)-1)];
+                    #else
+                    // NOTE: would have to create HAVE_Z1, HAVE_Z2 and HAVE_XYZ
+                    // and add all of the those states.  I just wanted this code
+                    // here as a place holder in case we actually want real PEN
+                    // pressue at some point...
+                    int z1 = dev->event.z1;
+                    int z2 = dev->event.z2;
+                    if (z1 != 0)
+                        dev->event.p = ((dev->event.x * (z2 - z1) / z1));
+                    #endif
+                }
+                dev->scan_mode = TS_IDLE;
+
+                dev->scan_data[dev->scan_sample] = dev->event.x;
+                dev->scan_data[dev->scan_sample+1] = dev->event.y;
+                dev->scan_sample += 2;
+                if (dev->scan_sample < ARRAY_SIZE(dev->scan_data))
+                    start_x_scan(dev);
+            }
+        }
+    }
+
+    if ( dev->scan_mode == TS_SCAN ) {
+        switch ( dev->scan_state ) {
+        case TS_TEMP1:
+            if ( status & TSC2100_STATUS_T1STAT ) {
+                dev->scan_state = TS_TEMP2;
+                if (dev->pendown_active)
+                    dev->scan_mode = TS_IDLE;
+                else
+                    start_next_scan( dev );
+            }
+            break;
+        case TS_TEMP2:
+            if ( status & TSC2100_STATUS_T2STAT )
+                dev->scan_mode = TS_IDLE;
+            break;
+        case TS_DCLINE:
+            if ( status & TSC2100_STATUS_B1STAT ) {
+                dev->scan_mode = TS_IDLE;
+                if ( dev->pendown_active )
+                    dcline_poll_next = 0;
+                else 
+                if ( ++voltage_samples < voltage_sample_count ) 
+                    start_next_scan( dev );
+                process_dcline_measurement( dev );
+            }
+            break;
+        case TS_BATTERY:
+            if ( status & TSC2100_STATUS_B2STAT ) {
+                dev->scan_mode = TS_IDLE;
+                if ( dev->pendown_active )
+                    battery_poll_next = 0;
+                else
+                if ( ++voltage_samples < voltage_sample_count ) 
+                    start_next_scan( dev );
+            }
+            break;
+        default:
+            printk( KERN_CRIT "OOPS! scan_state=0x%x\n", dev->scan_state );
+            BUG();
+        }
+    }
+
+    if ( dev->scan_mode == TS_IDLE ) {
+        if (!dev->pendown_active) {
+            if ( dcline_poll_next <= 0 ) {
+                dcline_poll_next = dcline_poll_interval;
+                voltage_samples = 0;
+                dev->scan_state = TS_DCLINE;
+                start_next_scan( dev );
+                return;
+            }
+            if ( battery_poll_next <= 0 ) {
+                battery_poll_next = (unplugged? unplugged_battery_poll_interval :
+                                                pluggedin_battery_poll_interval);
+                voltage_samples = 0;
+                dev->scan_state = TS_BATTERY;
+                start_next_scan( dev );
+                return;
             }
         }
 
-        if ( sigpwr_pid != 0 && sigpwr_next == 0 && unplugged ) 
-        {
-            /*
-            ** Just performed a dc battery measurement and the power is less
-            ** than the minimum threshold (dc_unplugged_threshold).  If a SIGPWR 
-            ** signal has not been generated in sigpwr_holdoff seconds and a 
-            ** process has registered to received SIGPWR signals 
-            ** (sigpwr_pid != 0) -- generate a SIGPWR sig to the process that 
-            ** wrote its PID in the /proc/chumby/sigpwr_pid file 
-            */
-            sigpwr_next = sigpwr_holdoff;
-            kill_proc(sigpwr_pid, SIGPWR, 1);
-        }
-    }
-    if ( status & TSC2100_STATUS_B2STAT )
-    {
-        imx_gpio_write( 30 | GPIO_PORTC, 0 ); // turn off the battery gate FET --
-                                              // turned on by tsc2100_get_miscdata
-        devdata->miscdata.bat2 = tsc2100_regread(TSC2100_REG_BAT2);
-        ringwrite( &devdata->ring_bat2, devdata->miscdata.bat2 );
-    }
-    if ( status & TSC2100_STATUS_T1STAT )
-    {
-        devdata->miscdata.temp1 = tsc2100_regread(TSC2100_REG_TEMP1);
-        ringwrite( &devdata->ring_temp1, devdata->miscdata.temp1 );
-    }
-    if ( status & TSC2100_STATUS_T2STAT )
-    {
-        devdata->miscdata.temp2 = tsc2100_regread(TSC2100_REG_TEMP2);
-        ringwrite( &devdata->ring_temp2, devdata->miscdata.temp2 );
-    }
-
-    if ( devdata->mode == TSC2100_MODE_MISC ) {
-        /* switch back to touchscreen autoscan mode
-        */
-        tsc2100_regwrite(TSC2100_REG_ADC, devdata->reg.adc);
-        devdata->mode = TSC2100_MODE_TS;
+        // no scans necessary at this point in time, go to idle mode
+        tsc2100_regwrite(TSC2100_REG_ADC, pendown? ADCMODE(0) : ADCMODE(8));
+        dev->scan_state = TS_TEMP1;
     }
 }
 
 
-static void tsc2100_touchscreen_reset(struct tsc2100_data *devdata)
+static void handle_pendown( struct tsc2100_context* dev, int pendown )
 {
-    tsc2100_regwrite(TSC2100_REG_RESETCTL, 0xbb00);
-}
-
-
-static void tsc2100_touchscreen_enable(struct tsc2100_data *devdata)
-{
-    /* PINTDAV is data available only
-     */
-    tsc2100_regwrite(TSC2100_REG_STATUS, 0x4000);
-    /* hgroover - this should only occur with an explicit 1 write
-     * to /proc or at init time. */
-    TSDBG("chumby_tsc2100[%d]: tsc2100_touchscreen_enable() called!\n", __LINE__);
-
-    /* TSC2100-controlled conversions, 12-bit samples, continuous X,Y,Z1,Z2
-     * scan mode, average (mean) 4 samples per coordinate, 1 MHz internal
-     * conversion clock, 500 usec panel voltage stabilization delay
-     */
-    tsc2100_regwrite(TSC2100_REG_ADC, devdata->reg.adc);
-    devdata->mode = TSC2100_MODE_TS;
-
-    /* Initialize the reference voltage generator (this eliminates excess noise
-     * on sampling lines).
-     */
-    tsc2100_regwrite(TSC2100_REG_REFCTL, devdata->reg.refctl);
-}
-
-
-static void tsc2100_touchscreen_disable(struct tsc2100_data *devdata)
-{
-    /* stop conversions and power down
-     */
-    tsc2100_regwrite(TSC2100_REG_ADC, 0x4000);
-}
-
-
-static void touchscreen_interrupt_main(struct tsc2100_data *devdata,
-                                       int isTimer, struct pt_regs *regs)
-{
-    unsigned long flags;
-    struct tsc2100_ts_event ts_data;
-
-    if ( !devdata->tson )
-        return;
-
-    //DBG("mode=%x, dd->pendown=%d, isTimer=%d\n", devdata->mode, devdata->pendown, isTimer);
-    spin_lock_irqsave(&devdata->lock, flags);
-
-    devdata->inactive_count = 0;
-    if (devdata->mode == TSC2100_MODE_MISC) {
-        devdata->inactive_count = 0;
-        tsc2100_readdata(devdata, &ts_data);
-
-        // kludge: only generate a timer event between major states, not
-        // voltage measurements which have a very short sample interval 
-        // (otherwise a race condition would ensue)
-        if ( voltage_samples == 0 )
-            mod_timer(&(devdata->ts_timer), jiffies + HZ / 100);
+    if (pendown) {
         
-        /* tsc2100_readdata() should reset devdata->mode to TSC2100_MODE_TS */
-        TSDBG( "#irq mmode new=%d adc=%x pd=%d istimer=%d#  ", 
-               devdata->mode, devdata->reg.adc, devdata->pendown, isTimer );
-    } else if (tsc2100_pendown()) {
-        /* PEN is down, this is either the first PEN down (!isTimer), or
-         * PEN is still down 10ms later (isTimer) -- in either case, report
-         * the PEN down event
-         */
+        // PEN is down, clear penup if the PEN was seen to bounce or
+        // initialize for the first time
+        dev->penup = 0;
 
-        #if 1
-        // comment out this region to get rid of any touchclick stuff
-        if( (devdata->touchclick == 1) && (devdata->pendown == 0) ) {
-            tsc2100_regwrite(TSC2100_REG_CONTROL2, 0x8610);  // value has d3-0 defaulted to 0, and never changes
+        // generate a PEN DOWN report every 10ms
+        if ( (dev->event.flags & REPORT_XY) && dev->oneshot_expired )
+            dev->event.flags = 0;
+
+        // PEN is down, if the XY SCAN has not been started yet
+        // and the SCAN state machine is idle, start the XY SCAN
+        if ((dev->event.flags & SCAN_XY)==0 && dev->scan_mode == TS_IDLE) {
+            dev->scan_sample = 0;
+            start_x_scan(dev);
         }
-        // comment out this region to get rid of any touchclick stuff
+
+        if ((dev->event.flags & (SCAN_XY|HAVE_XY|REPORT_XY)) == (SCAN_XY|HAVE_XY)) {
+            // XY SCAN is complete, generate the PEN DOWN event
+
+            // throw out the first sample and average the remaining samples 
+            u16 x = (dev->scan_data[2] + dev->scan_data[4] + dev->scan_data[6])/3;
+            u16 y = (dev->scan_data[3] + dev->scan_data[5] + dev->scan_data[7])/3;
+
+            dev->event.flags |= REPORT_XY;
+            if (version038)
+                touchscreen_report(dev, x, y, dev->event.p, 1);
+            else
+                touchscreen_report(dev, y, x, dev->event.p, 1);
+        }
+    } else
+    if (dev->oneshot_expired && dev->penup++) {
+        if (dev->pendown_reports) {
+            // at least one PEN DOWN event was reported, issue a PEN up event
+            touchscreen_report(dev, 0, 0, 0, 0);
+        }
+
+        // clear the state information associated with PEN DOWN
+        // if the scan_mode is not IDLE something is wrong because the
+        // entire system should have been quiet for at least 10ms, and
+        // no scans are started while in the PEN DOWN state (only the 
+        // X&Y scans are performed, but they are done only when the PEN
+        // is DOWN, and we are currently in a situation where the PEN 
+        // has been UP for at least 10ms)
+        // 
+        dev->pendown_active = 0;
+        dev->event.flags = 0;
+        if (dev->scan_mode != TS_IDLE)
+            BUG();
+        tsc2100_regwrite(TSC2100_REG_ADC, ADCMODE(8)); // ack PINTDAV* interrupt
+    }
+}
+
+
+// handle the TSC2100 interrupt, either the PEN has been pressed or an X or Y
+// SCAN is complete.  
+// 
+static void handle_interrupt( struct tsc2100_context* dev, int pendown )
+{
+    u32 status = read_scan_data(dev, &(dev->event));
+    if (dev->scan_mode == TS_SCANXY && jiffies - dev->scan_start >= SCAN_TIMEOUT) {
+        touchscreen_error_recovery( dev, __FUNCTION__, "SCANXY" );
+        return;
+    }
+
+    if (pendown && !dev->pendown_active) {
+        // if this is the first time the PEN DOWN state has been detected,
+        // reset the flags
+        dev->pendown_active = 1;
+        dev->pendown_reports = 0;
+        dev->event.flags = 0;
+        if ( dev->touchclick )
+            tsc2100_regwrite(TSC2100_REG_CONTROL2, 0x8610);  // d3-0 defaults and set to 0
+    }
+
+    update_scan_state(dev, status, pendown);
+
+    if ( dev->pendown_active )
+        handle_pendown(dev, pendown);
+}
+
+
+// this routine is called approximately every timer_interval milliseconds,
+// it is responsible for scheduling all of the various SCANS for temp. and
+// voltage (along with determining when to generate the SIGPWR signal)
+// 
+// this routine also checks to make sure a particular SCAN does not take too
+// long and performs error recovery if things seem out of whack
+// 
+static void handle_timer( struct tsc2100_context* dev, int pendown )
+{
+    if ( dcline_poll_next > 0 )
+        dcline_poll_next -= timer_interval;
+    if ( battery_poll_next > 0 )
+        battery_poll_next -= timer_interval;
+    
+    // only allow a SIGPWR signal to be generated every sigpwr_holdoff seconds
+    if ( sigpwr_next > 0 ) {
+        sigpwr_next -= (timer_interval + 999) / 1000;
+        if (sigpwr_next < 0)
+            sigpwr_next = 0;
+    }
+
+    switch (dev->scan_mode) {
+    case TS_IDLE:
+        if ( !dev->pendown_active )
+            start_next_scan(dev);
+        break;
+    case TS_SCAN:
+        if (jiffies - dev->scan_start >= SCAN_TIMEOUT)
+            touchscreen_error_recovery( dev, __FUNCTION__, "SCAN" );
+        break;
+    case TS_SCANXY:
+        break;
+    default:
+        printk( KERN_ERR "%s(): scan_mode=%d, scan_state=%d\n", 
+                __FUNCTION__, dev->scan_mode, dev->scan_state );
+        BUG();
+    }
+}
+
+
+// this tasklet is scheduled by the PENIRQ ISR routine, the periodic timer and 
+// the oneshot timer -- the idea is to serialize access to the TSC2100 and 
+// associated data structures so that no locks or mutexes are necessary (other 
+// than the IRQ SPIN LOCK used to protect the SPI routines that are used by both 
+// the touchscreen and ALSA drivers) -- also, the tasklet offloads the ISR 
+// routine reducing overall interrupt latency
+// 
+static void touchscreen_tasklet( unsigned long _dev )
+{
+    struct tsc2100_context* dev = (void*)_dev;
+    unsigned long flags;
+    int interrupt;
+    int timer_expired;
+    int pendown;
+
+    spin_lock_irqsave(&dev->lock, flags);
+    interrupt = dev->interrupt;
+    timer_expired = dev->timer_expired;
+    dev->interrupt = 0;
+    dev->timer_expired = 0;
+    spin_unlock_irqrestore(&dev->lock, flags);
+
+    pendown = touchscreen_pendown();
+
+    if (interrupt)
+        handle_interrupt(dev, pendown);
+
+    if (timer_expired)
+        handle_timer(dev, pendown);
+
+    // schedule the oneshot timer to go off 10ms from now if the
+    // scan mode is not idle or the PEN is down (note, SCAN_X and
+    // SCAN_Y will generate an interrupt when complete, scanning for
+    // BAT and TEMP will *NOT*)
+    if (dev->scan_mode == TS_SCAN || dev->pendown_active) {
+        dev->oneshot_expired = 0;
+        mod_timer(&(dev->oneshot), jiffies + HZ/100);
+    }
+}
+
+
+// touchscreen interrupts occur when the PEN is pressed or when either the 
+// X or Y SCAN is complete -- schedule handle_interrupt() to process the
+// interrupt event at SOFT IRQ time
+// 
+static irqreturn_t touchscreen_interrupt(int irq, void *dev_id, 
+                                         struct pt_regs *regs)
+{
+    struct tsc2100_context *dev = dev_id;
+
+    if ( dev->tson ) {
+        #if 0
+        u32 status = tsc2100_regread(TSC2100_REG_STATUS);
+        int pendown = touchscreen_pendown();
+        DBG_PEN("status=%x, interrupt=%d, dev->scan_mode=%d, dev->pendown=%d, (X=%d Y=%d P=%d)\n", 
+                status, dev->interrupt, dev->scan_mode, dev->pendown_active,
+                (status & TSC2100_STATUS_XSTAT)!=0,
+                (status & TSC2100_STATUS_YSTAT)!=0, 
+                pendown);
         #endif
-
-        devdata->pendown = 1;
-        devdata->inactive_count = 0;
-        tsc2100_readdata(devdata, &ts_data);
-        devdata->tsdata = ts_data;
-        tsc2100_touchscreen_report(devdata, ts_data.x, ts_data.y, ts_data.p, 1);
-        mod_timer(&(devdata->ts_timer), jiffies + HZ / 100);
-        // Major spew here
-        //TSDBG( "#irq pd %d#  ", ts_data.p );
+        dev->interrupt++;
+        tasklet_schedule( &dev->tasklet );
     }
-    else if (devdata->pendown > 0 && devdata->pendown < 3) {
-        /* time the 10ms timer events, after 3, report PEN up event
-        */
-        mod_timer(&(devdata->ts_timer), jiffies + HZ / 100);
-        devdata->pendown++;
-        devdata->inactive_count = 0;
-        // Pen down spew
-        //TSDBG( "#irq pd=%d#  ", devdata->pendown-1 );
-    } else {
-        int forcedUp = 0;
-        if (devdata->pendown) {
-            devdata->pendown = 0;
-            tsc2100_touchscreen_report(devdata, 0, 0, 0, 0);
-            forcedUp |= 1;
-        }
 
-        /* okay, PEN up event has been reported, now change back to falling
-         * edge to report new PEN down events --
-         * make sure no data is missed after set_irq_type()
-         */
-        set_irq_type(PENIRQ, IRQT_FALLING);
-        if (tsc2100_pendown()) {
-            tsc2100_readdata(devdata, &ts_data);
-            mod_timer(&(devdata->ts_timer), jiffies + HZ / 100);
-            forcedUp |= 2;
-        } else if (forcedUp & 0x01) {
-            /* If no data received after set_irq_type(),
-             * we may not get any more interrupts.
-             * Only sometimes...
-             */
-            TSDBG( "#irq opd=%d fu=%x istimer=%d inactive=%u\n", 
-                   devdata->pendown, forcedUp, isTimer, devdata->inactive_count );
-        }
-    }
-    spin_unlock_irqrestore(&devdata->lock, flags);
-}
-
-
-static void tsc2100_timer(unsigned long data)
-{
-    struct tsc2100_data *devdata = (struct tsc2100_data *) data;
-    touchscreen_interrupt_main(devdata, 1, NULL);
-}
-
-
-static irqreturn_t touchscreen_handler(
-                            int irq, void *dev_id, struct pt_regs *regs)
-{
-    struct tsc2100_data *devdata = dev_id;
-
-    /* Switch from falling edge trigger to level, we are playing games with the
-     * interrupt type to reduce the number of interrupts received while the PEN
-     * is down, we want to read the first sample of the PEN selection and then
-     * we want to report PEN up events some short sequence later (10-30ms) and
-     * not have to remain in the interrupt handler reading all of the
-     * new X/Y/Z1/Z2 samples...
-     */
-    set_irq_type(PENIRQ, IRQT_RISING/*IRQT_NOEDGE*/);
-    touchscreen_interrupt_main(devdata, 0, regs);
     return IRQ_HANDLED;
 }
 
 
-static void RegDumpViaPrintk( const char *msg, struct tsc2100_data* d )
+// note: oneshot timer is only scheduled by the touchscreen_tasklet() when
+// a SCAN is active, this timer will go off 10ms after the SCAN has been
+// activated to handle reading the SCAN result if ready (the XY SCANs generate
+// an interrupt, the other SCANs don't and rely on this routine to complete the
+// SCAN by reading the data -- that is, scheduling handle_interrupt() to do the
+// work at SOFT IRQ time)
+// 
+static void touchscreen_oneshot(unsigned long data)
 {
-    printk( "Register dump%s\n", msg );
+    struct tsc2100_context* dev = (struct tsc2100_context*) data;
 
-    printk( "PAGE0 REGISTERS: " );
-    printk( "X=%x, Y=%x, Z1=%x, Z2=%x, ",
-                     tsc2100_regread(TSC2100_REG_X),
-                     tsc2100_regread(TSC2100_REG_Y),
-                     tsc2100_regread(TSC2100_REG_Z1),
-                     tsc2100_regread(TSC2100_REG_Z2) );
-    printk( "BAT1=%x, BAT2=%x, AUX=%x, TEMP1=%x, TEMP2=%x\n",
-                     tsc2100_regread(TSC2100_REG_BAT1),
-                     tsc2100_regread(TSC2100_REG_BAT2),
-                     tsc2100_regread(TSC2100_REG_AUX),
-                     tsc2100_regread(TSC2100_REG_TEMP1),
-                     tsc2100_regread(TSC2100_REG_TEMP2) );
-    printk( "PAGE1 REGISTERS: " );
-    printk("ADC=%x(%x), STATUS=%x, REFCTL=%x(%x)\n",
-                     tsc2100_regread(TSC2100_REG_ADC), d->reg.adc,
-                     tsc2100_regread(TSC2100_REG_STATUS),
-                     tsc2100_regread(TSC2100_REG_REFCTL), d->reg.refctl );
-
-    printk( "PAGE2 REGISTERS: " );
-    printk( "CONTROL1=%x(%x), AUDIOADC=%x(%x), AUDIODAC=%x(%x), ",
-                     tsc2100_regread(TSC2100_REG_CONTROL1), d->reg.control1,
-                     tsc2100_regread(TSC2100_REG_AUDIOADC), d->reg.audioadc,
-                     tsc2100_regread(TSC2100_REG_AUDIODAC), d->reg.audiodac );
-    printk( "SIDETONE=%x(%x), CONTROL2=%x(%x), POWERCON=%x(%x)\n",
-                     tsc2100_regread(TSC2100_REG_SIDETONE), d->reg.sidetone,
-                     tsc2100_regread(TSC2100_REG_CONTROL2), d->reg.control2,
-                     tsc2100_regread(TSC2100_REG_POWERCON), d->reg.powercon );
-    printk( "  CONTROL3=%x(%x), PLL1=%x(%x), PLL2=%x(%x), ",
-                     tsc2100_regread(TSC2100_REG_CONTROL3), d->reg.control3,
-                     tsc2100_regread(TSC2100_REG_PLL1), d->reg.pll1,
-                     tsc2100_regread(TSC2100_REG_PLL2), d->reg.pll2 );
-    printk( "CONTROL4=%x(%x), CONTROL5=%x(%x)\n",
-                     tsc2100_regread(TSC2100_REG_CONTROL4), d->reg.control4,
-                     tsc2100_regread(TSC2100_REG_CONTROL5), d->reg.control5 );
-    printk( "----- end register dump -----\n" );
-}
-
-
-#define ADCMODE(mode)  (TSC2100_ADC_DEFAULT | TSC2100_ADC_ADMODE(mode))
-
-static void tsc2100_get_miscdata( struct tsc2100_data* devdata )
-{
-    unsigned long flags;
-
-    #if 0
-    DBG("pendown=%d, mode=%x, misc_state=%d, voltage_samples=%d\n",
-        devdata->pendown, devdata->mode, devdata->misc_state, voltage_samples);
-    #endif
-
-    spin_lock_irqsave(&(devdata->lock), flags); 
-    if ( devdata->pendown == 0 && devdata->tson ) {
-        devdata->mode = TSC2100_MODE_MISC;
-
-        if ( !unplugged && voltage_poll_interval > 4 &&
-             devdata->misc_state > TS_BAT2 &&
-             !atomic_inc_not_zero(&voltage_poll_next) ) 
-        {
-            atomic_set( &voltage_poll_next, -voltage_poll_interval );
-            devdata->misc_state = TS_BAT1;
-            voltage_samples = 0;
-            //DBG("voltage_poll_interval(%d) expired\n", voltage_poll_interval);
-        }
-
-        switch ( devdata->misc_state ) {
-        case TS_BAT1:
-            //DBG("measure BAT1, %d of %d\n", voltage_samples, voltage_sample_count);
-            imx_gpio_write( 30 | GPIO_PORTC, 1 );
-            tsc2100_regwrite(TSC2100_REG_ADC, ADCMODE(0x6));
-            if ( ++voltage_samples < voltage_sample_count ) 
-                mod_timer(&(devdata->misc_timer), 
-                          jiffies + msecs_to_jiffies(voltage_sample_interval));
-            else
-            {
-                voltage_samples = 0;
-                devdata->misc_state = TS_BAT2;
-            }
-            break;
-        case TS_BAT2:
-            //DBG("measure BAT2, %d of %d\n", voltage_samples, voltage_sample_count);
-            imx_gpio_write( 30 | GPIO_PORTC, 1 );
-            tsc2100_regwrite(TSC2100_REG_ADC, ADCMODE(0x7));
-            if ( ++voltage_samples < voltage_sample_count ) 
-                mod_timer(&(devdata->misc_timer), 
-                          jiffies + msecs_to_jiffies(voltage_sample_interval));
-            else
-            {
-                voltage_samples = 0;
-                devdata->misc_state = TS_TEMP1;
-            }
-            break;
-        case TS_TEMP1:
-            tsc2100_regwrite(TSC2100_REG_ADC, ADCMODE(0xA));
-            devdata->misc_state = TS_TEMP2;
-            break;
-        default: //TS_TEMP2
-            tsc2100_regwrite(TSC2100_REG_ADC, ADCMODE(0xC));
-            devdata->misc_state = unplugged || voltage_poll_interval <= 4? 
-                                    TS_BAT1 : TS_TEMP1;
-            break;
-        }
-
-        /* henry@chumby.com - check for undiagnosed condition where interrupts
-         * have gotten disabled. If main interrupt routine does not get
-         * called, after a previous call, re-initialize interrupt status.
-         */
-        if (devdata->inactive_count > 0)
-        {
-            printk( KERN_INFO "tsc2100_get_miscdata: appears dead, timeout_workaround=%d, inactive count = %u\n",
-                timeout_workaround, devdata->inactive_count );
-            // Register dump now via printk
-            if (timeout_regdump)
-            {
-                RegDumpViaPrintk( 
-                    " with interrupts stuck - please email this to bunnie@chumby.com\n"
-                    "along with steps you took to make this happen",
-                    devdata );
-            }
-            // Disable followed by enable works
-            devdata->inactive_count = 0;
-            if (timeout_workaround)
-            {
-                tsc2100_touchscreen_disable(devdata);
-                tsc2100_touchscreen_enable(devdata);
-                if (timeout_regdump)
-                {
-                    RegDumpViaPrintk( " after disabling and re-enabling", devdata );
-                }
-            }
-        }
-        else
-        {
-            devdata->inactive_count++;
-            TSDBG( "tsc2100_get_miscdata misc_state==%d pd=%d flags=0x%08lx\n", 
-                   devdata->misc_state, devdata->pendown, flags );
-        }
+    if ( dev->tson ) {
+        dev->interrupt++;
+        dev->oneshot_expired = 1;
+        tasklet_schedule( &dev->tasklet );
     }
-    spin_unlock_irqrestore(&devdata->lock, flags);
 }
 
 
-static void tsc2100_misc_timer(unsigned long data)
+// this timer goes off every timer_interval milliseconds and is periodic, this
+// routine starts a SCAN when the system is idle (well, it sets the 
+// timer_expired bit so the handle_timer() routine will do all of the work at 
+// SOFT IRQ time)
+// 
+static void touchscreen_timer(unsigned long data)
 {
-    struct tsc2100_data* devdata = (struct tsc2100_data*) data;
-    //DBG("MISC: jiffies=%lu, interval=%lu\n", jiffies, poll_interval*HZ);
-    mod_timer(&(devdata->misc_timer), jiffies + poll_interval*HZ);
-    tsc2100_get_miscdata(devdata);
+    struct tsc2100_context* dev = (struct tsc2100_context*) data;
 
-    // only allow a SIGPWR signal to be generated every sigpwr_holdoff seconds
-    // (ok, so the voltage_samples == 0 is kludgey, basically means we waited
-    // poll_interval seconds and it wasn't a short timer interrupt for reading
-    // voltage)
-    if ( sigpwr_next > 0 && voltage_samples == 0 ) 
-    {
-        sigpwr_next -= poll_interval;
-        if (sigpwr_next < 0)
-            sigpwr_next = 0;
+    mod_timer(&(dev->timer), jiffies + timer_interval_jiffies);
+    if ( dev->tson ) {
+        dev->timer_expired++;
+        tasklet_schedule( &dev->tasklet );
     }
 }
 
@@ -1874,7 +2251,7 @@ static int getval_from_user( struct file* file,
 static int proc_get_touchclick_cb( char* buf, char** start, off_t offset,
                                    int count, int* eof, void* data )
 {
-    struct tsc2100_data* d = ( struct tsc2100_data* ) data;
+    struct tsc2100_context* d = ( struct tsc2100_context* ) data;
     return sprintf( buf, "%d\n", d->touchclick );
 }
 
@@ -1882,16 +2259,13 @@ static int proc_get_touchclick_cb( char* buf, char** start, off_t offset,
 static int proc_set_touchclick_cb( struct file* file, const char* buf,
                                    unsigned long count, void* data )
 {
-    struct tsc2100_data* d = ( struct tsc2100_data* ) data;
+    struct tsc2100_context* d = ( struct tsc2100_context* ) data;
     u32  value;
     int  rc = getval_from_user(file,buf,count,&value);
     if ( rc )
         return rc;
 
     d->touchclick = value;
-
-    TSDBG( "chumby_tsc2100: proc_set_touchclick_cb enable value %d\n", value );
-
     return count;
 }
 
@@ -1899,7 +2273,7 @@ static int proc_set_touchclick_cb( struct file* file, const char* buf,
 static int proc_get_tson_cb( char* buf, char** start, off_t offset,
                             int count, int* eof, void* data )
 {
-    struct tsc2100_data* d = ( struct tsc2100_data* ) data;
+    struct tsc2100_context* d = ( struct tsc2100_context* ) data;
     return sprintf( buf, "%d\n", d->tson );
 }
 
@@ -1907,19 +2281,17 @@ static int proc_get_tson_cb( char* buf, char** start, off_t offset,
 static int proc_set_tson_cb( struct file* file, const char* buf,
                              unsigned long count, void* data )
 {
-    struct tsc2100_data* d = ( struct tsc2100_data* ) data;
+    struct tsc2100_context* d = ( struct tsc2100_context* ) data;
     u32  value;
     int  rc = getval_from_user(file,buf,count,&value);
     if ( rc )
         return rc;
 
     d->tson = value;
-    /* hgroover - check for spurious calls to enable */
-    TSDBG( "chumby_tsc2100: proc_set_tson_cb enable value %d\n", value );
     if ( value )
-        tsc2100_touchscreen_enable(d);
+        touchscreen_enable(d);
     else
-        tsc2100_touchscreen_disable(d);
+        touchscreen_disable(d);
     return count;
 }
 
@@ -1927,7 +2299,7 @@ static int proc_set_tson_cb( struct file* file, const char* buf,
 static int proc_get_coords_cb( char* buf, char** start, off_t offset,
                                int count, int* eof, void* data )
 {
-    struct tsc2100_data* d = ( struct tsc2100_data* ) data;
+    struct tsc2100_context* d = ( struct tsc2100_context* ) data;
     int x, y, p, pen, cnt;
     int leng = 0;
     unsigned long flags;
@@ -1956,7 +2328,7 @@ static int proc_get_coords_cb( char* buf, char** start, off_t offset,
 static int proc_get_tsregs_cb( char* buf, char** start, off_t offset,
                                int count, int* eof, void* data )
 {
-    struct tsc2100_data* d = ( struct tsc2100_data* ) data;
+    struct tsc2100_context* d = ( struct tsc2100_context* ) data;
     int    leng = 0;
 
     leng += sprintf( buf + leng, "PAGE0 REGISTERS:\n" );
@@ -2432,7 +2804,7 @@ static int proc_set_both_volume_cb( struct file* file, const char* buf,
 static int proc_get_batt_cb( char* buf, char** start, off_t offset,
                             int count, int* eof, void* data )
 {
-    struct tsc2100_data* d = ( struct tsc2100_data* ) data;
+    struct tsc2100_context* d = ( struct tsc2100_context* ) data;
     int b1  = ringbeg(&d->ring_bat1);
     int b2  = ringbeg(&d->ring_bat2);
     int cnt = ringcnt(&d->ring_bat1);
@@ -2463,7 +2835,7 @@ static int proc_get_batt_cb( char* buf, char** start, off_t offset,
 static int proc_get_temp_cb( char* buf, char** start, off_t offset,
                             int count, int* eof, void* data )
 {
-    struct tsc2100_data* d = ( struct tsc2100_data* ) data;
+    struct tsc2100_context* d = ( struct tsc2100_context* ) data;
     int t1  = ringbeg(&d->ring_temp1);
     int t2  = ringbeg(&d->ring_temp2);
     int cnt = ringcnt(&d->ring_temp1);
@@ -2579,37 +2951,43 @@ static int proc_set_digital_gain_cb( struct file* file, const char* buf,
 }
 
 
-static int proc_get_pollinterval_cb( char* buf, char** start, off_t offset,
-                                     int count, int* eof, void* data )
+static int proc_get_timer_interval_cb( char* buf, char** start, off_t offset,
+                                       int count, int* eof, void* data )
 {
     *eof = 1;
-    return sprintf( buf, "%d\n", poll_interval );
+    return sprintf( buf, "%d milliseconds\n", timer_interval );
 }
 
 
-static int proc_set_pollinterval_cb( struct file* file, const char* buf,
-                                     unsigned long count, void* data )
+static int proc_set_timer_interval_cb( struct file* file, const char* buf,
+                                        unsigned long count, void* data )
 {
     u32  value;
     int  rc = getval_from_user(file,buf,count,&value);
     if ( rc )
         return rc;
 
-    if (value == 0)
-        value = 1;
-
-    poll_interval = value;
+    if (value < MIN_TIMER_INTERVAL)
+        value = MIN_TIMER_INTERVAL;
+    if (pluggedin_battery_poll_interval < value)
+        pluggedin_battery_poll_interval = value;
+    if (unplugged_battery_poll_interval < value)
+        unplugged_battery_poll_interval = value;
+    if (dcline_poll_interval < value)
+        dcline_poll_interval = value;
+    timer_interval = value;
+    timer_interval_jiffies = msecs_to_jiffies(timer_interval);
     return count;
 }
 
 
-static int plugged_into_wall( struct tsc2100_data* devdata )
+static int plugged_into_wall( struct tsc2100_context* devdata )
 {
     return average_dc_power(devdata) >= dc_unplugged_threshold;
 }
 
 
-static int battery_dead( struct tsc2100_data* devdata )
+static int battery_dead( struct tsc2100_context* devdata )
 {
     int avg = average_battery_power(devdata);
 
@@ -2622,14 +3000,14 @@ static int battery_dead( struct tsc2100_data* devdata )
 }
 
 
-static int battery_present( struct tsc2100_data* devdata )
+static int battery_present( struct tsc2100_context* devdata )
 {
     int avg = average_battery_power(devdata);
     return avg > raw9volts/2 && avg <= raw10volts;
 }
 
 
-static int battery_voltage( struct tsc2100_data* devdata )
+static int battery_voltage( struct tsc2100_context* devdata )
 {
     int avg = average_battery_power(devdata);
     int voltage = 0;
@@ -2644,7 +3022,7 @@ static int proc_get_battery_present_cb( char* buf, char** start, off_t offset,
                                       int count, int* eof, void* data )
 {
     *eof = 1;
-    return sprintf( buf, "%d\n", battery_present((struct tsc2100_data*)data) );
+    return sprintf( buf, "%d\n", battery_present((struct tsc2100_context*)data) );
 }
 
 
@@ -2652,7 +3030,7 @@ static int proc_get_battery_voltage_cb( char* buf, char** start, off_t offset,
                                         int count, int* eof, void* data )
 {
     *eof = 1;
-    return sprintf( buf, "%d\n", battery_voltage((struct tsc2100_data*) data) );
+    return sprintf( buf, "%d\n", battery_voltage((struct tsc2100_context*) data) );
 }
 
 
@@ -2660,7 +3038,7 @@ static int proc_get_battery_dead_cb( char* buf, char** start, off_t offset,
                                      int count, int* eof, void* data )
 {
     *eof = 1;
-    return sprintf( buf, "%d\n", battery_dead((struct tsc2100_data*) data) );
+    return sprintf( buf, "%d\n", battery_dead((struct tsc2100_context*) data) );
 }
 
 
@@ -2710,7 +3088,7 @@ static int proc_get_raw_battery_voltage_cb( char* buf, char** start, off_t offse
                                             int count, int* eof, void* data )
 {
     *eof = 1;
-    return sprintf( buf, "%d\n", average_battery_power(( struct tsc2100_data* ) data) );
+    return sprintf( buf, "%d\n", average_battery_power(( struct tsc2100_context* ) data) );
 }
 
 
@@ -2718,7 +3096,7 @@ static int proc_get_raw_dcline_voltage_cb( char* buf, char** start, off_t offset
                                            int count, int* eof, void* data )
 {
     *eof = 1;
-    return sprintf( buf, "%d\n", average_dc_power(( struct tsc2100_data* ) data) );
+    return sprintf( buf, "%d\n", average_dc_power(( struct tsc2100_context* ) data) );
 }
 
 
@@ -2749,7 +3127,7 @@ static int proc_get_plugged_into_wall_cb( char* buf, char** start, off_t offset,
 {
     *eof = 1;
     return sprintf( buf, "%d\n", 
-                    plugged_into_wall(( struct tsc2100_data* ) data) );
+                    plugged_into_wall(( struct tsc2100_context* ) data) );
 }
 
 
@@ -2777,21 +3155,22 @@ static int proc_set_sigpwr_pid_cb( struct file* file, const char* buf,
 static int proc_set_measure_voltage_now_cb( struct file* file, const char* buf,
                                             unsigned long count, void* data )
 {
-    // force a voltage measurement now (in the next poll_interval)
-    atomic_set(&voltage_poll_next, -1);
+    // force a voltage measurement now (in the next timer_interval)
+    battery_poll_next = 0;
+    dcline_poll_next = 0;
     return count;
 }
 
 
-static int proc_get_voltage_poll_interval_cb( 
+static int proc_get_dcline_poll_interval_cb( 
         char* buf, char** start, off_t offset, int count, int* eof, void* data )
 {
     *eof = 1;
-    return sprintf( buf, "%d\n", voltage_poll_interval );
+    return sprintf( buf, "%d milliseconds\n", dcline_poll_interval );
 }
 
 
-static int proc_set_voltage_poll_interval_cb( 
+static int proc_set_dcline_poll_interval_cb( 
         struct file* file, const char* buf, unsigned long count, void* data )
 {
     u32  value;
@@ -2799,22 +3178,22 @@ static int proc_set_voltage_poll_interval_cb(
     if ( rc )
         return rc;
 
-    if ( value < poll_interval )
-        value = poll_interval;
-    voltage_poll_interval = value;
+    if ( value < timer_interval )
+        value = timer_interval;
+    dcline_poll_interval = value;
     return count;
 }
 
 
-static int proc_get_voltage_sample_interval_cb( 
+static int proc_get_unplugged_battery_poll_interval_cb( 
         char* buf, char** start, off_t offset, int count, int* eof, void* data )
 {
     *eof = 1;
-    return sprintf( buf, "%d\n", voltage_sample_interval );
+    return sprintf( buf, "%d milliseconds\n", unplugged_battery_poll_interval );
 }
 
 
-static int proc_set_voltage_sample_interval_cb( 
+static int proc_set_unplugged_battery_poll_interval_cb( 
         struct file* file, const char* buf, unsigned long count, void* data )
 {
     u32  value;
@@ -2822,11 +3201,32 @@ static int proc_set_voltage_sample_interval_cb(
     if ( rc )
         return rc;
 
-    if ( value < 10 )
-        value = 10;
-    if ( value > 1000 ) 
-        value = 1000;
-    voltage_sample_interval = value;
+    if ( value < timer_interval )
+        value = timer_interval;
+    unplugged_battery_poll_interval = value;
+    return count;
+}
+
+
+static int proc_get_pluggedin_battery_poll_interval_cb( 
+        char* buf, char** start, off_t offset, int count, int* eof, void* data )
+{
+    *eof = 1;
+    return sprintf( buf, "%d milliseconds\n", pluggedin_battery_poll_interval );
+}
+
+
+static int proc_set_pluggedin_battery_poll_interval_cb( 
+        struct file* file, const char* buf, unsigned long count, void* data )
+{
+    u32  value;
+    int  rc = getval_from_user(file,buf,count,&value);
+    if ( rc )
+        return rc;
+
+    if ( value < timer_interval )
+        value = timer_interval;
+    pluggedin_battery_poll_interval = value;
     return count;
 }
 
@@ -2878,7 +3278,7 @@ static int proc_set_dc_unplugged_threshold_cb(
 static int proc_get_power_summary_cb( 
         char* buf, char** start, off_t offset, int count, int* eof, void* data )
 {
-    struct tsc2100_data* d = ( struct tsc2100_data* ) data;
+    struct tsc2100_context* d = ( struct tsc2100_context* ) data;
     int    leng = 0;
     int    voltage = battery_voltage(d);
 
@@ -2901,18 +3301,21 @@ static int proc_get_power_summary_cb(
     }
 
     leng += sprintf( buf + leng, "\n" );
-    leng += sprintf( buf + leng, "Misc. Timer Poll Interval [poll_interval]..................%d seconds\n", poll_interval );
-    leng += sprintf( buf + leng, "Voltage Measurement Poll Interval [voltage_poll_interval]..%d seconds\n", voltage_poll_interval );
-    leng += sprintf( buf + leng, "Time until next voltage measurement........................%d seconds\n", -atomic_read(&voltage_poll_next) );
-    leng += sprintf( buf + leng, "Voltage Sample Interval [voltage_sample_interval]..........%d msecs\n", voltage_sample_interval );
-    leng += sprintf( buf + leng, "Voltage Sample Count [voltage_sample_count]................%d\n", voltage_sample_count );
-    leng += sprintf( buf + leng, "[dc_unplugged_threshold]...................................%d\n", dc_unplugged_threshold );
-    leng += sprintf( buf + leng, "[dc_and_battery_dead_threshold]............................%d\n", dc_and_battery_dead_threshold );
-    leng += sprintf( buf + leng, "[battery_dead_threshold]...................................%d\n", battery_dead_threshold );
-    leng += sprintf( buf + leng, "[raw9volts]................................................%d\n", raw9volts );
-    leng += sprintf( buf + leng, "Time until next SIGPWR signal..............................%d seconds\n", sigpwr_next );
-    leng += sprintf( buf + leng, "[sigpwr_holdoff]...........................................%d seconds\n", sigpwr_holdoff );
-    leng += sprintf( buf + leng, "[sigpwr_pid]...............................................%d\n", sigpwr_pid );
+    leng += sprintf( buf + leng, "Timer Poll Interval...........................%d msecs\n", timer_interval );
+    leng += sprintf( buf + leng, "DCLine Measurement Poll Interval..............%d msecs\n", dcline_poll_interval );
+    leng += sprintf( buf + leng, "Unplugged Battery Measurement Poll Interval...%d msecs\n", unplugged_battery_poll_interval );
+    leng += sprintf( buf + leng, "Plugged-in Battery Measurement Poll Interval..%d msecs\n", pluggedin_battery_poll_interval );
+    leng += sprintf( buf + leng, "Time until next DCLine voltage measurement....%d msecs\n", dcline_poll_next );
+    leng += sprintf( buf + leng, "Time until next battery voltage measurement...%d msecs\n", battery_poll_next );
+    leng += sprintf( buf + leng, "Voltage Sample Count..........................%d\n", voltage_sample_count );
+    leng += sprintf( buf + leng, "Voltage Samples...............................%d\n", voltage_samples );
+    leng += sprintf( buf + leng, "[dc_unplugged_threshold]......................%d\n", dc_unplugged_threshold );
+    leng += sprintf( buf + leng, "[dc_and_battery_dead_threshold]...............%d\n", dc_and_battery_dead_threshold );
+    leng += sprintf( buf + leng, "[battery_dead_threshold]......................%d\n", battery_dead_threshold );
+    leng += sprintf( buf + leng, "[raw9volts]...................................%d\n", raw9volts );
+    leng += sprintf( buf + leng, "Time until next SIGPWR signal.................%d seconds\n", sigpwr_next );
+    leng += sprintf( buf + leng, "[sigpwr_holdoff]..............................%d seconds\n", sigpwr_holdoff );
+    leng += sprintf( buf + leng, "[sigpwr_pid]..................................%d\n", sigpwr_pid );
     leng += sprintf( buf + leng, "Plugged into wall? [avg_dc_power(%d) >= dc_unplugged_threshold(%d)?] -- %s\n", 
                      average_dc_power(d), dc_unplugged_threshold, plugged_into_wall(d)? "YES" : "NO" );
     leng += sprintf( buf + leng, "Battery installed? [avg_batt_power(%d) > raw9volts(%d)/2 && avg_batt_power <= raw10volts(%d)?] -- %s\n", 
@@ -2929,6 +3332,64 @@ static int proc_get_power_summary_cb(
                     battery_dead_threshold, average_battery_power(d), battery_dead(d)? "YES" : "NO" );
     leng += sprintf( buf + leng, "\n" );
     return leng;
+}
+
+
+static int proc_get_context_cb( 
+        char* buf, char** start, off_t offset, int count, int* eof, void* data )
+{
+    struct tsc2100_context* d = ( struct tsc2100_context* ) data;
+    int    leng = 0;
+
+    *eof = 1;
+    leng += sprintf( buf + leng, "Hardware Version .... 1.%c\n", version038? '8' : 'x' );
+    leng += sprintf( buf + leng, "timer_expired.........%d\n", d->timer_expired );
+    leng += sprintf( buf + leng, "interrupt.............%d\n", d->interrupt );
+    leng += sprintf( buf + leng, "tson..................%d\n", d->tson );
+    leng += sprintf( buf + leng, "scan_mode.............%d\n", d->scan_mode );
+    leng += sprintf( buf + leng, "scan_state............%d\n", d->scan_state );
+    leng += sprintf( buf + leng, "pendown...............%d\n", d->pendown_active );
+    leng += sprintf( buf + leng, "penup.................%d\n", d->penup );
+    leng += sprintf( buf + leng, "touchclick............%d\n", d->touchclick );
+    leng += sprintf( buf + leng, "event.flags...........0x%x\n", d->event.flags );
+    leng += sprintf( buf + leng, "event.pressure........%d\n", d->event.p );
+    leng += sprintf( buf + leng, "event.x...............%d\n", d->event.x );
+    leng += sprintf( buf + leng, "event.y...............%d\n", d->event.y );
+    leng += sprintf( buf + leng, "event.pen.............%d\n", d->event.pen );
+    leng += sprintf( buf + leng, "x[0]..................%d\n", d->scan_data[0]);
+    leng += sprintf( buf + leng, "x[1]..................%d\n", d->scan_data[2]);
+    leng += sprintf( buf + leng, "x[2]..................%d\n", d->scan_data[4]);
+    leng += sprintf( buf + leng, "x[3]..................%d\n", d->scan_data[6]);
+    leng += sprintf( buf + leng, "y[0]..................%d\n", d->scan_data[1]);
+    leng += sprintf( buf + leng, "y[1]..................%d\n", d->scan_data[3]);
+    leng += sprintf( buf + leng, "y[2]..................%d\n", d->scan_data[5]);
+    leng += sprintf( buf + leng, "y[3]..................%d\n", d->scan_data[7]);
+    leng += sprintf( buf + leng, "pendown_count.........%d\n", d->pendown_total );
+    
+    return leng;
+}
+
+
+static int proc_get_pendown_count_cb( 
+        char* buf, char** start, off_t offset, int count, int* eof, void* data )
+{
+    struct tsc2100_context* d = ( struct tsc2100_context* ) data;
+    *eof = 1;
+    return sprintf( buf, "%d\n", d->pendown_total );
+}
+
+
+static int proc_set_pendown_count_cb( 
+        struct file* file, const char* buf, unsigned long count, void* data )
+{
+    struct tsc2100_context* d = ( struct tsc2100_context* ) data;
+    u32  value;
+    int  rc = getval_from_user(file,buf,count,&value);
+    if ( rc )
+        return rc;
+
+    d->pendown_total = value;
+    return count;
 }
 
 
@@ -2974,7 +3435,7 @@ static struct {
 /*0*/  { "temperature",               CHUMBY_DIR,      proc_get_temp_cb,         NULL, 0 },
 /*1*/  { "enable",                    TOUCHSCREEN_DIR, proc_get_tson_cb,         proc_set_tson_cb, 0 },
 /*2*/  { "coordinates",               TOUCHSCREEN_DIR, proc_get_coords_cb,       NULL, 0 },
-/*3*/  { "poll-interval",             TOUCHSCREEN_DIR, proc_get_pollinterval_cb, proc_set_pollinterval_cb, 0 },
+/*3*/  { "timer-interval",            TOUCHSCREEN_DIR, proc_get_timer_interval_cb, proc_set_timer_interval_cb, 0 },
 /*4*/  { "touchclick",                TOUCHSCREEN_DIR, proc_get_touchclick_cb,   proc_set_touchclick_cb, 0 },
 /*5*/  { "mute",                      LEFTSPKR_DIR,    proc_get_left_mute_cb,    proc_set_left_mute_cb, 0 },
 /*6*/  { "mute",                      RIGHTSPKR_DIR,   proc_get_right_mute_cb,   proc_set_right_mute_cb, 0 },
@@ -3013,16 +3474,19 @@ static struct {
 /*39*/ { "raw9volts",                 CHUMBY_DIR,      proc_get_raw9volts_cb,    proc_set_raw9volts_cb, 0 },
 /*40*/ { "sigpwr-pid",                CHUMBY_DIR,      proc_get_sigpwr_pid_cb,   proc_set_sigpwr_pid_cb, 0 },
 /*41*/ { "measure-voltage-now",       CHUMBY_DIR,      NULL, proc_set_measure_voltage_now_cb, 0 },
-/*42*/ { "voltage-poll-interval",     CHUMBY_DIR,      proc_get_voltage_poll_interval_cb, proc_set_voltage_poll_interval_cb, 0 },
-/*43*/ { "voltage-sample-interval",   CHUMBY_DIR,      proc_get_voltage_sample_interval_cb, proc_set_voltage_sample_interval_cb, 0 },
-/*44*/ { "voltage-sample-count",      CHUMBY_DIR,      proc_get_voltage_sample_count_cb, proc_set_voltage_sample_count_cb, 0 },
-/*45*/ { "power-summary",             CHUMBY_DIR,      proc_get_power_summary_cb,     NULL, 0 }
-         // 48 entries total -- if you need more have to update 
-         // "struct proc_dir_entry* proc_files[ 48 ];" in chumby-tsc2100.h 
+/*42*/ { "dcline-poll-interval",      CHUMBY_DIR,      proc_get_dcline_poll_interval_cb, proc_set_dcline_poll_interval_cb, 0 },
+/*43*/ { "unplugged-battery-poll-interval", CHUMBY_DIR,proc_get_unplugged_battery_poll_interval_cb, proc_set_unplugged_battery_poll_interval_cb, 0 },
+/*44*/ { "pluggedin-battery-poll-interval", CHUMBY_DIR,proc_get_pluggedin_battery_poll_interval_cb, proc_set_pluggedin_battery_poll_interval_cb, 0 },
+/*45*/ { "voltage-sample-count",      CHUMBY_DIR,      proc_get_voltage_sample_count_cb, proc_set_voltage_sample_count_cb, 0 },
+/*46*/ { "power-summary",             CHUMBY_DIR,      proc_get_power_summary_cb,     NULL, 0 },
+/*47*/ { "pendown-count",             TOUCHSCREEN_DIR, proc_get_pendown_count_cb, proc_set_pendown_count_cb, 0 },
+/*48*/ { "context",                   TOUCHSCREEN_DIR, proc_get_context_cb, NULL, 0 }
+         // 64 entries total -- if you need more have to update 
+         // "struct proc_dir_entry* proc_files[ 64 ];" in chumby-tsc2100.h 
 };
 
 
-static void __exit tsc2100_proc_rmdir(struct tsc2100_data* d)
+static void __exit proc_rmdir(struct tsc2100_context* d)
 {
     int i;
 
@@ -3035,7 +3499,7 @@ static void __exit tsc2100_proc_rmdir(struct tsc2100_data* d)
 }
 
 
-static void __exit tsc2100_proc_exit(struct tsc2100_data* d)
+static void __exit proc_exit(struct tsc2100_context* d)
 {
     int i;
 
@@ -3046,11 +3510,11 @@ static void __exit tsc2100_proc_exit(struct tsc2100_data* d)
         }
     }
 
-    tsc2100_proc_rmdir(d);
+    proc_rmdir(d);
 }
 
 
-static int __init tsc2100_proc_mkdir(struct tsc2100_data* d)
+static int __init proc_mkdirs(struct tsc2100_context* d)
 {
     int i;
 
@@ -3058,7 +3522,7 @@ static int __init tsc2100_proc_mkdir(struct tsc2100_data* d)
         d->proc_dirs[i] = proc_mkdir(procdir[i].name,
                                      d->proc_dirs[procdir[i].parent]);
         if (d->proc_dirs[i] == NULL) {
-            tsc2100_proc_rmdir(d);
+            proc_rmdir(d);
             return -1;
         }
     }
@@ -3067,22 +3531,24 @@ static int __init tsc2100_proc_mkdir(struct tsc2100_data* d)
 }
 
 
-static int __init tsc2100_proc_init(struct tsc2100_data* d)
+static int __init proc_init(struct tsc2100_context* d)
 {
     int i;
 
     if (ARRAY_SIZE(d->proc_dirs) < ARRAY_SIZE(procdir)) {
-        printk( KERN_ERR "%s(): ARRAY_SIZE(d->proc_dirs)[%d] < ARRAY_SIZE(procdir)[%d]\n",
-                __FUNCTION__, ARRAY_SIZE(d->proc_dirs), ARRAY_SIZE(procdir) );
+        printk( KERN_ERR "%s/%s(): ARRAY_SIZE(d->proc_dirs)[%d] < ARRAY_SIZE(procdir)[%d]\n",
+                __FILE__, __FUNCTION__, 
+                ARRAY_SIZE(d->proc_dirs), ARRAY_SIZE(procdir) );
         return -1;
     }
     if (ARRAY_SIZE(d->proc_files) < ARRAY_SIZE(procfile)) {
-        printk( KERN_ERR "%s(): ARRAY_SIZE(d->proc_files)[%d] < ARRAY_SIZE(procfile)[%d]\n",
-                __FUNCTION__, ARRAY_SIZE(d->proc_files), ARRAY_SIZE(procfile) );
+        printk( KERN_ERR "%s/%s(): ARRAY_SIZE(d->proc_files)[%d] < ARRAY_SIZE(procfile)[%d]\n",
+                __FILE__, __FUNCTION__, 
+                ARRAY_SIZE(d->proc_files), ARRAY_SIZE(procfile) );
         return -1;
     }
 
-    if ( tsc2100_proc_mkdir(d) )
+    if ( proc_mkdirs(d) )
         return -1;
 
     for ( i = 0; i < ARRAY_SIZE(procfile); ++i ) {
@@ -3093,7 +3559,7 @@ static int __init tsc2100_proc_init(struct tsc2100_data* d)
                            procfile[i].read_proc, procfile[i].write_proc,
                            data );
         if ( entry == NULL ) {
-            tsc2100_proc_exit(d);
+            proc_exit(d);
             return -1;
         }
 
@@ -3104,15 +3570,14 @@ static int __init tsc2100_proc_init(struct tsc2100_data* d)
 }
 
 
-static int __init tsc2100_touchscreen_init(void)
+static int __init touchscreen_init(void)
 {
     struct device  tsc2100dev;
-    struct tsc2100_data *devdata;
+    struct tsc2100_context *devdata;
     struct input_dev *input_dev;
-    struct tsc2100_ts_event ts_data;
     int rc;
 
-    devdata = kzalloc(sizeof(struct tsc2100_data), GFP_KERNEL);
+    devdata = kzalloc(sizeof(struct tsc2100_context), GFP_KERNEL);
     input_dev = input_allocate_device();
     if (!devdata || !input_dev) {
         input_free_device(input_dev);
@@ -3152,18 +3617,20 @@ static int __init tsc2100_touchscreen_init(void)
     devdata->tson = 1;
     devdata->touchclick = 1;
 
-    init_timer(&devdata->ts_timer);
-    devdata->ts_timer.data = (unsigned long) devdata;
-    devdata->ts_timer.function = tsc2100_timer;
+    tasklet_init(&devdata->tasklet, touchscreen_tasklet, (unsigned long)devdata);
 
-    init_timer(&devdata->misc_timer);
-    devdata->misc_timer.data = (unsigned long) devdata;
-    devdata->misc_timer.function = tsc2100_misc_timer;
+    init_timer(&devdata->timer);
+    devdata->timer.data = (unsigned long) devdata;
+    devdata->timer.function = touchscreen_timer;
 
-    rc = request_irq(PENIRQ, touchscreen_handler, 0, "tsc2100", devdata);
+    init_timer(&devdata->oneshot);
+    devdata->oneshot.data = (unsigned long) devdata;
+    devdata->oneshot.function = touchscreen_oneshot;
+
+    rc = request_irq(PENIRQ, touchscreen_interrupt, 0, "tsc2100", devdata);
     if (rc) {
-        printk(KERN_ERR "tsc2100: Could not allocate touchscreen IRQ %d!\n",
-               PENIRQ);
+        printk(KERN_ERR "%s/%s(): Could not allocate touchscreen IRQ %d!\n",
+               __FILE__, __FUNCTION__, PENIRQ);
         tsc2100_devdata  = NULL;
         kfree(devdata);
         return -EINVAL;
@@ -3172,23 +3639,26 @@ static int __init tsc2100_touchscreen_init(void)
     gpio_init();
     spi_init();
 
-    tsc2100_touchscreen_setup(&tsc2100dev);
-    tsc2100_touchscreen_reset(devdata);
-    tsc2100_touchscreen_enable(devdata);
+    touchscreen_setup(&tsc2100dev);
+    touchscreen_reset(devdata);
+    touchscreen_enable(devdata);
 
-    /* Falling edge indicates PEN has been pressed and a new X/Y/Z1/Z2 sample
-     * is now ready (note we read the data here simply to flush and discard).
+    /* Falling edge indicates either PEN has been pressed or ADC SCAN is 
+     * complete. (note we read the data here simply to flush and discard)
      */
     set_irq_type(PENIRQ, IRQT_FALLING);
-    tsc2100_readdata(devdata, &ts_data);
+    discard_scan_data(devdata);
 
-    mod_timer(&(devdata->misc_timer), jiffies + HZ);
+    timer_interval_jiffies = msecs_to_jiffies(timer_interval);
+    mod_timer(&(devdata->timer), jiffies + timer_interval_jiffies);
 
+    printk( KERN_INFO "Chumby TI-TSC2100 TouchScreen Driver v1.01 initialized (hw 1.%c)\n", 
+            version038? '8':'x');
     return 0;
 }
 
 
-static int __init tsc2100_alsa_audio_init(void)
+static int __init alsa_audio_init(void)
 {
     int rc = -ENODEV;
     snd_card_t *card;
@@ -3293,37 +3763,39 @@ static int __init tsc2100_alsa_audio_init(void)
     tsc2100_regwrite(TSC2100_REG_AUDIOADC,tsc2100_devdata->reg.audioadc);
     tsc2100_regwrite(TSC2100_REG_AUDIODAC,tsc2100_devdata->reg.audiodac);
 
-    printk(KERN_INFO "Chumby TI-TSC2100 ALSA Audio Driver initialized\n");
-    printk(KERN_INFO "touchscreen timeout_workaround=%d timeout_regdump=%d\n", timeout_workaround, timeout_regdump);
+    printk(KERN_INFO "Chumby TI-TSC2100 ALSA Audio Driver v1.01 initialized\n");
     tsc2100_sndcard = card;
     return 0;
 
  init_err1:
-    printk( "%s(): failed init_err1\n", __FUNCTION__ );
+    printk( KERN_ERR "%s/%s(): failed init_err1\n", __FILE__, __FUNCTION__ );
     imx_dma_free(chip->p_dma);
  init_err0:
-    printk( "%s(): failed init_err0, rc=%d\n", __FUNCTION__, rc );
+    printk( KERN_ERR "%s/%s(): failed init_err0, rc=%d\n", 
+            __FILE__, __FUNCTION__, rc );
     snd_card_free(card);
     return rc;
 }
 
 
-static void __exit tsc2100_touchscreen_exit(void)
+static void __exit touchscreen_exit(void)
 {
     if ( tsc2100_devdata ) {
+        tasklet_disable( &tsc2100_devdata->tasklet );
         free_irq(PENIRQ, tsc2100_devdata);
-        del_timer_sync(&tsc2100_devdata->ts_timer);
-        del_timer_sync(&tsc2100_devdata->misc_timer);
+        del_timer_sync(&tsc2100_devdata->timer);
+        del_timer_sync(&tsc2100_devdata->oneshot);
         input_unregister_device(tsc2100_devdata->inputdevice);
-        tsc2100_touchscreen_disable(tsc2100_devdata);
+        touchscreen_disable(tsc2100_devdata);
         spi_exit();
+        tasklet_kill( &tsc2100_devdata->tasklet );
         kfree(tsc2100_devdata);
         tsc2100_devdata = NULL;
     }
 }
 
 
-static void __exit tsc2100_alsa_audio_exit(void)
+static void __exit alsa_audio_exit(void)
 {
     if ( tsc2100_sndcard ) {
         tsc2100_chip_t *chip = (tsc2100_chip_t *)tsc2100_sndcard->private_data;
@@ -3337,9 +3809,9 @@ static void __exit tsc2100_alsa_audio_exit(void)
 
 static void __exit chumby_tsc2100_exit(void)
 {
-    tsc2100_proc_exit(tsc2100_devdata);
-    tsc2100_alsa_audio_exit();
-    tsc2100_touchscreen_exit();
+    proc_exit(tsc2100_devdata);
+    alsa_audio_exit();
+    touchscreen_exit();
     printk(KERN_INFO "Chumby TI-TSC2100 ALSA Audio and TouchScreen Driver removed\n");
 }
 
@@ -3348,17 +3820,22 @@ static int __init chumby_tsc2100_init(void)
 {
     int rc;
 
-    rc = tsc2100_touchscreen_init();
+    rc = touchscreen_init();
     if ( rc )
         return rc;
-    rc = tsc2100_alsa_audio_init();
+    rc = alsa_audio_init();
     if ( rc )
-        tsc2100_touchscreen_exit();
+        touchscreen_exit();
     else
-        tsc2100_proc_init(tsc2100_devdata);
+        proc_init(tsc2100_devdata);
     return rc;
 }
 
 
 module_init(chumby_tsc2100_init);
 module_exit(chumby_tsc2100_exit);
+
+MODULE_AUTHOR("Chumby <ghutchins@gmail.com>");
+MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("Chumby iMX21 TI-TSC2100 Driver (ALSA Audio & TouchScreen)");
+MODULE_PARM_DESC(id, "Chumby iMX21/TSC2100");
