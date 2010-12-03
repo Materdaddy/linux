@@ -1023,13 +1023,19 @@ static int imxfb_proc_write_enable(struct file *file, const char *buf,
     printk( "imxfb_proc_write_enable\n" );
 
     if (en) {
-        uint32_t saveClock = PCCR0 & PCCR0_HCLK_LCDC_EN; // save state of HCLK
-        PCCR0 &= ~ PCCR0_HCLK_LCDC_EN; // force HCLK off
-	// msleep( 30 );
+        if ( ! ( LCDC_LGWCR & LGWCR_GWE ) ) {
+            // enable
+            uint32_t saveClock = PCCR0 & PCCR0_HCLK_LCDC_EN; // save state of HCLK
+            PCCR0 &= ~ PCCR0_HCLK_LCDC_EN; // force HCLK off
+   	    // msleep( 30 );
 	
-        LCDC_LGWCR |= LGWCR_GWE;
-        PCCR0 |= saveClock; // restore the state of HCLK
+            LCDC_LGWCR |= LGWCR_GWE;
+            PCCR0 |= saveClock; // restore the state of HCLK
+        } else {
+            printk( "imxfb_proc_write_enable: already enabled\n" );
+        }
     } else {
+        // disable
         LCDC_LGWCR &= ~LGWCR_GWE;
     }
 

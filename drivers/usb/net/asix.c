@@ -867,7 +867,7 @@ static const struct usb_device_id	products [] = {
 }, {
         // Apple USB Ethernet Adapter
         USB_DEVICE(0x05ac, 0x1402),
-	.driver_info =  (unsigned long) &ax8817x_info,
+	.driver_info = (unsigned long) &ax88772_info,
 }, {
 	// Netgear FA120
 	USB_DEVICE (0x0846, 0x1040),
@@ -876,6 +876,14 @@ static const struct usb_device_id	products [] = {
 	// DLink DUB-E100
 	USB_DEVICE (0x2001, 0x1a00),
 	.driver_info =  (unsigned long) &dlink_dub_e100_info,
+}, {
+	// DLink DUB-E100 H/W Ver B1
+	USB_DEVICE (0x07d1, 0x3c05),
+	.driver_info = (unsigned long) &ax88772_info,
+}, {
+	// DLink DUB-E100 H/W Ver B1 Alternate
+	USB_DEVICE (0x2001, 0x3c05),
+	.driver_info = (unsigned long) &ax88772_info,
 }, {
 	// Intellinet, ST Lab USB Ethernet
 	USB_DEVICE (0x0b95, 0x1720),
