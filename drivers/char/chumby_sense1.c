@@ -60,11 +60,12 @@
 /*
  * basic parameters
  */
-
+int version038   = 0;       // non-zero if version 3.8 hardware
 int sense1_major = 0;		// dynamic allocation
 int sense1_minor = 0;
 int sense1_nr_devs = 1;
 
+module_param(version038, int, S_IRUGO|S_IWUSR);
 module_param(sense1_major, int, S_IRUGO);
 module_param(sense1_minor, int, S_IRUGO);
 module_param(sense1_nr_devs, int, S_IRUGO);
@@ -130,6 +131,7 @@ static unsigned int gSpkMute = 0;
 static int gDCmillivolts = -1;
 static int gBTmillivolts = -1;
 static unsigned int gDimLevel = 0;
+static unsigned int gBrightness = 0xFFFF;
 static unsigned int gHPin = 0;
 static unsigned int gDebounce = 10;
 static unsigned int gResetSerial = 0;
@@ -150,6 +152,7 @@ static struct ctl_table gSysCtlChumsense1[] = {
 	{CTL_CHUMSENSE1_HPIN, "hpin", &gHPin, sizeof(unsigned int), 0644, NULL, &proc_dointvec},
 	{CTL_CHUMSENSE1_DEBOUNCE, "debounce", &gDebounce, sizeof(unsigned int), 0644, NULL, &proc_dointvec},
 	{CTL_CHUMSENSE1_RESETSERIAL, "resetSerial", &gResetSerial, sizeof(unsigned int), 0644, NULL, &proc_dointvec},
+	{CTL_CHUMSENSE1_BRIGHTNESS, "brightness", &gBrightness, sizeof(unsigned int), 0644, NULL, &proc_dointvec},
 	{0}
 };
 
@@ -196,6 +199,14 @@ static int sense1_proc_output(char *buf)
 	else
 		printlen += sprintf(buf, "  Debug trace is disabled.\n");
 
+	// the code below is handy for debugging the watchdog timer, it crashes the kernel
+	//	printk( "WSR: %04X, WRSR: %04X, WCR: %04X\n", WSR, WRSR, WCR );
+	//	{ // force a hard crash of the kernel if possible....
+	//	  int i;
+	//	  for( i = 0xC0000000; i < 0xFFFFFF; i++ ) {
+	//	    *(char *) i = 0x00;
+	//	  }
+	//	}
 	return printlen;
 }
 
@@ -334,22 +345,53 @@ void sense1_task_record(unsigned long ptr)
 	}
 
 	// Handle LCD brightness control
-	switch (gDimLevel) {
-	case 0:		// on and bright
-		imx_gpio_write(GPIO_PORTC | 28, 1);
-		imx_gpio_write(GPIO_PORTKP | (2 + 8), 1);
-		break;
-	case 1:		// on and dim
-		imx_gpio_write(GPIO_PORTC | 28, 0);
-		imx_gpio_write(GPIO_PORTKP | (2 + 8), 1);
-		break;
-	case 2:		// off and (don't care, set to dim)
-		imx_gpio_write(GPIO_PORTC | 28, 0);
-		imx_gpio_write(GPIO_PORTKP | (2 + 8), 0);
-		break;
-	default:
-		break;
-	}
+    if (version038) {
+        #if 1
+        if( (PWMC & 0x20) == 0 ) {
+          CHUMSENSE1_DEBUG( Error, "FIFO is full, PWM write ignored.\n" );
+        }
+        if (gBrightness > 0xFFFF)
+            gBrightness = 0xFFFF;
+        PWMS = gBrightness;
+        PWMC = 0x00000010; // enable, no reset
+        #else
+        // legacy translations of dimness settings; 
+        // get rid of this once the control panel is updated
+        if( gDimLevel == 1 ) {
+          gDimLevel = 720;
+        } else if( gDimLevel == 0 ) {
+          gDimLevel = 0xFFFF;
+        }
+        // now the proper code
+        if( (gDimLevel != 0) && (gDimLevel < 700) )
+          gDimLevel = 700;    // limit minimum duty cycle to about 1%
+        if( gDimLevel > 0xFFFF )
+          gDimLevel = 0xFFFF;
+        if( (PWMC & 0x20) == 0 ) {
+          CHUMSENSE1_DEBUG( Error, "FIFO is full, PWM write ignored.\n" );
+        }
+        PWMS = gDimLevel;
+        PWMC = 0x00000010; // enable, no reset
+        #endif
+    } else {
+        // legacy (non-v38) hardware
+        switch (gDimLevel) {
+        case 0:		// on and bright
+            imx_gpio_write(GPIO_PORTC | 28, 1);
+            imx_gpio_write(GPIO_PORTKP | (2 + 8), 1);
+            break;
+        case 1:		// on and dim
+            imx_gpio_write(GPIO_PORTC | 28, 0);
+            imx_gpio_write(GPIO_PORTKP | (2 + 8), 1);
+            break;
+        case 2:		// off and (don't care, set to dim)
+            imx_gpio_write(GPIO_PORTC | 28, 0);
+            imx_gpio_write(GPIO_PORTKP | (2 + 8), 0);
+            break;
+        default:
+            break;
+        }
+    }
 
 	// handle speaker muting
 	if (gSpkMute == 1) {
@@ -394,7 +436,8 @@ static int __init chumby_sense1_init(void)
 	sense1task_data.sense1_cdev = cdev_alloc();
 
 	// insert all device specific hardware initializations here
-	printk("Chumby sensor suite 1 driver version %s initializing (bunnie@chumby.com)...\n", SENSE1_VERSION);
+	printk("Chumby sensor suite 1 driver version %s (HW-%s) initializing (bunnie@chumby.com)...\n", 
+           SENSE1_VERSION, version038? "v3.8" : "Legacy" );
 
 	/*
 	 * Get a range of minor numbers to work with, asking for a dynamic
@@ -432,6 +475,46 @@ static int __init chumby_sense1_init(void)
 	imx_gpio_mode(GPIO_PORTKP | (4 + 8) | GPIO_OUT);
 	imx_gpio_write(GPIO_PORTKP | (4 + 8), 0);	// speakers on
 
+    if (version038) {
+        //              pin                            port bank and number   board pad
+        // PWM0(primary)H19    TOUT2 (GPIO,BIN)        PE5                    J106
+        // TOUT(primary)A14    TOUT  (primary)         PC14                   J108
+        // xx xxxx
+        imx_gpio_mode(GPIO_PORTE | 5 | GPIO_PF | GPIO_OUT);
+        //	_reg_GPIO_GIUS(GPIOE) &= 0xFFFFFFDF; // set to non-GPIO (muxed) function
+        //	_reg_GPIO_GPR(GPIOE)  &= 0xFFFFFFDF; // select primary function
+        //	_reg_GPIO_DDIR(GPIOE) |= 0x20;       // set output
+        // now we are set up to PWM!
+
+        PCCR1 |= 0x10000000; // enable clock in PWM module
+        /// PWM setup values
+        /// Bit 18  HCTR   0
+        /// Bit 17  BCTR   0
+        /// Bit 16  SWR    1  << do a reset
+        /// Bit 15  CLKSRC 0  PERCLK1 (16 MHz)
+        /// Bit 14-8 PRE   0000000  don't prescale
+        /// Bit 7   IRQ       readonly
+        /// Bit 6   IRQEN  0  no interrupts
+        /// Bit 5   FIFOAV    readonly
+        /// Bit 4   EN     1  to enable, 0 to disable
+        /// Bit 3-2 REPEAT 00  use each sample one time
+        /// Bit 1-0 CLKSEL 00  divide by 2
+        ///                 v
+        /// 0000 0000 0000 0001 1000 0000 0000 0000   // disable and reset, set clock
+        /// 0x00018000
+        /// 0000 0000 0000 0000 1000 0000 0001 0000   // enable, no reset
+        /// 0x00008010
+        /// 0000 0000 0000 0000 1000 0000 0000 0000   // disable, no reset
+        /// 0x00008000
+        ///
+        // the clock frequency into the block (perclk) is derived from the same clock that the UART clock comes from
+        // which is 16 MHz (15.9MHz exactly).
+        // divide by 2, which gives 8 MHz
+        // so to achive a period of 122Hz, set PWMP to 65536
+        PWMC = 0x00010000;  // disable and reset, set clock
+        PWMP = 0xFFFC;      // set to 65534 ... so that 65535 written into the device forces continuous all-on
+    }
+
 	////////// LCD power on code
 	imx_gpio_mode(GPIO_PORTKP | (2 + 8) | GPIO_OUT);
 	imx_gpio_write(GPIO_PORTKP | (2 + 8), 1);	// LCD on
@@ -467,7 +550,7 @@ static int __init chumby_sense1_init(void)
 
 	// initialize the watchdog timer module
 	PCCR1 |= PCCR1_WDT_EN;
-	WCR = 0x0430;  // set watchdog to 0x04 cycles (2 seconds) before trigger, plus force a system reset
+	WCR = 0x0430;  // set watchdog to 0x02 cycles (2 seconds) before trigger, plus force a system reset
 	WCR = 0x0434;  // enable the watchdog timer! better have the update process running.
 
 	resetReason = WRSR;

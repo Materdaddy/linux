@@ -78,6 +78,15 @@
 #include <sound/control.h>
 #include <sound/initval.h>
 
+
+//#define PLAY_DEBUG_SOUND
+#ifdef PLAY_DEBUG_SOUND
+static unsigned char* debug_sound_buf = NULL;
+static int debug_sound_last = 0;
+static int debug_sound_next = 0;
+#endif
+
+
 //#define DEBUG
 #ifdef DEBUG
 extern int dbug_printk( const char* fmt, ... );
@@ -867,6 +876,19 @@ static void tsc2100_dma_play_isr(int irq, void *data, struct pt_regs *regs)
     chip->p_prevpos  = chip->p_pos;
     chip->p_pos     += chip->p_per_size;
 
+    #ifdef PLAY_DEBUG_SOUND
+    if (debug_sound_buf && debug_sound_last >= chip->p_per_size) {
+        memcpy( runtime->dma_area + (chip->p_pos % chip->p_buf_size),
+                debug_sound_buf + debug_sound_next,
+                chip->p_per_size );
+        debug_sound_next += chip->p_per_size;
+        if (debug_sound_next > debug_sound_last) {
+            // just keeps playing the sound over and over -- can only stop
+            // by disabling through the /proc file system
+            debug_sound_next = 0;
+        }
+    }
+    #endif
 
     // wait until the next DMA starts to get CHCNTR(chip->p_dma) into the
     // next period so we can set chip->p_ccnr to a valid intitial value  --
@@ -3393,6 +3415,69 @@ static int proc_set_pendown_count_cb(
 }
 
 
+#ifdef PLAY_DEBUG_SOUND
+void tsc2100_debug_sound_init( void )
+{
+    if (debug_sound_buf == NULL) {
+        debug_sound_last = 0;
+        debug_sound_next = 0;
+        debug_sound_buf  = __get_free_pages( GFP_ATOMIC, 6 );
+        if (debug_sound_buf)
+            memset( debug_sound_buf, 0, 64*PAGE_SIZE );
+    }
+}
+
+
+void tsc2100_debug_sound_append( unsigned char* data, int nbytes )
+{
+    if (debug_sound_buf == NULL) {
+        tsc2100_debug_sound_init();
+        if (debug_sound_buf == NULL)
+            return;
+    }
+
+    if (debug_sound_last + nbytes > 64*PAGE_SIZE)
+        nbytes = 64*PAGE_SIZE - debug_sound_last;
+
+    if (nbytes > 0) {
+        memcpy( debug_sound_buf + debug_sound_last, data, nbytes );
+        debug_sound_last += nbytes;
+    }
+}
+
+
+void tsc2100_debug_sound_done( void )
+{
+    if (debug_sound_buf) {
+        debug_sound_next = 0;
+        debug_sound_last = 0;
+        free_pages(debug_sound_buf, 6);
+        debug_sound_buf = NULL;
+    }
+}
+EXPORT_SYMBOL(tsc2100_debug_sound_init);
+EXPORT_SYMBOL(tsc2100_debug_sound_append);
+EXPORT_SYMBOL(tsc2100_debug_sound_done);
+
+
+
+static int proc_get_debug_sound_cb( 
+        char* buf, char** start, off_t offset, int count, int* eof, void* data )
+{
+    *eof = 1;
+    return sprintf( buf, "buf=%p, next=%x, last=%x\n", debug_sound_buf, debug_sound_next, debug_sound_last );
+}
+
+
+static int proc_set_debug_sound_cb( 
+        struct file* file, const char* buf, unsigned long count, void* data )
+{
+    tsc2100_debug_sound_done();
+    return count;
+}
+#endif
+
+
 #define VOID_DIR        -1
 #define ROOT_DIR        0
 #define CHUMBY_DIR      1
@@ -3480,7 +3565,12 @@ static struct {
 /*45*/ { "voltage-sample-count",      CHUMBY_DIR,      proc_get_voltage_sample_count_cb, proc_set_voltage_sample_count_cb, 0 },
 /*46*/ { "power-summary",             CHUMBY_DIR,      proc_get_power_summary_cb,     NULL, 0 },
 /*47*/ { "pendown-count",             TOUCHSCREEN_DIR, proc_get_pendown_count_cb, proc_set_pendown_count_cb, 0 },
-/*48*/ { "context",                   TOUCHSCREEN_DIR, proc_get_context_cb, NULL, 0 }
+/*48*/ { "context",                   TOUCHSCREEN_DIR, proc_get_context_cb, NULL, 0 },
+
+#ifdef PLAY_DEBUG_SOUND
+/*49*/ { "debug-sound",               CHUMBY_DIR,      proc_get_debug_sound_cb, proc_set_debug_sound_cb, 0 }
+#endif
+
          // 64 entries total -- if you need more have to update 
          // "struct proc_dir_entry* proc_files[ 64 ];" in chumby-tsc2100.h 
 };
@@ -3812,6 +3902,9 @@ static void __exit chumby_tsc2100_exit(void)
     proc_exit(tsc2100_devdata);
     alsa_audio_exit();
     touchscreen_exit();
+    #ifdef PLAY_DEBUG_SOUND
+    tsc2100_debug_sound_done();
+    #endif
     printk(KERN_INFO "Chumby TI-TSC2100 ALSA Audio and TouchScreen Driver removed\n");
 }
 

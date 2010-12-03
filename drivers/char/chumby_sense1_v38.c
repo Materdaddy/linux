@@ -475,8 +475,13 @@ static int __init chumby_sense1_init(void)
 	// the clock frequency into the block (perclk) is derived from the same clock that the UART clock comes from
 	// which is 16 MHz (15.9MHz exactly).
 	// divide by 2, which gives 8 MHz
+	// prescale by another 2 which gives 4 MHz
 	// so to achive a period of 122Hz, set PWMP to 65536
 	PWMC = 0x00010000;  // disable and reset, set clock
+	while( PWMC & 0x00010000 ) {
+	  ; // wait for reset to clear
+	}
+	PWMC = 0x00000200; // set a /4 prescaler
 	PWMP = 0xFFFC;      // set to 65534 ... so that 65535 written into the device forces continuous all-on
 
 	////////// LCD power on code

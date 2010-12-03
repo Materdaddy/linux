@@ -2278,7 +2278,7 @@ hub_port_init (struct usb_hub *hub, struct usb_device *udev, int port1,
 					USB_REQ_GET_DESCRIPTOR, USB_DIR_IN,
 					USB_DT_DEVICE << 8, 0,
 					buf, GET_DESCRIPTOR_BUFSIZE,
-					(i ? USB_CTRL_GET_TIMEOUT : 1000));
+					USB_CTRL_GET_TIMEOUT/* GRH 4/7/2008 -- (i ? USB_CTRL_GET_TIMEOUT : 1000)*/);
 				switch (buf->bMaxPacketSize0) {
 				case 8: case 16: case 32: case 64:
 					if (buf->bDescriptorType ==

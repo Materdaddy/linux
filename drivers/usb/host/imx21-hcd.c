@@ -48,7 +48,8 @@
 //#define DEBUG
 #define GRH_DBUG_PRINTK
 
-#define CONFIG_USE_ZERO_COPY_TRANSFER   1
+// GRH 3/25/2008 -- the zero copy feature broke the USB-to-Ethernet adapters
+//#define CONFIG_USE_ZERO_COPY_TRANSFER   1
 
 #define TD_MAX_FREE_COUNT   32
 #define URB_MAX_FREE_COUNT  32
@@ -64,9 +65,13 @@
         dbug_printk("%ld.%ld-%s().%d: " fmt,                                   \
                     now.tv_sec, now.tv_usec, __FUNCTION__, __LINE__, ## args); \
     } while ( 0 )
+#  define ISO_DBG   DBG
+#  define NONISO_DBG(stuff...) DBG
 //#  define DEBUG_ALL
 #else
 #  define DBG(stuff...) do {} while(0)
+#  define ISO_DBG(stuff...) do {} while(0)
+#  define NONISO_DBG(stuff...) do {} while(0)
 #endif
 #define ERR(fmt, args...)   \
             printk(KERN_ERR "ERROR!!! %s/%s().%d: " fmt, \
@@ -325,13 +330,15 @@ static void free_epdmem(struct imx21 *imx21, struct usb_host_endpoint *ep)
 
 static void free_urb(struct imx21 *imx21, urb_priv_t *urbp)
 {
-    if (imx21->urb_free_count >= URB_MAX_FREE_COUNT) {
-        kfree(urbp);
-        return;
+    if (urbp != NULL) {
+        if (imx21->urb_free_count >= URB_MAX_FREE_COUNT) {
+            kfree(urbp);
+            return;
+        }
+        urbp->next = imx21->urb_free_list;
+        imx21->urb_free_list = urbp;
+        imx21->urb_free_count++;
     }
-    urbp->next = imx21->urb_free_list;
-    imx21->urb_free_list = urbp;
-    imx21->urb_free_count++;
 }
 
 
@@ -426,8 +433,12 @@ static void schedule_iso_etds(struct usb_hcd *hcd, struct usb_host_endpoint *ep)
         }
 
         td = list_entry(ep_priv->td_list.next, td_t, list);
+        if (td->urb->hcpriv == NULL) {
+            continue;
+        }
         maxpacket = usb_maxpacket(td->urb->dev, td->urb->pipe, 
                                   usb_pipeout(td->urb->pipe));
+
         td->buf_addr = alloc_dmem(imx21, maxpacket, ep);
         if (td->buf_addr < 0) {
             ERR("no memory\n");
@@ -452,16 +463,15 @@ static void schedule_iso_etds(struct usb_hcd *hcd, struct usb_host_endpoint *ep)
             ushort max_interval = td->urb->interval * NUM_ISO_ETDS;
             ushort delta = next_frame - this_frame;
 
-            if (delta > (max_interval + NUM_ISO_ETDS)) {
-                DBG("urb=%lx, delta=%u, max_interval=%u, this_frame=%x, next_frame=%x, last_frame=%x\n",
-                    td->urb, delta, max_interval, this_frame, next_frame, ep_priv->last_frame);
+            ISO_DBG("urb=%lx, delta=%u, max_interval=%u, this_frame=%x, next_frame=%x, last_frame=%x\n",
+                td->urb, delta, max_interval, this_frame, next_frame, ep_priv->last_frame);
+            if (delta > (max_interval + NUM_ISO_ETDS))
                 next_frame = this_frame + td->urb->interval;
-            }
             td->urb->start_frame = next_frame;
             ep_priv->last_frame = next_frame;
         }
 
-        DBG("%d:%d:%d] urb=%lx, etd=%d, buf=%x, len=%x, maxpacket=%x, frame=%x (curframe=%x)\n",
+        ISO_DBG("%d:%d:%d] urb=%lx, etd=%d, td=%x, buf=%x, len=%x, maxpacket=%x, frame=%x (curframe=%x)\n",
             usb_pipedevice(td->urb->pipe),
             usb_pipeendpoint(td->urb->pipe),
             usb_pipeout(td->urb->pipe),
@@ -674,7 +684,7 @@ static int schedule_noniso_etd(struct imx21 *imx21, struct urb *urb, int state)
             usb_pipeout(pipe),
             urb, interval, relpolpos); 
     }
-    
+
     DBG("%d:%d:%d.%d] urb=%lx, etd=%d, cntrl=%d, state=%d, dir=%d, speed=%d, buf=%x, len=%x, maxpacket=%x\n",
         usb_pipedevice(pipe),
         usb_pipeendpoint(pipe),
@@ -936,8 +946,8 @@ iso_etd_done(struct usb_hcd *hcd, struct urb *urb,
         cc = TD_CC_NOERROR;
     }
 
-    if (cc || bytes_xfrd < 0x100) {
-        DBG("frame=%x, cc=%x, bytes_xfrd=%x\n", 
+    if (cc /*|| bytes_xfrd < 0x100*/) {
+        ISO_DBG("frame=%x, cc=%x, bytes_xfrd=%x\n", 
             etd_addr[2] & 0xffff, cc, bytes_xfrd);
     }
 
@@ -961,7 +971,7 @@ iso_etd_done(struct usb_hcd *hcd, struct urb *urb,
     etd->urb = NULL;
     etd->ep = NULL;
 
-    DBG("%d:%d:%d] urb=%lx, etd=%d, actlen=%x, xfrlen=%x, buf_addr=%x, xferd=%x, cc=%x, last=%d, iso_index=%d, frame=%x\n",
+    ISO_DBG("%d:%d:%d] urb=%lx, etd=%d, actlen=%x, xfrlen=%x, buf_addr=%x, xferd=%x, cc=%x, last=%d, iso_index=%d, frame=%x\n",
         usb_pipedevice(urb->pipe),
         usb_pipeendpoint(urb->pipe),
         usb_pipeout(urb->pipe),
@@ -1071,6 +1081,7 @@ static int imx21_hc_urb_enqueue_isoc(struct usb_hcd *hcd,
     td_t *td = NULL;
     int i;
 
+    ISO_DBG("urb=%p iso=%d\n", urb, usb_pipeisoc(urb->pipe));
     spin_lock_irqsave(&imx21->lock, flags);
     urb_priv = alloc_urb(imx21, mem_flags);
     if (urb_priv == NULL) {
@@ -1081,7 +1092,7 @@ static int imx21_hc_urb_enqueue_isoc(struct usb_hcd *hcd,
 
     if (ep->hcpriv == NULL) {
         ep_priv = alloc_mem(imx21, sizeof(ep_priv_t), mem_flags);
-        //DBG("ep=%p, ep->hcpriv=%p, new ep_priv=%p\n", ep, ep->hcpriv, ep_priv);
+        //ISO_DBG("ep=%p, ep->hcpriv=%p, new ep_priv=%p\n", ep, ep->hcpriv, ep_priv);
         if (ep_priv == NULL) {
             ERR("Out of memory!\n");
             free_urb(imx21, urb_priv);
@@ -1108,7 +1119,7 @@ static int imx21_hc_urb_enqueue_isoc(struct usb_hcd *hcd,
                 imx21->etd[ep_priv->etd[i]].ep = ep;
                 imx21->etd[ep_priv->etd[i]].urb = NULL;
                 imx21->etd[ep_priv->etd[i]].td = NULL;
-                //DBG("urb=%p, ep_priv=%p, new etd ep_priv->etd[%d]=%d\n", 
+                //ISO_DBG("urb=%p, ep_priv=%p, new etd ep_priv->etd[%d]=%d\n", 
                 //    urb, ep_priv, i, ep_priv->etd[i]); 
             }
         }
@@ -1150,7 +1161,7 @@ static int imx21_hc_urb_enqueue_isoc(struct usb_hcd *hcd,
         td->len = urb->iso_frame_desc[i].length;
         td->iso_index = i;
 
-        td->dma = urb->transfer_flags & URB_NO_TRANSFER_DMA_MAP;
+        td->dma = (urb->transfer_flags & URB_NO_TRANSFER_DMA_MAP) == 0;
         if (td->dma) {
             td->data = (void *)((unsigned long)urb->transfer_dma + 
                                 urb->iso_frame_desc[i].offset);
@@ -1160,7 +1171,7 @@ static int imx21_hc_urb_enqueue_isoc(struct usb_hcd *hcd,
         }
 
         list_add_tail(&td->list, &ep_priv->td_list);
-        DBG("%d:%d:%d] urb=%lx, td=%lx, len=%x, iso_index=%d, flags=%x, interval=%d, offset=%x\n", 
+        ISO_DBG("%d:%d:%d] urb=%lx, td=%lx, len=%x, iso_index=%d, flags=%x, interval=%d, offset=%x\n", 
             usb_pipedevice(urb->pipe),
             usb_pipeendpoint(urb->pipe),
             usb_pipeout(urb->pipe),
@@ -1188,11 +1199,11 @@ static int imx21_hc_urb_enqueue(struct usb_hcd *hcd,
     unsigned long flags;
     ep_priv_t *ep_priv;
 
-    DBG("urb=%p iso=%d\n", urb, usb_pipeisoc(urb->pipe));
     if (usb_pipeisoc(urb->pipe)) {
         return imx21_hc_urb_enqueue_isoc(hcd, ep, urb, mem_flags);
     }
 
+    DBG("urb=%p iso=%d\n", urb, usb_pipeisoc(urb->pipe));
     imx21 = hcd_to_imx21(hcd);
     spin_lock_irqsave(&imx21->lock, flags);
     urb_priv = alloc_urb(imx21, mem_flags);
