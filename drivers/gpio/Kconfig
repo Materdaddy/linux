@@ -111,6 +111,14 @@ config GPIO_PCA953X
 	  This driver can also be built as a module.  If so, the module
 	  will be called pca953x.
 
+config GPIO_PCA953X_GENERIC_IRQ
+	bool "Generic IRQ support for PCA953X"
+	depends on GPIO_PCA953X=y && GENERIC_HARDIRQS
+	help
+	  Say yes here to support the Generic IRQ for the PCA953X on-chip
+	  GPIO lines. Only pin-changed IRQs (IRQ_TYPE_EDGE_BOTH) are
+	  supported in hardware.
+
 config GPIO_PCF857X
 	tristate "PCF857x, PCA{85,96}7x, and MAX732[89] I2C GPIO expanders"
 	depends on I2C

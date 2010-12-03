@@ -44,6 +44,7 @@
     defined(CONFIG_MACH_MAINSTONE) ||\
     defined(CONFIG_MACH_ZYLONITE) ||\
     defined(CONFIG_MACH_LITTLETON) ||\
+    defined(CONFIG_MACH_ZYLONITE2) ||\
     defined(CONFIG_ARCH_VIPER)
 
 #include <asm/mach-types.h>
@@ -527,8 +528,7 @@ struct smc_local {
  * as RX which can overrun memory and lose packets.
  */
 #include <linux/dma-mapping.h>
-#include <asm/dma.h>
-#include <mach/pxa-regs.h>
+#include <mach/dma.h>
 
 #ifdef SMC_insl
 #undef SMC_insl

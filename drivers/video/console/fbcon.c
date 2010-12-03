@@ -3499,7 +3499,7 @@ static void fbcon_start(void)
 
 		acquire_console_sem();
 
-		for (i = FB_MAX-1; i >= 0; i--) {
+		for (i = 0; i < FB_MAX; i++) {
 			if (registered_fb[i] != NULL) {
 				info_idx = i;
 				break;

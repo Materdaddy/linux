@@ -32,14 +32,13 @@
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
 
+#include <mach/pxa27x.h>
 #include <mach/audio.h>
 #include <mach/palmtx.h>
 #include <mach/mmc.h>
 #include <mach/pxafb.h>
-#include <mach/pxa-regs.h>
-#include <mach/mfp-pxa27x.h>
 #include <mach/irda.h>
-#include <mach/pxa27x_keypad.h>
+#include <plat/pxa27x_keypad.h>
 #include <mach/udc.h>
 
 #include "generic.h"

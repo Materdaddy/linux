@@ -1168,8 +1168,8 @@ static int wm8753_i2s_hw_params(struct snd_pcm_substream *substream,
 	/* is digital filter coefficient valid ? */
 	coeff = get_coeff(wm8753->sysclk, params_rate(params));
 	if (coeff < 0) {
-		printk(KERN_ERR "wm8753 invalid MCLK or rate\n");
-		return coeff;
+		//printk(KERN_ERR "wm8753 invalid MCLK or rate\n");
+		//return coeff;
 	}
 	wm8753_write(codec, WM8753_SRATE1, srate | (coeff_div[coeff].sr << 1) |
 		coeff_div[coeff].usb);
@@ -1277,11 +1277,11 @@ static int wm8753_set_bias_level(struct snd_soc_codec *codec,
 	switch (level) {
 	case SND_SOC_BIAS_ON:
 		/* set vmid to 50k and unmute dac */
-		wm8753_write(codec, WM8753_PWR1, pwr_reg | 0x00c0);
+		wm8753_write(codec, WM8753_PWR1, pwr_reg | 0x00e0);
 		break;
 	case SND_SOC_BIAS_PREPARE:
 		/* set vmid to 5k for quick power up */
-		wm8753_write(codec, WM8753_PWR1, pwr_reg | 0x01c1);
+		wm8753_write(codec, WM8753_PWR1, pwr_reg | 0x01e1);
 		break;
 	case SND_SOC_BIAS_STANDBY:
 		/* mute dac and set vmid to 500k, enable VREF */
@@ -1602,8 +1602,10 @@ static int wm8753_init(struct snd_soc_device *socdev)
 	reg = wm8753_read_reg_cache(codec, WM8753_ROUT2V);
 	wm8753_write(codec, WM8753_ROUT2V, reg | 0x0100);
 	reg = wm8753_read_reg_cache(codec, WM8753_LINVOL);
+	reg &= ~ 0x80;
 	wm8753_write(codec, WM8753_LINVOL, reg | 0x0100);
 	reg = wm8753_read_reg_cache(codec, WM8753_RINVOL);
+	reg &= ~ 0x80;
 	wm8753_write(codec, WM8753_RINVOL, reg | 0x0100);
 
 	wm8753_add_controls(codec);

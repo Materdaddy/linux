@@ -40,6 +40,12 @@
  */
 struct sys_timer *system_timer;
 
+#if defined(CONFIG_MACH_CHUMBY_SILVERMOON)
+// bunnie@chumby.com - needed for chumby_timer module
+EXPORT_SYMBOL(system_timer);
+EXPORT_SYMBOL(xtime_lock);
+#endif
+
 #if defined(CONFIG_RTC_DRV_CMOS) || defined(CONFIG_RTC_DRV_CMOS_MODULE)
 /* this needs a better home */
 DEFINE_SPINLOCK(rtc_lock);

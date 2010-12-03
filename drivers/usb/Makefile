@@ -4,6 +4,7 @@
 
 # Object files in subdirectories
 
+obj-$(CONFIG_USB_OTG)		+= otg/
 obj-$(CONFIG_USB)		+= core/
 
 obj-$(CONFIG_USB_MON)		+= mon/
@@ -37,6 +38,3 @@ obj-$(CONFIG_USB)		+= misc/
 
 obj-$(CONFIG_USB_ATM)		+= atm/
 obj-$(CONFIG_USB_SPEEDTOUCH)	+= atm/
-
-obj-$(CONFIG_USB_OTG)		+= otg/
-

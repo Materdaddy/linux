@@ -956,9 +956,9 @@ int jffs2_flash_read(struct jffs2_sb_info *c, loff_t ofs, size_t len, size_t *re
 	ret = c->mtd->read(c->mtd, ofs, len, retlen, buf);
 
 	if ( (ret == -EBADMSG || ret == -EUCLEAN) && (*retlen == len) ) {
-		if (ret == -EBADMSG)
-			printk(KERN_WARNING "mtd->read(0x%zx bytes from 0x%llx)"
-			       " returned ECC error\n", len, ofs);
+		//if (ret == -EBADMSG)
+			//printk(KERN_WARNING "mtd->read(0x%zx bytes from 0x%llx)"
+			 //      " returned ECC error\n", len, ofs);
 		/*
 		 * We have the raw data without ECC correction in the buffer,
 		 * maybe we are lucky and all data or parts are correct. We

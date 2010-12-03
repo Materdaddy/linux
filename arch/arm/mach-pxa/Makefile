@@ -3,8 +3,8 @@
 #
 
 # Common support (must be linked before board specific support)
-obj-y				+= clock.o devices.o generic.o irq.o dma.o \
-				   time.o gpio.o reset.o
+obj-y				+= clock.o devices.o generic.o irq.o \
+				   time.o reset.o
 obj-$(CONFIG_PM)		+= pm.o sleep.o standby.o
 
 ifeq ($(CONFIG_CPU_FREQ),y)
@@ -15,7 +15,6 @@ endif
 
 # Generic drivers that other drivers may depend upon
 obj-$(CONFIG_PXA_SSP)		+= ssp.o
-obj-$(CONFIG_PXA_PWM)		+= pwm.o
 
 # SoC-specific code
 obj-$(CONFIG_PXA25x)		+= mfp-pxa2xx.o pxa2xx.o pxa25x.o

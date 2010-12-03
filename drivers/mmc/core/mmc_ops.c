@@ -19,6 +19,125 @@
 #include "core.h"
 #include "mmc_ops.h"
 
+int mmc_test_bus_width(struct mmc_card *card, int bits)
+{
+	struct mmc_request mrq;
+	struct mmc_command cmd;
+	struct mmc_data data;
+	struct scatterlist sg;
+	int len;
+	u8 test_data_write[8];
+	u8 test_data_read[64];
+	
+	switch (bits) {
+	case 8:
+		test_data_write[0] = 0x55;
+		test_data_write[1] = 0xaa;
+		test_data_write[2] = 0x00;
+		test_data_write[3] = 0x00;
+		test_data_write[4] = 0x00;
+		test_data_write[5] = 0x00;
+		test_data_write[6] = 0x00;
+		test_data_write[7] = 0x00;
+		len = 8;
+		break;
+	case 4:
+		test_data_write[0] = 0x5a;
+		test_data_write[1] = 0x00;
+		test_data_write[2] = 0x00;
+		test_data_write[3] = 0x00;
+		len = 4;
+		break;
+	default:
+		return 0;
+	}
+	
+	memset(&mrq, 0, sizeof(struct mmc_request));
+	memset(&cmd, 0, sizeof(struct mmc_command));
+	memset(&data, 0, sizeof(struct mmc_data));
+	
+	cmd.opcode = MMC_BUSTEST_W;
+	cmd.arg = 0;
+	cmd.flags = MMC_RSP_R1 | MMC_CMD_ADTC;
+	
+	data.flags = MMC_DATA_WRITE;
+	data.blksz = 64;
+	data.blocks = 1;
+	data.sg = &sg;
+	data.sg_len = 1;
+	
+	mrq.cmd = &cmd;
+	mrq.data = &data;
+	
+	sg_init_one(&sg, &test_data_write, 64);
+	
+	/*
+	 * The spec states that MMC_BUSTEST_W and BUSTEST_R accesses have a timeout
+	 * of 64 clock cycles.
+	 */
+	data.timeout_ns = 0;
+	data.timeout_clks = 64;	
+	
+	mmc_wait_for_req(card->host, &mrq);
+
+	if (cmd.error || data.error ) {
+		printk(KERN_INFO "Failed to send CMD19: %d %d\n", cmd.error, data.error);
+		return 0;
+	}
+
+	/* Now read back */
+	memset(&mrq, 0, sizeof(struct mmc_request));
+	memset(&cmd, 0, sizeof(struct mmc_command));
+	memset(&data, 0, sizeof(struct mmc_data));
+	memset (&test_data_read, 0, sizeof(test_data_read));
+	
+	cmd.opcode = MMC_BUSTEST_R;
+	cmd.arg = 0;
+	cmd.flags = MMC_RSP_R1 | MMC_CMD_ADTC;
+	
+	data.flags = MMC_DATA_READ;
+	data.blksz = sizeof(test_data_read);
+	data.blocks = 1;
+	data.sg = &sg;
+	data.sg_len = 1;
+	
+	mrq.cmd = &cmd;
+	mrq.data = &data;
+	
+	sg_init_one(&sg, &test_data_read, sizeof(test_data_read));
+	
+	/*
+	 * The spec states that MMC_BUSTEST_W and BUSTEST_R accesses have a timeout
+	 * of 64 clock cycles.
+	 */
+	data.timeout_ns = 0;
+	data.timeout_clks = 64;	
+	
+	mmc_wait_for_req(card->host, &mrq);	
+	
+	if (cmd.error) {
+		printk(KERN_INFO "Failed to send CMD14: %d %d\n", cmd.error, data.error);
+		return 0;
+	}
+	
+#if 0
+#warning PRINT RESULTS FROM CMD14
+	printk (KERN_INFO "%s: Got %02X %02X %02X %02X\n", __FUNCTION__,
+		test_data_read[0],
+		test_data_read[1],
+		test_data_read[2],
+		test_data_read[3]);
+#endif
+
+	switch (bits) {
+	case 8:
+		return (test_data_read[0] == 0xaa && test_data_read[1] == 0x55);
+	case 4:
+		return (test_data_read[0] == 0xa5);		
+	}
+	return 0;
+}
+
 static int _mmc_select_card(struct mmc_host *host, struct mmc_card *card)
 {
 	int err;
@@ -248,12 +367,15 @@ mmc_send_cxd_data(struct mmc_card *card, struct mmc_host *host,
 
 	sg_init_one(&sg, data_buf, len);
 
-	/*
-	 * The spec states that CSR and CID accesses have a timeout
-	 * of 64 clock cycles.
-	 */
-	data.timeout_ns = 0;
-	data.timeout_clks = 64;
+	if (opcode == MMC_SEND_CSD || opcode == MMC_SEND_CID) {
+		/*
+		 * The spec states that CSR and CID accesses have a timeout
+		 * of 64 clock cycles.
+		 */
+		data.timeout_ns = 0;
+		data.timeout_clks = 64;
+	} else
+		mmc_set_data_timeout(&data, card);
 
 	mmc_wait_for_req(host, &mrq);
 

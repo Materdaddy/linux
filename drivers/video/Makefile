@@ -97,6 +97,10 @@ obj-$(CONFIG_FB_GBE)              += gbefb.o
 obj-$(CONFIG_FB_CIRRUS)		  += cirrusfb.o
 obj-$(CONFIG_FB_ASILIANT)	  += asiliantfb.o
 obj-$(CONFIG_FB_PXA)		  += pxafb.o
+obj-$(CONFIG_FB_PXA168)		  += pxa168fb.o pxa168fb_ovly.o
+obj-$(CONFIG_FB_PXA_CHUMBY)	  += cbp_pxafb.o
+obj-$(CONFIG_FB_PXA168_CHUMBY)	  += cbp_pxa168_fb.o
+obj-$(CONFIG_FB_PXA168_OVERLAY_CHUMBY) += cbp_pxafb_ovly.o
 obj-$(CONFIG_FB_W100)		  += w100fb.o
 obj-$(CONFIG_FB_TMIO)		  += tmiofb.o
 obj-$(CONFIG_FB_AU1100)		  += au1100fb.o
@@ -114,9 +118,6 @@ obj-$(CONFIG_FB_FSL_DIU)	  += fsl-diu-fb.o
 obj-$(CONFIG_FB_COBALT)           += cobalt_lcdfb.o
 obj-$(CONFIG_FB_PNX4008_DUM)	  += pnx4008/
 obj-$(CONFIG_FB_PNX4008_DUM_RGB)  += pnx4008/
-obj-$(CONFIG_FB_MXC)		  += mxc/
-obj-$(CONFIG_FB_CHUMBYFBFW)   += chumbyfbfw.o
-obj-$(CONFIG_FB_STMP37XX)	  += stmp37xxfb.o
 obj-$(CONFIG_FB_IBM_GXT4500)	  += gxt4500.o
 obj-$(CONFIG_FB_PS3)		  += ps3fb.o
 obj-$(CONFIG_FB_SM501)            += sm501fb.o
@@ -141,3 +142,5 @@ obj-$(CONFIG_FB_VIRTUAL)          += vfb.o
 
 #video output switch sysfs driver
 obj-$(CONFIG_VIDEO_OUTPUT_CONTROL) += output.o
+
+obj-$(CONFIG_FB_BROADSHEET)        += broadsheetfb.o

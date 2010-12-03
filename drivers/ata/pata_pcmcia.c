@@ -44,6 +44,11 @@
 #define DRV_NAME "pata_pcmcia"
 #define DRV_VERSION "0.3.3"
 
+#ifdef CONFIG_PXA168_CF
+extern void pxa168_cf_mem_writeb(u8 attr_mem_transfer, u8 val, u32 addr);
+extern u8 pxa168_cf_mem_readb(u8 attr_mem_transfer, u32 addr);
+#endif
+
 /*
  *	Private data structure to glue stuff together
  */
@@ -262,22 +267,49 @@ static int pcmcia_init_one(struct pcmcia_device *pdev)
 		if (pcmcia_loop_config(pdev, pcmcia_check_one_config, stk))
 			goto failed; /* No suitable config found */
 	}
+#ifndef CONFIG_PXA168_CF
 	io_base = pdev->io.BasePort1;
 	ctl_base = stk->ctl_base;
+#else
+	io_base = 0x0;
+	ctl_base = 0x0e;
+#endif
+
+
+#ifndef CONFIG_PXA168_CF
 	CS_CHECK(RequestIRQ, pcmcia_request_irq(pdev, &pdev->irq));
+#endif
 	CS_CHECK(RequestConfiguration, pcmcia_request_configuration(pdev, &pdev->conf));
+#ifdef CONFIG_PXA168_CF
+	pxa168_cf_mem_writeb(1, 0x0, 0x200);
+#endif
 
 	/* iomap */
 	ret = -ENOMEM;
+#ifndef CONFIG_PXA168_CF
 	io_addr = devm_ioport_map(&pdev->dev, io_base, 8);
 	ctl_addr = devm_ioport_map(&pdev->dev, ctl_base, 1);
 	if (!io_addr || !ctl_addr)
 		goto failed;
+#else
+	io_addr = (void *) io_base;
+	ctl_addr = (void *) ctl_base;
+#endif
 
 	/* Success. Disable the IRQ nIEN line, do quirks */
+
+#ifndef CONFIG_PXA168_CF
 	iowrite8(0x02, ctl_addr);
+#else
+	pxa168_cf_mem_writeb(0, 0x02, (u32)ctl_addr);
+#endif
+
 	if (is_kme)
+#ifndef CONFIG_PXA168_CF
 		iowrite8(0x81, ctl_addr + 0x01);
+#else
+		pxa168_cf_mem_writeb(0, 0x81, (u32)(ctl_addr + 0x01));
+#endif
 
 	/* FIXME: Could be more ports at base + 0x10 but we only deal with
 	   one right now */
@@ -301,6 +333,9 @@ static int pcmcia_init_one(struct pcmcia_device *pdev)
 		ap->ops = ops;
 		ap->pio_mask = 1;		/* ISA so PIO 0 cycles */
 		ap->flags |= ATA_FLAG_SLAVE_POSS;
+#ifdef CONFIG_PXA168_CF
+		ap->flags |= ATA_FLAG_PIO_POLLING;
+#endif
 		ap->ioaddr.cmd_addr = io_addr + 0x10 * p;
 		ap->ioaddr.altstatus_addr = ctl_addr + 0x10 * p;
 		ap->ioaddr.ctl_addr = ctl_addr + 0x10 * p;

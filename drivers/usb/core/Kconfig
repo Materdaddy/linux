@@ -104,7 +104,7 @@ config USB_SUSPEND
 
 config USB_OTG
 	bool
-	depends on USB && EXPERIMENTAL
+	depends on USB && EXPERIMENTAL && PM
 	select USB_SUSPEND
 	default n
 

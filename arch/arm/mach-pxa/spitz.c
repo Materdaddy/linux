@@ -42,9 +42,7 @@
 #include <asm/mach/map.h>
 #include <asm/mach/irq.h>
 
-#include <mach/pxa-regs.h>
-#include <mach/pxa2xx-regs.h>
-#include <mach/mfp-pxa27x.h>
+#include <mach/pxa27x.h>
 #include <mach/pxa27x-udc.h>
 #include <mach/reset.h>
 #include <mach/i2c.h>
@@ -53,7 +51,7 @@
 #include <mach/ohci.h>
 #include <mach/udc.h>
 #include <mach/pxafb.h>
-#include <mach/pxa2xx_spi.h>
+#include <plat/pxa2xx_spi.h>
 #include <mach/spitz.h>
 #include <mach/sharpsl.h>
 
@@ -121,6 +119,10 @@ static unsigned long spitz_pin_config[] __initdata = {
 	GPIO94_GPIO,	/* SPITZ_GPIO_CF_CD */
 	GPIO105_GPIO,	/* SPITZ_GPIO_CF_IRQ */
 	GPIO106_GPIO,	/* SPITZ_GPIO_CF2_IRQ */
+
+	/* I2C */
+	GPIO117_I2C_SCL,
+	GPIO118_I2C_SDA,
 
 	GPIO1_GPIO | WAKEUP_ON_EDGE_RISE,
 };

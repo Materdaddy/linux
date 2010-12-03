@@ -15,4 +15,7 @@ struct pca953x_platform_data {
 	int		(*teardown)(struct i2c_client *client,
 				unsigned gpio, unsigned ngpio,
 				void *context);
+#if defined(CONFIG_WLAN_8688_SDIO)
+	int		(*poweron)(void);
+#endif
 };

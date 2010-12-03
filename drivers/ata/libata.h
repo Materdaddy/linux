@@ -207,4 +207,29 @@ extern u8 ata_irq_on(struct ata_port *ap);
 extern void ata_pio_task(struct work_struct *work);
 #endif /* CONFIG_ATA_SFF */
 
+#ifdef CONFIG_PXA168_CF
+extern void pxa168_cf_mem_writeb(u8 attr_mem_transfer, u8 val, u32 addr);
+extern u8 pxa168_cf_mem_readb(u8 attr_mem_transfer, u32 addr);
+extern void pxa168_cf_mem_writew(u8 attr_mem_transfer, u16 val, u32 addr);
+extern u32 pxa168_cf_mem_readw(u8 attr_mem_transfer, u32 addr);
+extern void pxa168_cf_mem_write(u8 attr_mem_transfer, u8* buf, u32 addr, u32 words);
+extern void pxa168_cf_mem_read(u8 attr_mem_transfer, u8* buf, u32 addr, u32 words);
+
+/* XXX needs to be refactored!!! XXX */
+
+#undef ioread8
+#undef iowrite8
+#undef ioread16
+#undef iowrite16
+#undef ioread16_rep
+#undef iowrite16_rep
+
+#define	ioread8(addr) pxa168_cf_mem_readb(0,((u32)addr))
+#define iowrite8(val,addr) pxa168_cf_mem_writeb(0,(val),((u32)addr))
+#define ioread16(addr) pxa168_cf_mem_readw(0,((u32)addr))
+#define iowrite16(buf,addr) pxa168_cf_mem_writew(0,(buf),((u32)addr))
+#define ioread16_rep(addr,buf,words) pxa168_cf_mem_read(0,(buf),((u32)addr),(words))
+#define iowrite16_rep(addr,buf,words) pxa168_cf_mem_write(0,(buf),((u32)addr),(words))
+#endif /* CONFIG_PXA168_CF */
+
 #endif /* __LIBATA_H__ */

@@ -24,6 +24,37 @@ config MMC_PXA
 
 	  If unsure, say N.
 
+config MMC_PXA_SDH
+	tristate "Marvell PXAxxx SD Host Controller support"
+	depends on ARCH_PXA || ARCH_MMP
+	select MMC_SDHCI
+ 	select MMC_SDHCI_IO_ACCESSORS
+	default y if ARCH_MMP
+	help
+	  This selects the Marvell(R) PXAxxx SD Host Controller.
+	  If you have a PXAxxx platform with SD Host Controller and a
+	  Card slot,say Y or M here.
+
+	  If unsure, say N.
+
+config MMC3
+	bool "Marvell MMC3 support"
+	depends on MMC_PXA_SDH && ! MTD_NAND
+	default n
+	help
+	  This selects the Marvell(R) MMC3 Host Controller.
+	  If you have a PXAxxx platform with SD Host Controller and a
+	  Card slot,say Y or M here.
+
+	  If unsure, say N.
+
+config MMC_SDHCI_IO_ACCESSORS
+	bool
+	depends on MMC_SDHCI
+	help
+	  This is silent Kconfig symbol that is selected by the drivers that
+	  need to overwrite SDHCI IO memory accessors.
+
 config MMC_SDHCI
 	tristate "Secure Digital Host Controller Interface support"
 	depends on HAS_DMA
@@ -157,58 +188,13 @@ config MMC_SPI
 	select CRC7
 	select CRC_ITU_T
 	help
-	  Some systems accss MMC/SD/SDIO cards using a SPI controller
+	  Some systems access MMC/SD/SDIO cards using a SPI controller
 	  instead of using a "native" MMC/SD/SDIO controller.  This has a
 	  disadvantage of being relatively high overhead, but a compensating
 	  advantage of working on many systems without dedicated MMC/SD/SDIO
 	  controllers.
 
 	  If unsure, or if your system has no SPI master driver, say N.
-
-config MMC_MXC
-	tristate "Freescale MXC Multimedia Card Interface support"
-	depends on ARCH_MXC && MMC
-	help
-	  This selects the Freescale MXC Multimedia card Interface.
-	  If you have a MXC platform with a Multimedia Card slot,
-	  say Y or M here.
-
-config MMC_IMX_ESDHCI
-	tristate "Freescale i.MX Secure Digital Host Controller Interface support"
-	depends on ARCH_MXC && MMC
-	help
-	  This selects the Freescale i.MX Multimedia card Interface.
-	  If you have a i.MX platform with a Multimedia Card slot,
-	  say Y or M here.
-
-	  If unsure, say N.
-
-config MMC_IMX_ESDHCI_SELECT2
-	bool "Enable second ESDHCI port"
-	depends on MMC_IMX_ESDHCI && ARCH_MX25
-	default n
-	help
-	  Enable the second ESDHC port
-
-config MMC_IMX_ESDHCI_PIO_MODE
-	bool "Freescale i.MX Secure Digital Host Controller Interface PIO mode"
-	depends on MMC_IMX_ESDHC != n
-	default n
-	help
-	  This set the Freescale i.MX Multimedia card Interface to PIO mode.
-	  If you have a i.MX platform with a Multimedia Card slot,
-	  and want test it with PIO mode.
-	  say Y here.
-
-	  If unsure, say N.
-
-config MMC_STMP3XXX
-	tristate "STMP37xx/378x MMC support"
-	depends on MMC && ARCH_STMP3XXX
-	help
-	  Select Y if you would like to access STMP37xx/378x MMC support.
-
-	  If unsure, say N.
 
 config MMC_S3C
 	tristate "Samsung S3C SD/MMC Card Interface support"
@@ -227,7 +213,6 @@ config MMC_SDRICOH_CS
 	help
 	  Say Y here if your Notebook reports a Ricoh Bay1Controller PCMCIA
 	  card whenever you insert a MMC or SD card into the card slot.
-	  say Y or M here.
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called sdricoh_cs.

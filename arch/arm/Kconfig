@@ -421,12 +421,11 @@ config ARCH_MV78XX0
 
 config ARCH_MXC
 	bool "Freescale MXC/iMX-based"
-	select ARCH_MTD_XIP
 	select GENERIC_TIME
 	select GENERIC_CLOCKEVENTS
-#	select GENERIC_GPIO
-#	select ARCH_REQUIRE_GPIOLIB
-	select ZONE_DMA
+	select ARCH_MTD_XIP
+	select GENERIC_GPIO
+	select ARCH_REQUIRE_GPIOLIB
 	help
 	  Support for Freescale MXC/iMX-based family of processors
 
@@ -455,12 +454,27 @@ config ARCH_PXA
 	select ARCH_MTD_XIP
 	select GENERIC_GPIO
 	select HAVE_CLK
+	select COMMON_CLKDEV
 	select ARCH_REQUIRE_GPIOLIB
 	select GENERIC_TIME
 	select GENERIC_CLOCKEVENTS
 	select TICK_ONESHOT
+	select PLAT_PXA
 	help
 	  Support for Intel/Marvell's PXA2xx/PXA3xx processor line.
+
+config ARCH_MMP
+	bool "Marvell PXA168"
+	depends on MMU
+	select GENERIC_GPIO
+	select ARCH_REQUIRE_GPIOLIB
+	select HAVE_CLK
+	select COMMON_CLKDEV
+	select GENERIC_CLOCKEVENTS
+	select TICK_ONESHOT
+	select PLAT_PXA
+	help
+	  Support for Marvell's PXA168 processor line.
 
 config ARCH_RPC
 	bool "RiscPC"
@@ -550,16 +564,6 @@ config ARCH_MSM
 	  interface to the ARM9 modem processor which runs the baseband stack
 	  and controls some vital subsystems (clock and power control, etc).
 
-config ARCH_STMP3XXX
-	bool "SigmaTel STMP3xxx"
-	select ISA
-	select GENERIC_TIME
-	select GENERIC_CLOCKEVENTS
-	select GENERIC_GPIO
-	select USB_ARCH_HAS_EHCI
-	help
-	  Support for systems based on the SigmaTel 3xxx CPUs.
-
 endchoice
 
 source "arch/arm/mach-clps711x/Kconfig"
@@ -587,6 +591,9 @@ source "arch/arm/mach-loki/Kconfig"
 source "arch/arm/mach-mv78xx0/Kconfig"
 
 source "arch/arm/mach-pxa/Kconfig"
+source "arch/arm/plat-pxa/Kconfig"
+
+source "arch/arm/mach-mmp/Kconfig"
 
 source "arch/arm/mach-sa1100/Kconfig"
 
@@ -638,8 +645,6 @@ source "arch/arm/mach-ks8695/Kconfig"
 
 source "arch/arm/mach-msm/Kconfig"
 
-source "arch/arm/mach-stmp3xxx/Kconfig"
-
 # Definitions to make life easier
 config ARCH_ACORN
 	bool
@@ -650,12 +655,15 @@ config PLAT_IOP
 config PLAT_ORION
 	bool
 
+config PLAT_PXA
+	bool
+
 source arch/arm/mm/Kconfig
 
 config IWMMXT
 	bool "Enable iWMMXt support"
-	depends on CPU_XSCALE || CPU_XSC3
-	default y if PXA27x || PXA3xx
+	depends on CPU_XSCALE || CPU_XSC3 || CPU_MOHAWK
+	default y if PXA27x || PXA3xx || ARCH_MMP
 	help
 	  Enable support for iWMMXt context switching at run time if
 	  running on a CPU that supports it.
@@ -670,37 +678,15 @@ if !MMU
 source "arch/arm/Kconfig-nommu"
 endif
 
-config ARM_ERRATA_364296
-	bool "Enable partial low interrupt latency mode for ARM1136"
-	depends on CPU_V6 && !SMP
-	default n
-	help
-	  This options enables the workaround for the 364296 ARM1136
-	  r0pX errata (possible cache data corruption with
-	  hit-under-miss enabled). It sets the undocumented bit 31 in
-	  the auxiliary control register and the FI bit in the control
-	  register, thus disabling hit-under-miss without putting the
-	  processor into full low interrupt latency mode. ARM11MPCore
-	  is not affected.
-
-config ARM_ERRATA_411920
-	bool "Workaround for the global I cache invalidation on ARM1136"
-	depends on CPU_V6 && !SMP
-	default n
-	help
-	  Invalidation of the Instruction Cache operation can
-	  fail. This Erratum is present in 1136, 1156 and 1176. It
-	  does not affect the MPCore. This option enables the ARM Ltd.
-	  recommended workaround.
-
 endmenu
 
 source "arch/arm/common/Kconfig"
 
 config FORCE_MAX_ZONEORDER
 	int
-	depends on SA1111
-	default "9"
+	depends on SA1111 || ARCH_MMP
+	default "9" if SA1111
+	default "15" if ARCH_MMP
 
 menu "Bus support"
 
@@ -726,7 +712,7 @@ config ISA_DMA_API
 	bool
 
 config PCI
-	bool "PCI support" if ARCH_INTEGRATOR_AP || ARCH_VERSATILE_PB || ARCH_IXP4XX || ARCH_KS8695 || MACH_ARMCORE
+	bool "PCI support" if ARCH_INTEGRATOR_AP || ARCH_VERSATILE_PB || ARCH_IXP4XX || ARCH_KS8695 || MACH_ARMCORE || ARCH_MMP
 	help
 	  Find out whether you have a PCI motherboard. PCI is the name of a
 	  bus system, i.e. the way the CPU talks to the other stuff inside
@@ -912,7 +898,7 @@ config LEDS
 		   ARCH_OMAP || ARCH_P720T || ARCH_PXA_IDP || \
 		   ARCH_SA1100 || ARCH_SHARK || ARCH_VERSATILE || \
 		   ARCH_AT91 || ARCH_DAVINCI || \
-		   ARCH_KS8695 || MACH_RD88F5182 || ARCH_MXC
+		   ARCH_KS8695 || MACH_RD88F5182
 	help
 	  If you say Y here, the LEDs on your machine will be used
 	  to provide useful information about your current system status.
@@ -1073,7 +1059,7 @@ endmenu
 
 menu "CPU Power Management"
 
-if (ARCH_SA1100 || ARCH_INTEGRATOR || ARCH_OMAP || ARCH_IMX || ARCH_PXA || ARCH_MXC || ARCH_STMP3XXX)
+if (ARCH_SA1100 || ARCH_INTEGRATOR || ARCH_OMAP || ARCH_IMX || ARCH_PXA)
 
 source "drivers/cpufreq/Kconfig"
 
@@ -1112,12 +1098,6 @@ config CPU_FREQ_PXA
 	depends on CPU_FREQ && ARCH_PXA && PXA25x
 	default y
 	select CPU_FREQ_DEFAULT_GOV_USERSPACE
-
-config CPU_FREQ_IMX
-         tristate "CPUfreq driver for i.MX CPUs"
-         depends on ARCH_MXC && CPU_FREQ && REGULATOR
-         help
-           This enables the CPUfreq driver for i.MX CPUs.
 
 endif
 
@@ -1216,6 +1196,62 @@ source "kernel/power/Kconfig"
 config ARCH_SUSPEND_POSSIBLE
 	def_bool y
 
+config PM_PXA168
+	bool "PXA168 PM support (hibernate)"
+	depends on PM && CPU_PXA168
+	default y
+	help
+	  Say 'Y' here if you want hibernate support
+
+config PM_PXA910
+	bool "PXA910 PM support"
+	depends on PM && CPU_PXA910
+	default y
+	help
+	  Say 'Y' here if you want low power mode support
+
+config DVFM
+	bool "DVFM support"
+	depends on PM
+	default y
+	help
+	  Say 'Y' here if you want Dynamic Voltage and Frequency Management
+
+config DVFM_PXA168
+	bool "PXA168 DVFM support"
+	depends on DVFM && CPU_PXA168
+	default y
+	help
+	  Say 'Y' here if you want DVFM on PXA168 processor
+
+config DVFM_PXA910
+	bool "PXA910 DVFM support"
+	depends on DVFM && CPU_PXA910
+	default y
+	help
+	  Say 'Y' here if you want DVFM on PXA910 processor
+
+config MSPM
+	bool "Marvell Scalable Power Management support"
+	depends on DVFM_PXA168 || DVFM_PXA910
+	default y
+	help
+	  Say 'Y' here if you want Marvell Scalable Power Management
+
+config MSPM_PXA168
+	bool "PXA168 MSPM support"
+	depends on MSPM && DVFM_PXA168 && PM_PXA168
+	default y
+	help
+	  Say 'Y' here if you want Marvell Scalable Power Management
+
+config MSPM_PXA910
+	bool "PXA910 MSPM support"
+	depends on MSPM && DVFM_PXA910 && PM_PXA910
+	default y
+	help
+	  Say 'Y' here if you want Marvell Scalable Power Management
+
 endmenu
 
 source "net/Kconfig"
@@ -1266,8 +1302,6 @@ source "drivers/char/Kconfig"
 
 source "drivers/i2c/Kconfig"
 
-source "drivers/i2c-slave/Kconfig"
-
 source "drivers/spi/Kconfig"
 
 source "drivers/gpio/Kconfig"
@@ -1308,6 +1342,8 @@ source "drivers/accessibility/Kconfig"
 
 source "drivers/leds/Kconfig"
 
+source "drivers/switch/Kconfig"
+
 source "drivers/rtc/Kconfig"
 
 source "drivers/dma/Kconfig"
@@ -1319,10 +1355,6 @@ source "drivers/auxdisplay/Kconfig"
 source "drivers/regulator/Kconfig"
 
 source "drivers/uio/Kconfig"
-
-if ARCH_MXC
-source "drivers/mxc/Kconfig"
-endif
 
 endmenu
 

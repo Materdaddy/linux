@@ -35,15 +35,15 @@
 
 #include <asm/setup.h>
 #include <asm/mach-types.h>
-#include <mach/pxa2xx-regs.h>
-#include <mach/mfp-pxa25x.h>
+
+#include <mach/pxa25x.h>
 #include <mach/reset.h>
 #include <mach/irda.h>
 #include <mach/i2c.h>
 #include <mach/mmc.h>
 #include <mach/udc.h>
 #include <mach/tosa_bt.h>
-#include <mach/pxa2xx_spi.h>
+#include <plat/pxa2xx_spi.h>
 
 #include <asm/mach/arch.h>
 #include <mach/tosa.h>

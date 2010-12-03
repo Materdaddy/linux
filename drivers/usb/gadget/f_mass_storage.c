@@ -81,6 +81,9 @@
 
 /*-------------------------------------------------------------------------*/
 
+static char vendor_id[] = "Android   ";
+static char product_disk_id[] = "File-Stor Gadget";
+
 #define DRIVER_NAME		"usb_mass_storage"
 #define MAX_LUNS		8
 
@@ -680,6 +683,14 @@ static int fsg_function_setup(struct usb_function *f,
 			"%02x.%02x v%04x i%04x l%u\n",
 			ctrl->bRequestType, ctrl->bRequest,
 			le16_to_cpu(ctrl->wValue), w_index, w_length);
+
+	/* Respond with data/status or defer until later? */
+	if (value >= 0 && value != DELAYED_STATUS) {
+		value = min(value, w_length);
+		cdev->req->length = value;
+		cdev->req->zero = value < w_length;
+		value = usb_ep_queue(cdev->gadget->ep0, cdev->req, GFP_KERNEL);
+	}
 	return value;
 }
 
@@ -1485,6 +1496,37 @@ static int write_zero(struct fsg_dev *fsg)
 	return 0;
 }
 #endif
+static int pad_with_zeros(struct fsg_dev *fsg)
+{
+	struct fsg_buffhd       *bh = fsg->next_buffhd_to_fill;
+	u32	nkeep = bh->inreq->length;
+	u32	nsend;
+	int rc;
+
+	bh->state = BUF_STATE_EMPTY;   // For the first iteration
+	fsg->usb_amount_left = nkeep + fsg->residue;
+	while (fsg->usb_amount_left > 0) {
+
+		/* Wait for the next buffer to be free */
+		while (bh->state != BUF_STATE_EMPTY) {
+				rc = sleep_thread(fsg);
+				if (rc)
+					return rc;
+			}
+
+			nsend = min(fsg->usb_amount_left, (u32) 16384);
+			memset(bh->buf + nkeep, 0, nsend - nkeep);
+			bh->inreq->length = nsend;
+			bh->inreq->zero = 0;
+			start_transfer(fsg, fsg->bulk_in, bh->inreq,
+								&bh->inreq_busy, &bh->state);
+			bh = fsg->next_buffhd_to_fill = bh->next;
+			fsg->usb_amount_left -= nsend;
+			nkeep = 0;
+	}
+	return 0;
+}
+
 
 static int throw_away_data(struct fsg_dev *fsg)
 {
@@ -1560,9 +1602,12 @@ static int finish_reply(struct fsg_dev *fsg)
 					&bh->inreq_busy, &bh->state);
 			fsg->next_buffhd_to_fill = bh->next;
 		} else {
+#if 0
 			start_transfer(fsg, fsg->bulk_in, bh->inreq,
 					&bh->inreq_busy, &bh->state);
 			fsg->next_buffhd_to_fill = bh->next;
+#endif
+			rc = pad_with_zeros(fsg);
 #if 0
 			/* this is unnecessary, and was causing problems with MacOS */
 			if (bh->inreq->length > 0)
@@ -2886,6 +2931,10 @@ int __init mass_storage_function_add(struct usb_configuration *c, int nluns)
 	fsg->function.setup = fsg_function_setup;
 	fsg->function.set_alt = fsg_function_set_alt;
 	fsg->function.disable = fsg_function_disable;
+
+	fsg->vendor = vendor_id;
+	fsg->product = product_disk_id;
+	fsg->release = 0xffff;
 
 	rc = usb_add_function(c, &fsg->function);
 	if (rc != 0)

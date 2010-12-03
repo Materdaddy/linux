@@ -54,11 +54,11 @@ static int binder_read_proc_proc(
 #define SZ_4M                               0x400000
 #endif
 
-//#ifndef __i386__
-//#define FORBIDDEN_MMAP_FLAGS                (VM_WRITE | VM_EXEC)
-//#else
+#ifndef __i386__
+#define FORBIDDEN_MMAP_FLAGS                (VM_WRITE | VM_EXEC)
+#else
 #define FORBIDDEN_MMAP_FLAGS                (VM_WRITE)
-//#endif
+#endif
 
 #define BINDER_SMALL_BUF_SIZE (PAGE_SIZE * 64)
 
@@ -2676,11 +2676,13 @@ static int binder_mmap(struct file *filp, struct vm_area_struct *vma)
 	if (binder_debug_mask & BINDER_DEBUG_OPEN_CLOSE)
 		printk(KERN_INFO "binder_mmap: %d %lx-%lx (%ld K) vma %lx pagep %lx\n", proc->pid, vma->vm_start, vma->vm_end, (vma->vm_end - vma->vm_start) / SZ_1K, vma->vm_flags, vma->vm_page_prot);
 
+#if 0
 	if (vma->vm_flags & FORBIDDEN_MMAP_FLAGS) {
 		ret = -EPERM;
 		failure_string = "bad vm_flags";
 		goto err_bad_arg;
 	}
+#endif
 	vma->vm_flags = (vma->vm_flags | VM_DONTCOPY) & ~VM_MAYWRITE;
 
 	area = get_vm_area(vma->vm_end - vma->vm_start, VM_IOREMAP);
@@ -2734,7 +2736,9 @@ err_alloc_pages_failed:
 	vfree(proc->buffer);
 err_get_vm_area_failed:
 	mutex_unlock(&binder_lock);
+#if 0
 err_bad_arg:
+#endif
 	printk(KERN_ERR "binder_mmap: %d %lx-%lx %s failed %d\n", proc->pid, vma->vm_start, vma->vm_end, failure_string, ret);
 	return ret;
 }

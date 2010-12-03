@@ -20,6 +20,7 @@
 #include <linux/delay.h>
 #include <linux/platform_device.h>
 #include <linux/clk.h>
+#include <linux/gpio.h>
 #include <linux/spi/spi.h>
 #include <linux/smc91x.h>
 
@@ -34,13 +35,11 @@
 #include <asm/mach/map.h>
 #include <asm/mach/irq.h>
 
-#include <mach/pxa-regs.h>
-#include <mach/mfp-pxa300.h>
-#include <mach/gpio.h>
+#include <mach/pxa300.h>
 #include <mach/pxafb.h>
 #include <mach/ssp.h>
-#include <mach/pxa2xx_spi.h>
-#include <mach/pxa27x_keypad.h>
+#include <plat/pxa2xx_spi.h>
+#include <plat/pxa27x_keypad.h>
 #include <mach/pxa3xx_nand.h>
 #include <mach/littleton.h>
 

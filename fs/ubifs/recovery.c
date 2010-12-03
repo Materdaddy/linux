@@ -343,33 +343,15 @@ int ubifs_write_rcvrd_mst_node(struct ubifs_info *c)
  *
  * This function returns %1 if @offs was in the last write to the LEB whose data
  * is in @buf, otherwise %0 is returned.  The determination is made by checking
- * for subsequent empty space starting from the next min_io_size boundary (or a
- * bit less than the common header size if min_io_size is one).
+ * for subsequent empty space starting from the next @c->min_io_size boundary.
  */
 static int is_last_write(const struct ubifs_info *c, void *buf, int offs)
 {
-	int empty_offs;
-	int check_len;
+	int empty_offs, check_len;
 	uint8_t *p;
 
-	if (c->min_io_size == 1) {
-		check_len = c->leb_size - offs;
-		p = buf + check_len;
-		for (; check_len > 0; check_len--)
-			if (*--p != 0xff)
-				break;
-		/*
-		 * 'check_len' is the size of the corruption which cannot be
-		 * more than the size of 1 node if it was caused by an unclean
-		 * unmount.
-		 */
-		if (check_len > UBIFS_MAX_NODE_SZ)
-			return 0;
-		return 1;
-	}
-
 	/*
-	 * Round up to the next c->min_io_size boundary i.e. 'offs' is in the
+	 * Round up to the next @c->min_io_size boundary i.e. @offs is in the
 	 * last wbuf written. After that should be empty space.
 	 */
 	empty_offs = ALIGN(offs + 1, c->min_io_size);
@@ -392,7 +374,7 @@ static int is_last_write(const struct ubifs_info *c, void *buf, int offs)
  *
  * This function pads up to the next min_io_size boundary (if there is one) and
  * sets empty space to all 0xff. @buf, @offs and @len are updated to the next
- * min_io_size boundary (if there is one).
+ * @c->min_io_size boundary.
  */
 static void clean_buf(const struct ubifs_info *c, void **buf, int lnum,
 		      int *offs, int *len)
@@ -401,11 +383,6 @@ static void clean_buf(const struct ubifs_info *c, void **buf, int lnum,
 
 	lnum = lnum;
 	dbg_rcvry("cleaning corruption at %d:%d", lnum, *offs);
-
-	if (c->min_io_size == 1) {
-		memset(*buf, 0xff, c->leb_size - *offs);
-		return;
-	}
 
 	ubifs_assert(!(*offs & 7));
 	empty_offs = ALIGN(*offs, c->min_io_size);
@@ -425,59 +402,35 @@ static void clean_buf(const struct ubifs_info *c, void **buf, int lnum,
  * @lnum: LEB number of the LEB from which @buf was read
  * @offs: offset from which @buf was read
  *
- * This function scans @buf for more nodes and returns %0 is a node is found and
- * %1 if no more nodes are found.
+ * This function ensures that the corrupted node at @offs is the last thing
+ * written to a LEB. This function returns %1 if more data is not found and
+ * %0 if more data is found.
  */
 static int no_more_nodes(const struct ubifs_info *c, void *buf, int len,
 			int lnum, int offs)
 {
-	int skip, next_offs = 0;
+	struct ubifs_ch *ch = buf;
+	int skip, dlen = le32_to_cpu(ch->len);
 
-	if (len > UBIFS_DATA_NODE_SZ) {
-		struct ubifs_ch *ch = buf;
-		int dlen = le32_to_cpu(ch->len);
-
-		if (ch->node_type == UBIFS_DATA_NODE && dlen >= UBIFS_CH_SZ &&
-		    dlen <= UBIFS_MAX_DATA_NODE_SZ)
-			/* The corrupt node looks like a data node */
-			next_offs = ALIGN(offs + dlen, 8);
+	/* Check for empty space after the corrupt node's common header */
+	skip = ALIGN(offs + UBIFS_CH_SZ, c->min_io_size) - offs;
+	if (is_empty(buf + skip, len - skip))
+		return 1;
+	/*
+	 * The area after the common header size is not empty, so the common
+	 * header must be intact. Check it.
+	 */
+	if (ubifs_check_node(c, buf, lnum, offs, 1, 0) != -EUCLEAN) {
+		dbg_rcvry("unexpected bad common header at %d:%d", lnum, offs);
+		return 0;
 	}
-
-	if (c->min_io_size == 1)
-		skip = 8;
-	else
-		skip = ALIGN(offs + 1, c->min_io_size) - offs;
-
-	offs += skip;
-	buf += skip;
-	len -= skip;
-	while (len > 8) {
-		struct ubifs_ch *ch = buf;
-		uint32_t magic = le32_to_cpu(ch->magic);
-		int ret;
-
-		if (magic == UBIFS_NODE_MAGIC) {
-			ret = ubifs_scan_a_node(c, buf, len, lnum, offs, 1);
-			if (ret == SCANNED_A_NODE || ret > 0) {
-				/*
-				 * There is a small chance this is just data in
-				 * a data node, so check that possibility. e.g.
-				 * this is part of a file that itself contains
-				 * a UBIFS image.
-				 */
-				if (next_offs && offs + le32_to_cpu(ch->len) <=
-				    next_offs)
-					continue;
-				dbg_rcvry("unexpected node at %d:%d", lnum,
-					  offs);
-				return 0;
-			}
-		}
-		offs += 8;
-		buf += 8;
-		len -= 8;
-	}
-	return 1;
+	/* Now we know the corrupt node's length we can skip over it */
+	skip = ALIGN(offs + dlen, c->min_io_size) - offs;
+	/* After which there should be empty space */
+	if (is_empty(buf + skip, len - skip))
+		return 1;
+	dbg_rcvry("unexpected data at %d:%d", lnum, offs + skip);
+	return 0;
 }
 
 /**

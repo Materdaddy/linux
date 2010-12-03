@@ -138,6 +138,18 @@ isl1208_i2c_get_sr(struct i2c_client *client)
 }
 
 static int
+isl1208_i2c_get_intr(struct i2c_client *client)
+{
+	return i2c_smbus_read_byte_data(client, ISL1208_REG_INT);
+}
+
+static int
+isl1208_i2c_set_intr(struct i2c_client *client, u8 intr)
+{
+	return i2c_smbus_write_byte_data(client, ISL1208_REG_INT, intr);
+}
+
+static int
 isl1208_i2c_get_atr(struct i2c_client *client)
 {
 	int atr = i2c_smbus_read_byte_data(client, ISL1208_REG_ATR);
@@ -309,9 +321,9 @@ isl1208_i2c_read_alarm(struct i2c_client *client, struct rtc_wkalrm *alarm)
 	tm->tm_min = bcd2bin(regs[ISL1208_REG_MNA - ISL1208_REG_SCA] & 0x7f);
 	tm->tm_hour = bcd2bin(regs[ISL1208_REG_HRA - ISL1208_REG_SCA] & 0x3f);
 	tm->tm_mday = bcd2bin(regs[ISL1208_REG_DTA - ISL1208_REG_SCA] & 0x3f);
-	tm->tm_mon =
-		bcd2bin(regs[ISL1208_REG_MOA - ISL1208_REG_SCA] & 0x1f) - 1;
+	tm->tm_mon = bcd2bin(regs[ISL1208_REG_MOA - ISL1208_REG_SCA] & 0x1f) - 1;
 	tm->tm_wday = bcd2bin(regs[ISL1208_REG_DWA - ISL1208_REG_SCA] & 0x03);
+	tm->tm_year = 2009; /* any value > 200 to print **** in year */
 
 	return 0;
 }
@@ -378,6 +390,47 @@ isl1208_i2c_set_time(struct i2c_client *client, struct rtc_time const *tm)
 	return 0;
 }
 
+static int
+isl1208_i2c_set_alarm(struct i2c_client *client, struct rtc_wkalrm * alarm)
+{
+	struct rtc_time * tm = &alarm->time;
+	int sr;
+	u8 regs[ISL1208_ALARM_SECTION_LEN] = { 0, };
+
+	regs[ISL1208_REG_SCA - ISL1208_REG_SCA] = bin2bcd(tm->tm_sec) | 0x80;
+	regs[ISL1208_REG_MNA - ISL1208_REG_SCA] = bin2bcd(tm->tm_min) | 0x80;
+	regs[ISL1208_REG_HRA - ISL1208_REG_SCA] = bin2bcd(tm->tm_hour) | 0x80;
+
+	regs[ISL1208_REG_DTA - ISL1208_REG_SCA] = bin2bcd(tm->tm_mday) | 0x80;
+	regs[ISL1208_REG_MOA - ISL1208_REG_SCA] = bin2bcd(tm->tm_mon + 1) | 0x80;
+
+	regs[ISL1208_REG_DWA - ISL1208_REG_SCA] = bin2bcd(tm->tm_wday & 7);
+
+	sr = isl1208_i2c_get_sr(client);
+	if (sr < 0) {
+		dev_err(&client->dev, "%s: reading SR failed\n", __func__);
+		return sr;
+	}
+
+	/* write ALARM registers */
+	sr = isl1208_i2c_set_regs(client, ISL1208_REG_SCA, regs, ISL1208_ALARM_SECTION_LEN);
+	if (sr < 0) {
+		dev_err(&client->dev, "%s: writing ALARM section failed\n",
+			__func__);
+		return sr;
+	}
+
+	/* write INT registers */
+	sr = isl1208_i2c_set_intr(client, 0xc0);
+	if (sr < 0) {
+		dev_err(&client->dev, "%s: writing INT failed\n",
+			__func__);
+		return sr;
+	}
+
+	return 0;
+}
+
 
 static int
 isl1208_rtc_set_time(struct device *dev, struct rtc_time *tm)
@@ -391,12 +444,18 @@ isl1208_rtc_read_alarm(struct device *dev, struct rtc_wkalrm *alarm)
 	return isl1208_i2c_read_alarm(to_i2c_client(dev), alarm);
 }
 
+static int
+isl1208_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alarm)
+{
+	return isl1208_i2c_set_alarm(to_i2c_client(dev), alarm);
+}
+
 static const struct rtc_class_ops isl1208_rtc_ops = {
 	.proc = isl1208_rtc_proc,
 	.read_time = isl1208_rtc_read_time,
 	.set_time = isl1208_rtc_set_time,
 	.read_alarm = isl1208_rtc_read_alarm,
-	/*.set_alarm    = isl1208_rtc_set_alarm, */
+	.set_alarm = isl1208_rtc_set_alarm,
 };
 
 /* sysfs interface */
@@ -462,6 +521,135 @@ isl1208_sysfs_store_usr(struct device *dev,
 static DEVICE_ATTR(usr, S_IRUGO | S_IWUSR, isl1208_sysfs_show_usr,
 		   isl1208_sysfs_store_usr);
 
+static ssize_t
+isl1208_sysfs_show_time(struct device *dev,
+		       struct device_attribute *attr, char *buf)
+{
+	struct rtc_time tm;
+	int ret;
+
+	ret = isl1208_i2c_read_time(to_i2c_client(dev), &tm);
+	if (ret < 0)
+		return ret;
+
+	tm.tm_year += 1900;
+	tm.tm_mon += 1;
+	return sprintf(buf, "%d %d %d %d %d %d\n", tm.tm_year, tm.tm_mon, tm.tm_mday,
+			tm.tm_hour, tm.tm_min, tm.tm_sec);
+}
+
+static ssize_t
+isl1208_sysfs_store_time(struct device *dev,
+			struct device_attribute *attr,
+			const char *buf, size_t count)
+{
+	struct rtc_time tm;
+	struct timespec tv;
+
+	if (sscanf(buf, "%d %d %d %d %d %d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday,
+	    &tm.tm_hour, &tm.tm_min, &tm.tm_sec) != 6)
+		goto err;
+
+	if (tm.tm_year < 2000 || tm.tm_year > 2099)
+		goto err;
+
+	tm.tm_year -= 1900;
+	tm.tm_mon -= 1;
+
+	printk(buf, "%d %d %d %d %d %d\n", tm.tm_year, tm.tm_mon, tm.tm_mday,
+			tm.tm_hour, tm.tm_min, tm.tm_sec);
+
+	tv.tv_nsec = NSEC_PER_SEC >> 1;
+	rtc_tm_to_time(&tm, &tv.tv_sec);
+	do_settimeofday(&tv);
+	dev_info(dev,
+		"setting system clock to "
+		"%d-%02d-%02d %02d:%02d:%02d UTC (%u)\n",
+		tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+		tm.tm_hour, tm.tm_min, tm.tm_sec,
+		(unsigned int) tv.tv_sec);
+
+	return isl1208_i2c_set_time(to_i2c_client(dev), &tm) ? -EIO : count;
+err:
+	printk("wrong format, echo \"year mon day hour min sec\" > time\n");
+	return -EINVAL;
+}
+
+static DEVICE_ATTR(time, S_IRUGO | S_IWUSR, isl1208_sysfs_show_time,
+		   isl1208_sysfs_store_time);
+
+static ssize_t
+isl1208_sysfs_show_alarm(struct device *dev,
+		       struct device_attribute *attr, char *buf)
+{
+	struct rtc_wkalrm alarm;
+	struct rtc_time * tm = &alarm.time;
+	int ret;
+
+	ret = isl1208_i2c_read_alarm(to_i2c_client(dev), &alarm);
+	if (ret < 0)
+		return ret;
+
+	tm->tm_mon += 1;
+	return sprintf(buf, "%d %d %d %d %d %d\n", tm->tm_year, tm->tm_mon, tm->tm_mday,
+			tm->tm_hour, tm->tm_min, tm->tm_sec);
+}
+
+static ssize_t
+isl1208_sysfs_store_alarm(struct device *dev,
+			struct device_attribute *attr,
+			const char *buf, size_t count)
+{
+	struct rtc_wkalrm alarm;
+	struct rtc_time * tm = &alarm.time;
+
+	if (sscanf(buf, "%d %d %d %d %d %d", &tm->tm_year, &tm->tm_mon, &tm->tm_mday,
+	    &tm->tm_hour, &tm->tm_min, &tm->tm_sec) != 6)
+		goto err;
+
+	tm->tm_mon -= 1;
+
+	printk(buf, "%d %d %d %d %d %d\n", tm->tm_year, tm->tm_mon, tm->tm_mday,
+			tm->tm_hour, tm->tm_min, tm->tm_sec);
+
+	return isl1208_i2c_set_alarm(to_i2c_client(dev), &alarm) ? -EIO : count;
+err:
+	printk("wrong format, echo \"year mon day hour min sec\" > alarm\n");
+	return -EINVAL;
+}
+
+static DEVICE_ATTR(alarm, S_IRUGO | S_IWUSR, isl1208_sysfs_show_alarm,
+		   isl1208_sysfs_store_alarm);
+
+static ssize_t
+isl1208_sysfs_show_intr(struct device *dev,
+		       struct device_attribute *attr, char *buf)
+{
+	int ret;
+
+	ret = isl1208_i2c_get_intr(to_i2c_client(dev));
+	if (ret < 0)
+		return ret;
+
+	return sprintf(buf, "%d\n", ret);
+}
+
+static ssize_t
+isl1208_sysfs_store_intr(struct device *dev,
+			struct device_attribute *attr,
+			const char *buf, size_t count)
+{
+	int ret;
+
+	if (sscanf(buf, "%d", &ret) != 1)
+		return -EIO;
+
+	return isl1208_i2c_set_intr(to_i2c_client(dev), ret) ? -EIO: count;
+}
+
+static DEVICE_ATTR(intr, S_IRUGO | S_IWUSR, isl1208_sysfs_show_intr,
+		   isl1208_sysfs_store_intr);
+
 static int
 isl1208_sysfs_register(struct device *dev)
 {
@@ -469,21 +657,42 @@ isl1208_sysfs_register(struct device *dev)
 
 	err = device_create_file(dev, &dev_attr_atrim);
 	if (err)
-		return err;
+		goto err1;
 
 	err = device_create_file(dev, &dev_attr_dtrim);
-	if (err) {
-		device_remove_file(dev, &dev_attr_atrim);
-		return err;
-	}
+	if (err)
+		goto err2;
 
 	err = device_create_file(dev, &dev_attr_usr);
-	if (err) {
-		device_remove_file(dev, &dev_attr_atrim);
-		device_remove_file(dev, &dev_attr_dtrim);
-	}
+	if (err)
+		goto err3;
+
+	err = device_create_file(dev, &dev_attr_time);
+	if (err)
+		goto err4;
+
+	err = device_create_file(dev, &dev_attr_alarm);
+	if (err)
+		goto err5;
+
+	err = device_create_file(dev, &dev_attr_intr);
+	if (err)
+		goto err6;
 
 	return 0;
+
+err6:
+	device_remove_file(dev, &dev_attr_alarm);
+err5:
+	device_remove_file(dev, &dev_attr_time);
+err4:
+	device_remove_file(dev, &dev_attr_usr);
+err3:
+	device_remove_file(dev, &dev_attr_dtrim);
+err2:
+	device_remove_file(dev, &dev_attr_atrim);
+err1:
+	return err;
 }
 
 static int
@@ -558,12 +767,48 @@ static const struct i2c_device_id isl1208_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, isl1208_id);
 
+extern unsigned int pm_sleeptime;	/* In seconds. */
+
+#ifdef CONFIG_PM
+static int isl1208_suspend(struct i2c_client *client, pm_message_t state)
+{
+	struct rtc_wkalrm alarm;
+	struct rtc_time * tm = &alarm.time;
+	int ret = 0;
+	unsigned long time;
+
+	if (pm_sleeptime) {
+		ret = isl1208_i2c_get_sr(client);
+		if ((ret < 0) || (ret & ISL1208_REG_SR_RTCF))
+			return ret;
+		ret = isl1208_i2c_read_time(client, tm);
+		if (ret < 0)
+			return ret;
+		rtc_tm_to_time(tm, &time);
+		time += pm_sleeptime;
+		rtc_time_to_tm(time, tm);
+		ret = isl1208_i2c_set_alarm(client, &alarm);
+	}
+	return ret;
+}
+
+static int isl1208_resume(struct i2c_client *client)
+{
+	return 0;
+}
+#else
+#define isl1208_suspend	NULL
+#define isl1208_resume	NULL
+#endif
+
 static struct i2c_driver isl1208_driver = {
 	.driver = {
 		   .name = "rtc-isl1208",
 		   },
 	.probe = isl1208_probe,
 	.remove = isl1208_remove,
+	.suspend = isl1208_suspend,
+	.resume = isl1208_resume,
 	.id_table = isl1208_id,
 };
 

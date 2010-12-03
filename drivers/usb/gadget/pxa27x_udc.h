@@ -27,6 +27,8 @@
 #include <linux/spinlock.h>
 #include <linux/io.h>
 
+#include <plat/pxausb_common.h>
+
 /*
  * Register definitions
  */
@@ -379,18 +381,7 @@ struct pxa27x_request {
 	struct list_head			queue;
 };
 
-enum ep0_state {
-	WAIT_FOR_SETUP,
-	SETUP_STAGE,
-	IN_DATA_STAGE,
-	OUT_DATA_STAGE,
-	IN_STATUS_STAGE,
-	OUT_STATUS_STAGE,
-	STALL,
-	WAIT_ACK_SET_CONF_INTERF
-};
-
-static char *ep0_state_name[] = {
+char *ep0_state_name[] = {
 	"WAIT_FOR_SETUP", "SETUP_STAGE", "IN_DATA_STAGE", "OUT_DATA_STAGE",
 	"IN_STATUS_STAGE", "OUT_STATUS_STAGE", "STALL",
 	"WAIT_ACK_SET_CONF_INTERF"

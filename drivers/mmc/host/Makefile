@@ -8,13 +8,12 @@ endif
 
 obj-$(CONFIG_MMC_ARMMMCI)	+= mmci.o
 obj-$(CONFIG_MMC_PXA)		+= pxamci.o
+#obj-$(CONFIG_MMC_PXA_SDH)	+= pxa_sdh.o
+obj-$(CONFIG_MMC_PXA_SDH)	+= sdhci-pxa168.o
 obj-$(CONFIG_MMC_IMX)		+= imxmmc.o
 obj-$(CONFIG_MMC_SDHCI)		+= sdhci.o
 obj-$(CONFIG_MMC_SDHCI_PCI)	+= sdhci-pci.o
 obj-$(CONFIG_MMC_RICOH_MMC)	+= ricoh_mmc.o
-obj-$(CONFIG_MMC_IMX_ESDHCI)	+= mx_sdhci.o
-obj-$(CONFIG_MMC_MXC)		+= mxc_mmc.o
-obj-$(CONFIG_MMC_STMP3XXX)	+= stmp3xxx_mmc.o
 obj-$(CONFIG_MMC_WBSD)		+= wbsd.o
 obj-$(CONFIG_MMC_AU1X)		+= au1xmmc.o
 obj-$(CONFIG_MMC_OMAP)		+= omap.o

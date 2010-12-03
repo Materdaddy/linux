@@ -11,6 +11,13 @@ menuconfig INPUT_TOUCHSCREEN
 
 if INPUT_TOUCHSCREEN
 
+config TOUCHSCREEN_ASPEN
+	tristate "Aspen CP-based touchscreen"
+	depends on MACH_CHUMBY_SILVERMOON
+	default y
+	help
+	  There is no help for the weary.
+
 config TOUCHSCREEN_ADS7846
 	tristate "ADS7846/TSC2046 and ADS7843 based touchscreens"
 	depends on SPI_MASTER
@@ -149,47 +156,6 @@ config TOUCHSCREEN_HP7XX
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called jornada720_ts.
-
-config TOUCHSCREEN_MXC
-	tristate "MXC touchscreen input driver"
-	depends on MXC_MC13783_ADC || MXC_MC13892_ADC
-	help
-	  Say Y here if you have an MXC based board with touchscreen
-	  attached to it.
-
-	  If unsure, say N.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called mxc_ts.
-
-config TOUCHSCREEN_IMX_ADC
-	tristate "Freescale i.MX ADC touchscreen input driver"
-	depends on IMX_ADC
-	help
-	  Say Y here if you have a Freescale i.MX based board with a
-	  touchscreen interfaced to the processor's integrated ADC.
-
-	  If unsure, say N.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called imx_adc_ts.
-
-config TOUCHSCREEN_TSC2007
-	tristate "TI Touch Screen Controller Chip TSC2007"
-	depends on ARCH_MX51 || ARCH_MX37 || MACH_MX35_3DS
-	help
-	  If you say yes here you get support for TSC2007 touch screen controller chip.
-	 
-	  This driver can also be built as a module.  If so, the module
-	  will be called tsc2007.
-
-config TOUCHSCREEN_STMP3XXX
-	tristate "STMP3XXX LRADC-based touchscreen"
-	depends on ARCH_STMP3XXX
-	select SERIO
-	help
-	  Say Y here if you want to enable TMP3XXX LRADC-based touchscreen.
-	  module will be called stmp3xxx_ts.
 
 config TOUCHSCREEN_HTCPEN
 	tristate "HTC Shift X9500 touchscreen"
@@ -423,4 +389,34 @@ config TOUCHSCREEN_TOUCHIT213
 	  To compile this driver as a module, choose M here: the
 	  module will be called touchit213.
 
+config TSC2007
+	boolean "TSC2007 chip"
+	depends on I2C && I2C_PXA
+	default n
+	help
+	  TSC2007 touch screen support.
+	  If you say yes here, you support for it.
+
+	  This driver can NOT be built as a module.
+
+config TOUCHSCREEN_SANREMO
+	bool "SANREMO Touchscreen interface support"
+	depends on I2C && I2C_PXA && SANREMO
+	default y
+	help
+	  Say Y here to enable support for the Sanremo touchscreen controller.
+
+config TOUCHSCREEN_MICCO
+	tristate "MICCO based touchscreen"
+	depends on I2C && I2C_PXA && MICCO
+	default y
+	help
+	  Say Y here if you want to enable micco touch driver
+
+config TOUCHSCREEN_MICCO_TIMER
+	tristate "optimize performane using timer"
+	depends on TOUCHSCREEN_MICCO
+	default y
+	help
+	  Say Y here if you want to optimize micco touch performance
 endif

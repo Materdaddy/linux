@@ -60,6 +60,11 @@ enum {
 
 	/* OmniVision sensors: reserved range 250-299 */
 	V4L2_IDENT_OV7670 = 250,
+        V4L2_IDENT_OV7660 = 251,
+        V4L2_IDENT_OV3640 = 252,
+
+	/* NiceSeti sensors: reserved range 300-349  */
+	V4L2_IDENT_SIV120A = 300,
 
 	/* Conexant MPEG encoder/decoders: reserved range 410-420 */
 	V4L2_IDENT_CX23415 = 415,

@@ -135,7 +135,7 @@ static inline int onenand_memory_bbt (struct mtd_info *mtd, struct nand_bbt_desc
  * @param offs		offset in the device
  * @param allowbbt	allow access to bad block table region
  */
-static int onenand_isbad_bbt(struct mtd_info *mtd, loff_t offs, int allowbbt)
+int onenand_isbad_bbt(struct mtd_info *mtd, loff_t offs, int allowbbt)
 {
 	struct onenand_chip *this = mtd->priv;
 	struct bbm_info *bbm = this->bbm;
@@ -191,9 +191,6 @@ int onenand_scan_bbt(struct mtd_info *mtd, struct nand_bbt_descr *bd)
 
 	/* Set erase shift */
 	bbm->bbt_erase_shift = this->erase_shift;
-
-	if (!bbm->isbad_bbt)
-		bbm->isbad_bbt = onenand_isbad_bbt;
 
 	/* Scan the device to build a memory based bad block table */
 	if ((ret = onenand_memory_bbt(mtd, bd))) {

@@ -114,7 +114,7 @@ void __mark_inode_dirty(struct inode *inode, int flags)
 	if ((inode->i_state & flags) == flags)
 		return;
 
-	if (unlikely(block_dump > 1)) {
+	if (unlikely(block_dump)) {
 		struct dentry *dentry = NULL;
 		const char *name = "?";
 

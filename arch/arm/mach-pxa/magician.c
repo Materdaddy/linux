@@ -29,10 +29,9 @@
 #include <mach/hardware.h>
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
+
+#include <mach/pxa27x.h>
 #include <mach/magician.h>
-#include <mach/mfp-pxa27x.h>
-#include <mach/pxa-regs.h>
-#include <mach/pxa2xx-regs.h>
 #include <mach/pxafb.h>
 #include <mach/i2c.h>
 #include <mach/mmc.h>
@@ -123,6 +122,10 @@ static unsigned long magician_pin_config[] __initdata = {
 	GPIO107_GPIO,	/* DS1WM_IRQ */
 	GPIO108_GPIO,	/* GSM_READY */
 	GPIO115_GPIO,	/* nPEN_IRQ */
+
+	/* I2C */
+	GPIO117_I2C_SCL,
+	GPIO118_I2C_SDA,
 };
 
 /*
@@ -332,8 +335,7 @@ static struct pxafb_mach_info toppoly_info = {
 	.modes           = toppoly_modes,
 	.num_modes       = 1,
 	.fixed_modes     = 1,
-	.lccr0           = LCCR0_Color | LCCR0_Sngl | LCCR0_Act,
-	.lccr3           = LCCR3_PixRsEdg,
+	.lcd_conn	= LCD_COLOR_TFT_16BPP,
 	.pxafb_lcd_power = toppoly_lcd_power,
 };
 
@@ -341,8 +343,8 @@ static struct pxafb_mach_info samsung_info = {
 	.modes           = samsung_modes,
 	.num_modes       = 1,
 	.fixed_modes     = 1,
-	.lccr0           = LCCR0_LDDALT | LCCR0_Color | LCCR0_Sngl | LCCR0_Act,
-	.lccr3           = LCCR3_PixFlEdg,
+	.lcd_conn	 = LCD_COLOR_TFT_16BPP | LCD_PCLK_EDGE_FALL |\
+			   LCD_ALTERNATE_MAPPING,
 	.pxafb_lcd_power = samsung_lcd_power,
 };
 

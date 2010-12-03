@@ -1,3 +1,6 @@
+config SND_SOC_WM8961
+	tristate "Build Wolfson WM8961 driver"
+	  
 config SND_SOC_ALL_CODECS
 	tristate "Build all ASoC CODEC drivers"
 	depends on I2C
@@ -11,7 +14,6 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_TLV320AIC26
 	select SND_SOC_TLV320AIC3X
 	select SND_SOC_UDA1380
-	select SND_SOC_WM8350
 	select SND_SOC_WM8510
 	select SND_SOC_WM8580
 	select SND_SOC_WM8731
@@ -19,6 +21,7 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_WM8753
 	select SND_SOC_WM8900
 	select SND_SOC_WM8903
+	select SND_SOC_WM8961
 	select SND_SOC_WM8971
 	select SND_SOC_WM8990
         help
@@ -79,9 +82,6 @@ config SND_SOC_TLV320AIC3X
 config SND_SOC_UDA1380
         tristate
 
-config SND_SOC_WM8350
-	tristate
-
 config SND_SOC_WM8510
 	tristate
 
@@ -115,21 +115,14 @@ config SND_SOC_WM9712
 config SND_SOC_WM9713
 	tristate
 
-config SND_SOC_SGTL5000
-	tristate
-	depends on I2C
-
-config SND_SOC_AK4647
+config SND_SOC_SANREMO_AUDIO
         tristate
-        depends on I2C
+	depends on SND_SOC && SANREMO
 
-config SND_SOC_STMP378X_CODEC
-	tristate
-	depends on SND_SOC
-
-config SND_SOC_STMP3XXX_SPDIF
-	tristate
-	depends on SND_SOC
-
-config SND_SOC_BLUETOOTH
+config SND_SOC_MICCO
         tristate
+	depends on SND_SOC && MICCO
+
+config SND_SOC_CS4344
+        tristate
+        depends on SND_SOC

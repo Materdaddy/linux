@@ -351,16 +351,16 @@ int mmc_attach_sdio(struct mmc_host *host, u32 ocr)
 	/*
 	 * Read the common registers.
 	 */
-	err = sdio_read_cccr(card);
-	if (err)
-		goto remove;
+		err = sdio_read_cccr(card);
+		if (err)
+			goto remove;
 
-	/*
-	 * Read the common CIS tuples.
-	 */
-	err = sdio_read_common_cis(card);
-	if (err)
-		goto remove;
+		/*
+		 * Read the common CIS tuples.
+		 */
+		err = sdio_read_common_cis(card);
+		if (err)
+			goto remove;
 
 	/*
 	 * Switch to high-speed (if supported).
@@ -395,9 +395,9 @@ int mmc_attach_sdio(struct mmc_host *host, u32 ocr)
 	 * Initialize (but don't add) all present functions.
 	 */
 	for (i = 0;i < funcs;i++) {
-		err = sdio_init_func(host->card, i + 1);
-		if (err)
-			goto remove;
+			err = sdio_init_func(host->card, i + 1);
+			if (err)
+				goto remove;
 	}
 
 	mmc_release_host(host);

@@ -75,6 +75,21 @@ struct otg_transceiver {
 	/* start or continue HNP role switch */
 	int	(*start_hnp)(struct otg_transceiver *otg);
 
+#ifdef CONFIG_PLAT_PXA
+	/* b device disconnect during hnp */
+	int	(*disconnect)(struct otg_transceiver *otg);
+
+	/* b device connect */
+	int	(*connect)(struct otg_transceiver *otg,
+			struct usb_device *udev);
+
+	/* host suspend the bus during hnp */
+	int 	(*host_suspend)(struct otg_transceiver *otg);
+
+	/* hand interrupt related to usb otg */
+	int	(*otg_interrupt)(struct otg_transceiver *otg);
+#endif
+
 };
 
 
@@ -131,5 +146,31 @@ otg_start_srp(struct otg_transceiver *otg)
 
 /* for OTG controller drivers (and maybe other stuff) */
 extern int usb_bus_start_enum(struct usb_bus *bus, unsigned port_num);
+
+#ifdef CONFIG_PLAT_PXA
+static inline int
+otg_disconnect(struct otg_transceiver *otg)
+{
+	return otg->disconnect(otg);
+}
+
+static inline int
+otg_connect(struct otg_transceiver *otg, struct usb_device *udev)
+{
+	return otg->connect(otg, udev);
+}
+
+static inline int
+otg_host_suspend(struct otg_transceiver *otg)
+{
+	return otg->host_suspend(otg);
+}
+
+static inline int
+otg_interrupt(struct otg_transceiver *otg)
+{
+	return otg->otg_interrupt(otg);
+}
+#endif
 
 #endif /* __LINUX_USB_OTG_H */

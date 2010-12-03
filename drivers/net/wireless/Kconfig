@@ -267,6 +267,16 @@ config IPW2200_DEBUG
 
 	  If you are not sure, say N here.
 
+config WLAN_8688_SDIO
+	tristate "Marvell WLAN sd8688 support"
+	depends on WLAN_80211
+	select WIRELESS_EXT
+	select FW_LOADER
+	select MMC
+	---help---
+          Say Y if you have sd8688 hardware.
+          This option does not require driver just platform configuration.
+
 config LIBERTAS
 	tristate "Marvell 8xxx Libertas WLAN driver support"
 	depends on WLAN_80211

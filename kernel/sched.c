@@ -2343,6 +2343,14 @@ int wake_up_state(struct task_struct *p, unsigned int state)
 	return try_to_wake_up(p, state, 0);
 }
 
+#ifdef CONFIG_GLOBAL_PREEMPT_NOTIFIERS
+/* 
+ * global preempt notifiers 
+ * all the task reschedules will be notified instead of only the current task
+ */
+struct hlist_head g_preempt_notifiers;
+#endif
+
 /*
  * Perform scheduler related setup for a newly forked process p.
  * p is forked by current.
@@ -2482,6 +2490,31 @@ void preempt_notifier_unregister(struct preempt_notifier *notifier)
 }
 EXPORT_SYMBOL_GPL(preempt_notifier_unregister);
 
+#ifdef CONFIG_GLOBAL_PREEMPT_NOTIFIERS
+/**
+ * global_preempt_notifier_register - tell me when any of tasks is being preempted & rescheduled
+ * @notifier: notifier struct to register
+ */
+void global_preempt_notifier_register(struct preempt_notifier *notifier)
+{
+	hlist_add_head(&notifier->link, &g_preempt_notifiers);
+}
+EXPORT_SYMBOL_GPL(global_preempt_notifier_register);
+
+/**
+ * global_preempt_notifier_unregister - no longer interested in preemption notifications of any tasks
+ * @notifier: notifier struct to unregister
+ *
+ * This is safe to call from within a preemption notifier.
+ */
+void global_preempt_notifier_unregister(struct preempt_notifier *notifier)
+{
+	hlist_del(&notifier->link);
+}
+EXPORT_SYMBOL_GPL(global_preempt_notifier_unregister);
+
+#endif
+
 static void fire_sched_in_preempt_notifiers(struct task_struct *curr)
 {
 	struct preempt_notifier *notifier;
@@ -2489,6 +2522,12 @@ static void fire_sched_in_preempt_notifiers(struct task_struct *curr)
 
 	hlist_for_each_entry(notifier, node, &curr->preempt_notifiers, link)
 		notifier->ops->sched_in(notifier, raw_smp_processor_id());
+
+#ifdef CONFIG_GLOBAL_PREEMPT_NOTIFIERS
+	/* notifiy the global preempt notifiers */ 
+	hlist_for_each_entry(notifier, node, &g_preempt_notifiers, link)
+		notifier->ops->sched_in(notifier, raw_smp_processor_id());
+#endif		
 }
 
 static void
@@ -2500,6 +2539,12 @@ fire_sched_out_preempt_notifiers(struct task_struct *curr,
 
 	hlist_for_each_entry(notifier, node, &curr->preempt_notifiers, link)
 		notifier->ops->sched_out(notifier, next);
+
+#ifdef CONFIG_GLOBAL_PREEMPT_NOTIFIERS
+	/* notifiy the global preempt notifiers */ 
+	hlist_for_each_entry(notifier, node, &g_preempt_notifiers, link)
+		notifier->ops->sched_out(notifier, next);
+#endif		
 }
 
 #else /* !CONFIG_PREEMPT_NOTIFIERS */
@@ -6666,7 +6711,7 @@ static int sched_domain_debug_one(struct sched_domain *sd, int cpu, int level,
 	struct sched_group *group = sd->groups;
 	char str[256];
 
-	cpulist_scnprintf(str, sizeof(str), sd->span);
+	cpulist_scnprintf(str, sizeof(str), &sd->span);
 	cpus_clear(*groupmask);
 
 	printk(KERN_DEBUG "%*s domain %d: ", level, "", level);
@@ -6720,7 +6765,7 @@ static int sched_domain_debug_one(struct sched_domain *sd, int cpu, int level,
 
 		cpus_or(*groupmask, *groupmask, group->cpumask);
 
-		cpulist_scnprintf(str, sizeof(str), group->cpumask);
+		cpulist_scnprintf(str, sizeof(str), &group->cpumask);
 		printk(KERN_CONT " %s", str);
 
 		group = group->next;
@@ -8306,6 +8351,11 @@ void __init sched_init(void)
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS
 	INIT_HLIST_HEAD(&init_task.preempt_notifiers);
+
+#ifdef CONFIG_GLOBAL_PREEMPT_NOTIFIERS	
+	INIT_HLIST_HEAD(&g_preempt_notifiers);
+#endif
+	
 #endif
 
 #ifdef CONFIG_SMP
@@ -8338,26 +8388,34 @@ void __init sched_init(void)
 }
 
 #ifdef CONFIG_DEBUG_SPINLOCK_SLEEP
+static int __might_sleep_init_called;
+int __init __might_sleep_init(void)
+{
+	__might_sleep_init_called = 1;
+	return 0;
+}
+early_initcall(__might_sleep_init);
+
 void __might_sleep(char *file, int line)
 {
 #ifdef in_atomic
 	static unsigned long prev_jiffy;	/* ratelimiting */
 
-	if ((!in_atomic() && !irqs_disabled()) ||
-		    system_state != SYSTEM_RUNNING || oops_in_progress)
-		return;
-	if (time_before(jiffies, prev_jiffy + HZ) && prev_jiffy)
-		return;
-	prev_jiffy = jiffies;
-
-	printk(KERN_ERR
-		"BUG: sleeping function called from invalid context at %s:%d\n",
-			file, line);
-	printk(KERN_ERR
-		"in_atomic(): %d, irqs_disabled(): %d, pid: %d, name: %s\n",
-			in_atomic(), irqs_disabled(),
-			current->pid, current->comm);
-
+	if ((in_atomic() || irqs_disabled()) &&
+	    ((__might_sleep_init_called && system_state == SYSTEM_BOOTING)
+	    || system_state == SYSTEM_RUNNING) && !oops_in_progress) {
+		if (time_before(jiffies, prev_jiffy + HZ) && prev_jiffy)
+			return;
+		prev_jiffy = jiffies;
+		printk(KERN_ERR "BUG: sleeping function called from invalid"
+				" context at %s:%d\n", file, line);
+		printk("in_atomic():%d, irqs_disabled():%d\n",
+			in_atomic(), irqs_disabled());
+		debug_show_held_locks(current);
+		if (irqs_disabled())
+			print_irqtrace_events(current);
+		dump_stack();
+	}
 	debug_show_held_locks(current);
 	if (irqs_disabled())
 		print_irqtrace_events(current);

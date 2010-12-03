@@ -19,7 +19,11 @@ obj-$(CONFIG_USB_ATMEL_USBA)	+= atmel_usba_udc.o
 obj-$(CONFIG_USB_FSL_USB2)	+= fsl_usb2_udc.o
 obj-$(CONFIG_USB_M66592)	+= m66592-udc.o
 obj-$(CONFIG_USB_FSL_QE)	+= fsl_qe_udc.o
-obj-$(CONFIG_USB_ARC)		+= arcotg_udc.o
+obj-$(CONFIG_USB_PXA_U2O)	+= mv_gadget.o pxa_comp.o
+obj-$(CONFIG_USB_PXA_U2O)	+= mv/
+obj-$(CONFIG_MULTIPLE_GADGET_DRIVERS)	+= epautoconf.o
+
+C_UTILS =      composite.o usbstring.o config.o epautoconf.o
 
 #
 # USB gadget drivers
@@ -32,7 +36,7 @@ gadgetfs-objs			:= inode.o
 g_file_storage-objs		:= file_storage.o
 g_printer-objs			:= printer.o
 g_cdc-objs			:= cdc2.o
-g_android-objs            := android.o f_adb.o f_mass_storage.o $(C_UTILS)
+g_android-objs			:= android.o f_adb.o f_mass_storage.o $(C_UTILS)
 
 obj-$(CONFIG_USB_ZERO)		+= g_zero.o
 obj-$(CONFIG_USB_ETH)		+= g_ether.o

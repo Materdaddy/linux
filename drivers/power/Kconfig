@@ -36,6 +36,12 @@ config BATTERY_DS2760
 	help
 	  Say Y here to enable support for batteries with ds2760 chip.
 
+config BATTERY_SANREMO
+	tristate "SANREMO battery driver (Used with sanremo)"
+	depends on SANREMO
+	help
+	  Say Y here to enable support for batteries with sanremo chip
+
 config BATTERY_PMU
 	tristate "Apple PMU battery"
 	depends on PPC32 && ADB_PMU
@@ -68,11 +74,9 @@ config BATTERY_BQ27x00
 	help
 	  Say Y here to enable support for batteries with BQ27200(I2C) chip.
 
-config BATTERY_STMP3XXX
-	tristate "Sigmatel STMP3xxx SoC battery charger driver"
-	depends on ARCH_STMP3XXX
+config BATTERY_PXA168
+	tristate "PXA168 battery driver"
 	help
-	  Say Y to enable support for the battery charger state machine
-	  for the Sigmatel STMP3xxx based SoC's.
+	  Say Y to enable support for virtual battery on PXA168 platforms.
 
 endif # POWER_SUPPLY

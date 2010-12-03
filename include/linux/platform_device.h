@@ -12,6 +12,7 @@
 #define _PLATFORM_DEVICE_H_
 
 #include <linux/device.h>
+#include <linux/mod_devicetable.h>
 
 struct platform_device {
 	const char	* name;
@@ -19,7 +20,11 @@ struct platform_device {
 	struct device	dev;
 	u32		num_resources;
 	struct resource	* resource;
+
+	struct platform_device_id	*id_entry;
 };
+
+#define platform_get_device_id(pdev)	((pdev)->id_entry)
 
 #define to_platform_device(x) container_of((x), struct platform_device, dev)
 
@@ -57,6 +62,7 @@ struct platform_driver {
 	int (*resume)(struct platform_device *);
 	struct pm_ext_ops *pm;
 	struct device_driver driver;
+	struct platform_device_id *id_table;
 };
 
 extern int platform_driver_register(struct platform_driver *);

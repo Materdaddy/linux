@@ -306,6 +306,13 @@ config MTD_OOPS
 	  To use, add console=ttyMTDx to the kernel command line,
 	  where x is the MTD device number to use.
 
+config PXA3XX_BBM
+	bool "Marvell PXA3xx Bad Block Management"
+	depends on MTD && (MTD_ONENAND || MTD_NAND)
+	help
+	  This enable Marvell Bad Block Management for NAND/ONENAND on
+	  PXA3xx.
+
 source "drivers/mtd/chips/Kconfig"
 
 source "drivers/mtd/maps/Kconfig"

@@ -123,6 +123,13 @@ config INPUT_EVDEV
 	  To compile this driver as a module, choose M here: the
 	  module will be called evdev.
 
+config CIR
+	tristate "CIR device"
+	---help---
+	  Say Y here if you want your CIR or Nec remote control.
+
+	  If unsure, say Y.
+
 config INPUT_EVBUG
 	tristate "Event debugging"
 	---help---

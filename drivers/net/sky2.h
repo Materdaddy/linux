@@ -4,7 +4,40 @@
 #ifndef _SKY2_H
 #define _SKY2_H
 
+#if defined(CONFIG_MACH_ASPENITE)
+extern u8 pxa168_pcie_read8(u32 addr);
+extern u16 pxa168_pcie_read16(u32 addr);
+extern u32 pxa168_pcie_read32(u32 addr);
+extern void pxa168_pcie_write8(u8 val, u32 addr);
+extern void pxa168_pcie_write16(u16 val, u32 addr);
+extern void pxa168_pcie_write32(u32 val, u32 addr);
+
+#undef readb
+#undef readw
+#undef readl
+
+#define __pxa168_mem_pci(a)      ((u32)a)
+
+#define readb(c) ({ __u8  __v = pxa168_pcie_read8(__pxa168_mem_pci(c)); __v; })
+#define readw(c) ({ __u16 __v = le16_to_cpu((__force __le16) \
+			pxa168_pcie_read16(__pxa168_mem_pci(c))); __v; })
+#define readl(c) ({ __u32 __v = le32_to_cpu((__force __le32) \
+			pxa168_pcie_read32(__pxa168_mem_pci(c))); __v; })
+
+#undef writeb
+#undef writew
+#undef writel
+
+#define writeb(v,c)		pxa168_pcie_write8(v,__pxa168_mem_pci(c))
+#define writew(v,c)		pxa168_pcie_write16((__force __u16) \
+					cpu_to_le16(v),__pxa168_mem_pci(c))
+#define writel(v,c)		pxa168_pcie_write32((__force __u32) \
+					cpu_to_le32(v),__pxa168_mem_pci(c))
+#endif
+
+
 #define ETH_JUMBO_MTU		9000	/* Maximum MTU supported */
+
 
 /* PCI config registers */
 enum {

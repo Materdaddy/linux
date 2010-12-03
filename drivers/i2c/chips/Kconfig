@@ -114,6 +114,18 @@ config SENSORS_PCF8591
 	  These devices are hard to detect and rarely found on mainstream
 	  hardware.  If unsure, say N.
 
+config ISP1301_OMAP
+	tristate "Philips ISP1301 with OMAP OTG"
+	depends on ARCH_OMAP_OTG
+	help
+	  If you say yes here you get support for the Philips ISP1301
+	  USB-On-The-Go transceiver working with the OMAP OTG controller.
+	  The ISP1301 is used in products including H2 and H3 development
+	  boards for Texas Instruments OMAP processors.
+	  
+	  This driver can also be built as a module.  If so, the module
+	  will be called isp1301_omap.
+
 config TPS65010
 	tristate "TPS6501x Power Management chips"
 	depends on GPIOLIB
@@ -162,6 +174,22 @@ config MENELAUS
 	  and other features that are often used in portable devices like
 	  cell phones and PDAs.
 
+config SENSORS_AKM8976
+	tristate "AKM8976 Compass Driver"
+	depends on I2C
+	help
+	 AKM8976 Compass Driver implemented by HTC.
+
+config SENSORS_PCA963X
+	tristate "Philips PCA963X 4-bit I2C-bus LED"
+	depends on I2C && EXPERIMENTAL
+	help
+	 If you say yes here you get support for the Philips PCA963X
+	 4-bit I2C-bus LED.
+
+	 This driver can also be built as a module.  If so, the module
+	 will be called pca963X.
+
 config MCU_MPC8349EMITX
 	tristate "MPC8349E-mITX MCU driver"
 	depends on I2C && PPC_83xx
@@ -173,4 +201,44 @@ config MCU_MPC8349EMITX
 	  also register MCU GPIOs with the generic GPIO API, so you'll able
 	  to use MCU pins as GPIOs.
 
+config SANREMO
+	boolean "Sanremo chip"
+	depends on I2C && I2C_PXA
+	select PXA3xx_PMIC
+	default n
+	help
+	  Sanremo is a PMIC/Audio/Touch chip.
+	  If you say yes here, you support for it.
+
+	  This driver can NOT be built as a module.
+
+config PORTOFINO
+	boolean "Portofino chip"
+	depends on I2C && I2C_PXA
+	default n
+	help
+	  If you say yes here, you support for it.
+	  This driver can NOT be built as a module.
+
+config MICCO
+	boolean "Micco chip"
+	depends on I2C && I2C_PXA
+	select PXA3xx_PMIC
+	default n
+	help
+	  Micco is a PMIC/Audio/Touch chip.
+	  If you say yes here, you support for it.
+
+	  This driver can NOT be built as a module.
+
+config MAX8660
+	boolean "Max8660 chip"
+	depends on I2C && I2C_PXA
+	select PXA3xx_PMIC
+	default n
+	help
+	  Max8660 is a PMIC chip.
+	  If you say yes here, you support for it.
+
+	  This driver can NOT be built as a module.
 endmenu

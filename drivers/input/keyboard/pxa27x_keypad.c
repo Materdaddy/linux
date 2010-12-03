@@ -30,7 +30,7 @@
 #include <asm/mach/map.h>
 
 #include <mach/hardware.h>
-#include <mach/pxa27x_keypad.h>
+#include <plat/pxa27x_keypad.h>
 
 /*
  * Keypad Controller registers
@@ -314,10 +314,38 @@ static void pxa27x_keypad_scan_direct(struct pxa27x_keypad *keypad)
 	keypad->direct_key_state = new_state;
 }
 
+#ifdef CONFIG_ARCH_MMP
+
+#include <mach/regs-apmu.h>
+#include <mach/cputype.h>
+
+/* clear the wakeup event - undocumented */
+static inline void clear_wakeup(void)
+{
+	uint32_t val, mask = 0;
+
+	if (cpu_is_pxa168())
+		mask = 1 << 7;
+
+	if (cpu_is_pxa910())
+		mask = 1 << 3;
+
+	if (mask) {
+		val = __raw_readl(APMU_REG(0x07c));
+		__raw_writel(val |  mask, APMU_REG(0x07c));
+		__raw_writel(val & ~mask, APMU_REG(0x07c));
+	}
+}
+#else
+static inline void clear_wakeup(void) {}
+#endif
+
 static irqreturn_t pxa27x_keypad_irq_handler(int irq, void *dev_id)
 {
 	struct pxa27x_keypad *keypad = dev_id;
 	unsigned long kpc = keypad_readl(KPC);
+
+	clear_wakeup();
 
 	if (kpc & KPC_DI)
 		pxa27x_keypad_scan_direct(keypad);
@@ -391,11 +419,10 @@ static void pxa27x_keypad_close(struct input_dev *dev)
 static int pxa27x_keypad_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	struct pxa27x_keypad *keypad = platform_get_drvdata(pdev);
+	struct input_dev *input_dev = keypad->input_dev;
 
-	clk_disable(keypad->clk);
-
-	if (device_may_wakeup(&pdev->dev))
-		enable_irq_wake(keypad->irq);
+	if (input_dev->users)
+		clk_disable(keypad->clk);
 
 	return 0;
 }
@@ -405,18 +432,10 @@ static int pxa27x_keypad_resume(struct platform_device *pdev)
 	struct pxa27x_keypad *keypad = platform_get_drvdata(pdev);
 	struct input_dev *input_dev = keypad->input_dev;
 
-	if (device_may_wakeup(&pdev->dev))
-		disable_irq_wake(keypad->irq);
-
-	mutex_lock(&input_dev->mutex);
-
 	if (input_dev->users) {
-		/* Enable unit clock */
 		clk_enable(keypad->clk);
 		pxa27x_keypad_config(keypad);
 	}
-
-	mutex_unlock(&input_dev->mutex);
 
 	return 0;
 }

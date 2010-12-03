@@ -446,4 +446,10 @@ config BLK_DEV_HD
 
 	  If unsure, say N.
 
+config PXA168_MSP
+	bool "Marvell MSPRO MFP support"
+	default n
+	help
+	  This provide mspro MFP configuration function
+
 endif # BLK_DEV

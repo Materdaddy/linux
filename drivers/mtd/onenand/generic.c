@@ -19,6 +19,7 @@
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/onenand.h>
 #include <linux/mtd/partitions.h>
+#include <mach/pxa3xx_bbm.h>
 
 #include <asm/io.h>
 #include <asm/mach/flash.h>
@@ -36,10 +37,9 @@ struct onenand_info {
 	struct onenand_chip	onenand;
 };
 
-static int __devinit generic_onenand_probe(struct device *dev)
+static int __devinit generic_onenand_probe(struct platform_device *pdev)
 {
 	struct onenand_info *info;
-	struct platform_device *pdev = to_platform_device(dev);
 	struct flash_platform_data *pdata = pdev->dev.platform_data;
 	struct resource *res = pdev->resource;
 	unsigned long size = res->end - res->start + 1;
@@ -49,7 +49,7 @@ static int __devinit generic_onenand_probe(struct device *dev)
 	if (!info)
 		return -ENOMEM;
 
-	if (!request_mem_region(res->start, size, dev->driver->name)) {
+	if (!request_mem_region(res->start, size, pdev->name)) {
 		err = -EBUSY;
 		goto out_free_info;
 	}
@@ -66,6 +66,16 @@ static int __devinit generic_onenand_probe(struct device *dev)
 	info->mtd.name = pdev->dev.bus_id;
 	info->mtd.priv = &info->onenand;
 	info->mtd.owner = THIS_MODULE;
+
+#ifdef CONFIG_PXA3XX_BBM
+	info->onenand.scan_bbt = pxa3xx_scan_bbt;
+	info->onenand.block_bad = pxa3xx_block_bad;
+	info->onenand.block_markbad = pxa3xx_block_markbad;
+#else
+	info->onenand.scan_bbt = NULL;
+	info->onenand.block_bad = NULL;
+	info->onenand.block_markbad = NULL;
+#endif
 
 	if (onenand_scan(&info->mtd, 1)) {
 		err = -ENXIO;
@@ -96,9 +106,8 @@ out_free_info:
 	return err;
 }
 
-static int __devexit generic_onenand_remove(struct device *dev)
+static int __devexit generic_onenand_remove(struct platform_device *pdev)
 {
-	struct platform_device *pdev = to_platform_device(dev);
 	struct onenand_info *info = dev_get_drvdata(&pdev->dev);
 	struct resource *res = pdev->resource;
 	unsigned long size = res->end - res->start + 1;
@@ -120,23 +129,27 @@ static int __devexit generic_onenand_remove(struct device *dev)
 	return 0;
 }
 
-static struct device_driver generic_onenand_driver = {
-	.name		= DRIVER_NAME,
-	.bus		= &platform_bus_type,
+static struct platform_driver generic_onenand_driver = {
+	.driver = {
+		.name	= DRIVER_NAME,
+	},
 	.probe		= generic_onenand_probe,
 	.remove		= __devexit_p(generic_onenand_remove),
+#ifdef CONFIG_PM
+	.suspend	= NULL,
+	.resume		= NULL,
+#endif
 };
-
 MODULE_ALIAS(DRIVER_NAME);
 
 static int __init generic_onenand_init(void)
 {
-	return driver_register(&generic_onenand_driver);
+	return platform_driver_register(&generic_onenand_driver);
 }
 
 static void __exit generic_onenand_exit(void)
 {
-	driver_unregister(&generic_onenand_driver);
+	platform_driver_unregister(&generic_onenand_driver);
 }
 
 module_init(generic_onenand_init);

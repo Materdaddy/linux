@@ -23,4 +23,5 @@ obj-$(CONFIG_BATTERY_OLPC)	+= olpc_battery.o
 obj-$(CONFIG_BATTERY_TOSA)	+= tosa_battery.o
 obj-$(CONFIG_BATTERY_WM97XX)	+= wm97xx_battery.o
 obj-$(CONFIG_BATTERY_BQ27x00)	+= bq27x00_battery.o
-obj-$(CONFIG_BATTERY_STMP3XXX)	+= stmp37xx/
+obj-$(CONFIG_BATTERY_SANREMO)	+= sanremo_battery.o
+obj-$(CONFIG_BATTERY_PXA168)	+= pxa168_battery.o

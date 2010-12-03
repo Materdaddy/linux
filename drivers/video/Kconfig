@@ -381,10 +381,6 @@ config FB_CLPS711X
 	  Say Y to enable the Framebuffer driver for the CLPS7111 and
 	  EP7212 processors.
 
-if ARCH_MXC
-source "drivers/video/mxc/Kconfig"
-endif
-
 config FB_SA1100
 	bool "SA-1100 LCD support"
 	depends on (FB = y) && ARM && ARCH_SA1100
@@ -1804,6 +1800,29 @@ config FB_68328
 	  Say Y here if you want to support the built-in frame buffer of
 	  the Motorola 68328 CPU family.
 
+config FB_PXA168_CHUMBY
+	tristate "PXA168 LCD framebuffer Chumby Silvermoon port"
+	depends on FB && CPU_PXA168 && MACH_CHUMBY_SILVERMOON
+	select FB_CFB_FILLRECT
+	select FB_CFB_COPYAREA
+	select FB_CFB_IMAGEBLIT
+	select FB_PXA_CHUMBY
+	select FB_PXA_OVERLAY_CHUMBY
+	---help---
+	  This is a port of the dual-buffer frame buffer driver from 2.6.25
+	  specifically for the PXA168-based Chumby Silvermoon board. Source
+	  components are named beginning cbp_
+
+config FB_PXA168
+	tristate "PXA168 LCD framebuffer support"
+	depends on FB && CPU_PXA168
+	select FB_CFB_FILLRECT
+	select FB_CFB_COPYAREA
+	select FB_CFB_IMAGEBLIT
+	---help---
+	  Frame buffer driver for the built-in LCD controller in the Marvell
+	  MMP processor.
+
 config FB_PXA
 	tristate "PXA LCD framebuffer support"
 	depends on FB && ARCH_PXA
@@ -1820,6 +1839,11 @@ config FB_PXA
 	  say M here and read <file:Documentation/kbuild/modules.txt>.
 
 	  If unsure, say N.
+
+config FB_PXA_OVERLAY
+	bool "Support PXA27x/PXA3xx Overlay(s) as framebuffer"
+	default n
+	depends on FB_PXA && (PXA27x || PXA3xx)
 
 config FB_PXA_SMARTPANEL
 	bool "PXA Smartpanel LCD support"
@@ -1978,16 +2002,6 @@ config FB_PNX4008_DUM_RGB
 	---help---
 	  Say Y here to enable support for PNX4008 RGB Framebuffer
 
-config FB_STMP37XX
-	tristate "STMP 37XX LCD Framebuffer driver"
-	depends on FB && (ARCH_STMP37XX || ARCH_STMP378X)
-	select FB_CFB_FILLRECT
-	select FB_CFB_COPYAREA
-	select FB_CFB_IMAGEBLIT
-	---help---
-	  Say Y here to enable support for the framebuffer driver for the
-	  Sigmatel STMP37XX board.
-
 config FB_IBM_GXT4500
 	tristate "Framebuffer support for IBM GXT4500P adaptor"
 	depends on FB && PPC
@@ -2122,22 +2136,26 @@ config FB_MB862XX_LIME
 	---help---
 	  Framebuffer support for Fujitsu Lime GDC on host CPU bus.
 
-config FB_CHUMBYFBFW
-	tristate "Chumby Falconwing Overlay-enabled framebuffer driver"
-	depends on FB && ARCH_STMP378X
-	select FB_CFB_FILLRECT
-	select FB_CFB_COPYAREA
-	select FB_CFB_IMAGEBLIT
-	---help---
-	  Say Y here to enable the Chumby two-level framebuffer support.
-
-
 config FB_PRE_INIT_FB
 	bool "Don't reinitialize, use bootloader's GDC/Display configuration"
 	depends on FB_MB862XX_LIME
 	---help---
 	  Select this option if display contents should be inherited as set by
 	  the bootloader.
+
+config FB_BROADSHEET
+	tristate "E-Ink Broadsheet/Epson S1D13521 controller support"
+	depends on FB
+	select FB_SYS_FILLRECT
+	select FB_SYS_COPYAREA
+	select FB_SYS_IMAGEBLIT
+	select FB_SYS_FOPS
+	select FB_DEFERRED_IO
+	help
+	  This driver implements support for the E-Ink Broadsheet
+	  controller. The release name for this device was Epson S1D13521
+	  and could also have been called by other names when coupled with
+	  a bridge adapter.
 
 source "drivers/video/omap/Kconfig"
 

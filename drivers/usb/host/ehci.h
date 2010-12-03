@@ -123,24 +123,16 @@ struct ehci_hcd {			/* one per controller */
 
 	u8			sbrn;		/* packed release number */
 
-	/*
-	 * OTG controllers and transceivers need software interaction;
-	 * other external transceivers should be software-transparent
-	 */
-	struct otg_transceiver   *transceiver;
-#ifdef CONFIG_USB_STATIC_IRAM
-	u32			iram_buffer[2];
-	u32			iram_buffer_v[2];
-	int  			iram_in_use[2];
-	int			usb_address[2];
-#endif
-
 	/* irq statistics */
 #ifdef EHCI_STATS
 	struct ehci_stats	stats;
 #	define COUNT(x) do { (x)++; } while (0)
 #else
 #	define COUNT(x) do {} while (0)
+#endif
+
+#ifdef CONFIG_USB_OTG
+	struct otg_transceiver *transceiver;
 #endif
 
 	/* debug files */
@@ -269,10 +261,6 @@ struct ehci_qtd {
 	struct list_head	qtd_list;		/* sw qtd list */
 	struct urb		*urb;			/* qtd's urb */
 	size_t			length;			/* length of buffer */
-#ifdef CONFIG_USB_STATIC_IRAM
-	size_t			buffer_offset;
-	int			last_one;
-#endif
 } __attribute__ ((aligned (32)));
 
 /* mask NakCnt+T in qh->hw_alt_next */
@@ -565,14 +553,6 @@ struct ehci_fstn {
  * needed (mostly in root hub code).
  */
 
-/* Additions to the PORTSC registers */
-#define PORT_PSPD_FULL    (0<<26)
-#define PORT_PSPD_LOW (1<<26)
-#define PORT_PSPD_HIGH    (2<<26)
-#define PORT_PSPD_MASK    (3<<26)     /* port speed */
-#define PORT_PFSC (1<<24)     /* port force full-speed connect */
-
-
 #define	ehci_is_TDI(e)			(ehci_to_hcd(e)->has_tt)
 
 /* Returns the speed of a device attached to a port on the root hub. */
@@ -580,12 +560,12 @@ static inline unsigned int
 ehci_port_speed(struct ehci_hcd *ehci, unsigned int portsc)
 {
 	if (ehci_is_TDI(ehci)) {
-		switch (portsc & PORT_PSPD_MASK) {
-		case PORT_PSPD_FULL:
+		switch ((portsc>>26)&3) {
+		case 0:
 			return 0;
-		case PORT_PSPD_LOW:
+		case 1:
 			return (1<<USB_PORT_FEAT_LOWSPEED);
-		case PORT_PSPD_HIGH:
+		case 2:
 		default:
 			return (1<<USB_PORT_FEAT_HIGHSPEED);
 		}
@@ -593,19 +573,11 @@ ehci_port_speed(struct ehci_hcd *ehci, unsigned int portsc)
 	return (1<<USB_PORT_FEAT_HIGHSPEED);
 }
 
-/* Which bit controls whether a connection will be high-speed? */
-static inline u32 ehci_port_owner_bit(struct ehci_hcd *ehci)
-{
-	return ehci_is_TDI(ehci) ? PORT_PFSC : PORT_OWNER;
-}
-
-
 #else
 
 #define	ehci_is_TDI(e)			(0)
 
 #define	ehci_port_speed(ehci, portsc)	(1<<USB_PORT_FEAT_HIGHSPEED)
-#define	ehci_port_owner_bit(ehci)	PORT_OWNER
 #endif
 
 /*-------------------------------------------------------------------------*/
@@ -730,10 +702,6 @@ static inline u32 hc32_to_cpup (const struct ehci_hcd *ehci, const __hc32 *x)
 #define STUB_DEBUG_FILES
 #endif	/* DEBUG */
 
-#ifdef CONFIG_USB_STATIC_IRAM
-#define IRAM_TD_SIZE	1024		/* size of 1 qTD's buffer */
-#define IRAM_NTD	2		/* number of TDs in IRAM  */
-#endif
 /*-------------------------------------------------------------------------*/
 
 #endif /* __LINUX_EHCI_HCD_H */

@@ -6,11 +6,6 @@ menu "File systems"
 
 if BLOCK
 
-config NILFS
-	tristate "NILFS"
-	help
-	  NILFS
- 	  
 source "fs/ext2/Kconfig"
 source "fs/ext3/Kconfig"
 source "fs/ext4/Kconfig"
@@ -941,12 +936,11 @@ config EFS_FS
 	  To compile the EFS file system support as a module, choose M here: the
 	  module will be called efs.
 
+source "fs/jffs2/Kconfig"
 
 # Patched by YAFFS
 source "fs/yaffs2/Kconfig"
 
-
-source "fs/jffs2/Kconfig"
 # UBIFS File system configuration
 source "fs/ubifs/Kconfig"
 

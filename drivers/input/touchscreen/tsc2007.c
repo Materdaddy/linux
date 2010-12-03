@@ -1,443 +1,393 @@
 /*
- * Copyright 2008-2009 Freescale Semiconductor, Inc. All Rights Reserved.
- */
-
-/*
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
+ *  linux/drivers/input/touchscreen/tsc2007.c
  *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
- */
-
-/*!
- * @file tsc2007.c
+ *  touch screen driver for tsc2007
  *
- * @brief Driver for TI's tsc2007 I2C Touch Screen Controller.
+ *  Copyright (C) 2006, Marvell Corporation
  *
- * This driver is based on the driver written by Bill Gatliff
- *  Copyright (C) 2005 Bill Gatliff <bgat at billgatliff.com>
- *  Changes for 2.6.20 kernel by Nicholas Chen <nchen at cs.umd.edu>
- *
- * @ingroup touchscreen
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License version 2 as
+ *  published by the Free Software Foundation.
  */
 
 #include <linux/module.h>
 #include <linux/init.h>
-#include <linux/slab.h>
-#include <linux/i2c.h>
-#include <linux/string.h>
-#include <linux/bcd.h>
-#include <linux/list.h>
-#include <linux/device.h>
-#include <linux/interrupt.h>
-#include <linux/kthread.h>
+#include <linux/kernel.h>
 #include <linux/input.h>
+#include <linux/interrupt.h>
+#include <linux/wait.h>
 #include <linux/delay.h>
-#include <linux/regulator/consumer.h>
-#include <asm/mach/irq.h>
+#include <linux/platform_device.h>
+#include <linux/freezer.h>
+#include <linux/proc_fs.h>
+#include <linux/clk.h>
+#include <linux/i2c.h>
+#include <mach/gpio.h>
 
-#define DRIVER_NAME "tsc2007"
+#include <linux/sysctl.h>
+#include <asm/system.h>
 
-enum tsc2007_pd {
-	PD_POWERDOWN = 0,	/* penirq */
-	PD_IREFOFF_ADCON = 1,	/* no penirq */
-	PD_IREFON_ADCOFF = 2,	/* penirq */
-	PD_IREFON_ADCON = 3,	/* no penirq */
-	PD_PENIRQ_ARM = PD_IREFON_ADCOFF,
-	PD_PENIRQ_DISARM = PD_IREFON_ADCON,
+extern int ts_linear_scale(int *x, int *y, int swap_xy);
+
+/* Use MAV filter */
+#define TSC_CMD_SETUP 0xb0
+
+/* Use 12-bit */
+#define TSC_CMD_X 0xc0
+#define TSC_CMD_PLATEX 0x80
+#define TSC_CMD_Y 0xd0
+#define TSC_CMD_PLATEY 0x90
+
+#define TSC_X_MAX 4096
+#define TSC_Y_MAX 4096
+#define TSC_X_MIN 0
+#define TSC_Y_MIN 0
+
+/* delay time for compute x, y, computed as us */
+#define DELAY_TIME 10*HZ/1000
+#define SCHED_TIME 10*HZ/1000
+
+#define DEBUG
+#ifdef DEBUG
+#define TS_DEBUG(fmt,args...) printk(KERN_DEBUG fmt, ##args )
+#else
+#define TS_DEBUG(fmt,args...)
+#endif
+static int x_min=TSC_X_MIN;
+static int y_min=TSC_Y_MIN;
+static int x_max=TSC_X_MAX;
+static int y_max=TSC_Y_MAX;
+static int invert = 0;
+
+enum tsc2007_status {
+	PEN_UP,
+	PEN_DOWN,
 };
 
-enum tsc2007_m {
-	M_12BIT = 0,
-	M_8BIT = 1
-};
+struct _tsc2007 {
+	struct input_dev *dev;
+	int x;		/* X sample values */
+	int y;		/* Y sample values */
 
-enum tsc2007_cmd {
-	MEAS_TEMP0 = 0,
-	MEAS_IN1 = 2,
-	MEAS_XPOS = 12,
-	MEAS_YPOS = 13,
-	MEAS_Z1POS = 14,
-	MEAS_Z2POS = 15
-};
-
-#define tsc2007_CMD(cn, pdn, m) (((cn) << 4) | ((pdn) << 2) | ((m) << 1))
-
-#define ADC_MAX ((1 << 12) - 1)
-
-struct tsc2007_data {
+	int status;
+	struct work_struct irq_work;
 	struct i2c_client *client;
-	struct input_dev *idev;
-	struct timer_list penirq_timer;
-	struct task_struct *tstask;
-	u32 ts_thread_cnt;
-	struct completion penirq_completion;
-	struct completion penup_completion;
-	enum tsc2007_m m;
-	int penirq;
-	int penup_threshold;
-	struct regulator *vdd_reg;
-	int opened;
+};
+struct _tsc2007 *g_tsc2007;
+
+/* update abs params when min and max coordinate values are set */
+int tsc2007_proc_minmax(struct ctl_table *table, int write, struct file *filp,
+                     void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	struct _tsc2007 *tsc2007= g_tsc2007;
+	struct input_dev *input = tsc2007->dev;
+
+	/* update value */
+	int ret = proc_dointvec(table, write, filp, buffer, lenp, ppos);
+
+	/* updated abs params */
+	if (input) {
+		TS_DEBUG(KERN_DEBUG "update x_min %d x_max %d"
+			" y_min %d y_max %d\n", x_min, x_max,
+			y_min, y_max); 
+		input_set_abs_params(input, ABS_X, x_min, x_max, 0, 0);
+		input_set_abs_params(input, ABS_Y, y_min, y_max, 0, 0);
+	}
+	return ret;
+}
+
+static ctl_table tsc2007_proc_table[] = {
+	{
+		.ctl_name	= CTL_UNNUMBERED,
+		.procname	= "x-max",
+		.data		= &x_max,
+		.maxlen		= sizeof(int),
+		.mode		= 0666,
+		.proc_handler	= &tsc2007_proc_minmax,
+	},
+	{
+		.ctl_name	= CTL_UNNUMBERED,
+		.procname	= "y-max",
+		.data		= &y_max,
+		.maxlen		= sizeof(int),
+		.mode		= 0666,
+		.proc_handler	= &tsc2007_proc_minmax,
+	},
+	{
+		.ctl_name	= CTL_UNNUMBERED,
+		.procname	= "x-min",
+		.data		= &x_min,
+		.maxlen		= sizeof(int),
+		.mode		= 0666,
+		.proc_handler	= &tsc2007_proc_minmax,
+	},
+	{
+		.ctl_name	= CTL_UNNUMBERED,
+		.procname	= "y-min",
+		.data		= &y_min,
+		.maxlen		= sizeof(int),
+		.mode		= 0666,
+		.proc_handler	= &tsc2007_proc_minmax,
+	},
+	{
+		.ctl_name	= CTL_UNNUMBERED,
+		.procname	= "invert_xy",
+		.data		= &invert,
+		.maxlen		= sizeof(int),
+		.mode		= 0666,
+		.proc_handler	= &proc_dointvec,
+	},
+	{ .ctl_name = 0 }
 };
 
-static int tsc2007_read(struct tsc2007_data *data,
-			enum tsc2007_cmd cmd, enum tsc2007_pd pd, int *val)
+static ctl_table tsc2007_proc_root[] = {
+	{
+		.ctl_name	= CTL_UNNUMBERED,
+		.procname	= "ts_device",
+		.mode		= 0555,
+		.child		= tsc2007_proc_table,
+	},
+	{ .ctl_name = 0 }
+};
+
+static ctl_table tsc2007_proc_dev_root[] = {
+	{
+		.ctl_name	= CTL_DEV,
+		.procname	= "dev",
+		.mode		= 0555,
+		.child		= tsc2007_proc_root,
+	},
+	{ .ctl_name = 0 }
+};
+
+static struct ctl_table_header *sysctl_header;
+
+static int __init init_sysctl(void)
 {
-	unsigned char c;
-	unsigned char d[2];
-	int ret;
+    sysctl_header = register_sysctl_table(tsc2007_proc_dev_root);
+    return 0;
+}
 
-	c = tsc2007_CMD(cmd, pd, data->m);
+static void __exit cleanup_sysctl(void)
+{
+    unregister_sysctl_table(sysctl_header);
+}
 
-	ret = i2c_master_send(data->client, &c, 1);
+static int tsc2007_measure(struct i2c_client *client, int *x, int * y)
+{
+	u8 x_buf[2] = {0, 0};
+	u8 y_buf[2] = {0, 0};
+	
+	i2c_smbus_write_byte(client, TSC_CMD_PLATEX);
 
-	if (ret < 0)
-		goto err;
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(DELAY_TIME);
 
-	udelay(20);
-	ret = i2c_master_recv(data->client, d, data->m == M_12BIT ? 2 : 1);
-	if (ret < 0)
-		goto err;
+	i2c_smbus_write_byte(client, TSC_CMD_X);
 
-	if (val) {
-		*val = d[0];
-		*val <<= 4;
-		if (data->m == M_12BIT)
-			*val += (d[1] >> 4);
-	}
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(DELAY_TIME);
 
+	i2c_master_recv(client, x_buf, 2);
+
+	*x = (x_buf[0]<<4) | (x_buf[1] >>4);
+
+	i2c_smbus_write_byte(client, TSC_CMD_PLATEY);
+
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(DELAY_TIME);
+
+	i2c_smbus_write_byte(client, TSC_CMD_Y);
+
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(DELAY_TIME);
+
+	i2c_master_recv(client, y_buf, 2);
+
+	*y = (y_buf[0]<<4) | (y_buf[1] >>4);
+			
 	return 0;
-      err:
-	return -ENODEV;
 }
 
-static inline int tsc2007_read_xpos(struct tsc2007_data *d, enum
-				    tsc2007_pd pd, int *x)
+static void tsc2007_irq_work(struct work_struct *work)
 {
-	return tsc2007_read(d, MEAS_XPOS, pd, x);
+	struct _tsc2007 *tsc2007= g_tsc2007;
+	struct i2c_client *client = tsc2007-> client;
+	struct input_dev *input = tsc2007->dev;
+
+	int x = -1, y = -1, is_valid = 0;
+
+	int gpio = irq_to_gpio(client->irq);
+
+
+	/* Ignore if PEN_DOWN */
+	if(PEN_UP == tsc2007->status){
+
+		if (gpio_request(gpio, "tsc2007 touch detect")) {
+			printk(KERN_ERR "Request GPIO failed, gpio: %X\n", gpio);
+			return;
+		}
+		gpio_direction_input(gpio);	
+		
+		while(0 == gpio_get_value(gpio)){
+			/*continue report x, y */
+
+			if (x > 0 && y > 0)
+			{
+				ts_linear_scale(&x, &y, invert);
+				TS_DEBUG(KERN_DEBUG "pen down x=%d y=%d!\n", x, y); 
+				input_report_abs(input, ABS_X, x);
+				input_report_abs(input, ABS_Y, y);
+				input_report_abs(input, ABS_PRESSURE, 255);
+				input_report_abs(input, ABS_TOOL_WIDTH, 1);
+				input_report_key(input, BTN_TOUCH, 1);
+				input_sync(input);
+			}
+			tsc2007->status = PEN_DOWN;
+			tsc2007_measure(client, &x, &y);
+			is_valid = 1;
+			msleep_interruptible(SCHED_TIME);
+		}
+
+		if (is_valid)
+		{
+			/*consider PEN_UP */
+			tsc2007->status = PEN_UP;
+			input_report_abs(input, ABS_PRESSURE, 0);
+			input_report_abs(input, ABS_TOOL_WIDTH, 1);
+			input_report_key(input, BTN_TOUCH, 0);
+			input_sync(input);
+			TS_DEBUG(KERN_DEBUG "pen up!\n"); 
+		}
+
+		gpio_free(gpio);	
+	}
 }
 
-static inline int tsc2007_read_ypos(struct tsc2007_data *d, enum
-				    tsc2007_pd pd, int *y)
-{
-	return tsc2007_read(d, MEAS_YPOS, pd, y);
-}
-
-static inline int tsc2007_read_pressure(struct tsc2007_data *d, enum
-					tsc2007_pd pd, int *p)
-{
-	return tsc2007_read(d, MEAS_Z1POS, pd, p);
-}
-
-static inline int tsc2007_powerdown(struct tsc2007_data *d)
-{
-	/* we don't have a distinct powerdown command,
-	   so do a benign read with the PD bits cleared */
-	return tsc2007_read(d, MEAS_IN1, PD_POWERDOWN, 0);
-}
-
-#define PENUP_TIMEOUT		10
-
-static irqreturn_t tsc2007_penirq(int irq, void *v)
-{
-	struct tsc2007_data *d = v;
-
-	disable_irq(d->penirq);
-	complete(&d->penirq_completion);
+static irqreturn_t tsc2007_interrupt(int irq, void *dev_id)
+{	
+	schedule_work(&g_tsc2007->irq_work);
+	
 	return IRQ_HANDLED;
 }
 
-static void tsc2007_pen_up(unsigned long v)
+static int __devinit tsc2007_probe(struct i2c_client *client, 
+				const struct i2c_device_id *id)
 {
-	struct tsc2007_data *d = (struct tsc2007_data *)v;
+	struct _tsc2007 *tsc2007;
+	struct input_dev *input_dev;
+	int ret;
 
-	complete(&d->penup_completion);
-	return;
-}
+	tsc2007 = kzalloc(sizeof(struct _tsc2007), GFP_KERNEL);
+	input_dev = input_allocate_device();
 
-static inline void tsc2007_restart_pen_up_timer(struct tsc2007_data *d)
-{
-	mod_timer(&d->penirq_timer, jiffies + (PENUP_TIMEOUT * HZ) / 1000);
-}
+	g_tsc2007 = tsc2007;
 
-static int tsc2007ts_thread(void *v)
-{
-	struct tsc2007_data *d = v;
-
-	if (d->ts_thread_cnt)
-		return -EINVAL;
-	d->ts_thread_cnt = 1;
-
-	while (1) {
-		unsigned int x = 0, y = 0, p = 0;
-
-		if (kthread_should_stop())
-			break;
-		/* Wait for an Pen down interrupt */
-		if (wait_for_completion_interruptible_timeout
-		    (&d->penirq_completion, HZ) <= 0)
-			continue;
-
-		tsc2007_read_xpos(d, PD_PENIRQ_DISARM, &x);
-		tsc2007_read_ypos(d, PD_PENIRQ_DISARM, &y);
-		tsc2007_read_pressure(d, PD_PENIRQ_DISARM, &p);
-		input_report_abs(d->idev, ABS_X, 4096 - x);
-		input_report_abs(d->idev, ABS_Y, 4096 - y);
-		input_report_abs(d->idev, ABS_PRESSURE, p);
-		input_sync(d->idev);
-
-		while (p > d->penup_threshold) {
-			tsc2007_restart_pen_up_timer(d);
-			wait_for_completion_interruptible(&d->penup_completion);
-			/* Pen Down */
-			tsc2007_read_xpos(d, PD_PENIRQ_DISARM, &x);
-			tsc2007_read_ypos(d, PD_PENIRQ_DISARM, &y);
-			tsc2007_read_pressure(d, PD_PENIRQ_DISARM, &p);
-			if (p <= d->penup_threshold)
-				break;
-
-			input_report_abs(d->idev, ABS_X, 4096 - x);
-			input_report_abs(d->idev, ABS_Y, 4096 - y);
-			input_report_abs(d->idev, ABS_PRESSURE, p);
-			input_sync(d->idev);
-		};
-
-		/* Pen Up */
-		input_report_abs(d->idev, ABS_X, 4096 - x);
-		input_report_abs(d->idev, ABS_Y, 4096 - y);
-		input_report_abs(d->idev, ABS_PRESSURE, 0);
-		input_sync(d->idev);
-
-		tsc2007_read(d, MEAS_TEMP0, PD_PENIRQ_ARM, 0);
-		enable_irq(d->penirq);
-
+	if (!tsc2007 || !input_dev) {
+		ret = -ENOMEM;
+		goto fail1;
 	}
 
-	d->ts_thread_cnt = 0;
+	i2c_set_clientdata(client, tsc2007);
+
+	tsc2007->dev = input_dev;
+
+	input_dev->name = "tsc2007";
+	input_dev->phys = "tsc2007/input0";
+
+	//input_dev->id.bustype = BUS_HOST;
+	input_dev->dev.parent = &client->dev;
+
+	__set_bit(EV_KEY, input_dev->evbit);
+	__set_bit(BTN_TOUCH, input_dev->keybit);
+
+	__set_bit(EV_ABS, input_dev->evbit);
+	__set_bit(ABS_PRESSURE, input_dev->evbit);
+	__set_bit(ABS_X, input_dev->evbit);
+	__set_bit(ABS_Y, input_dev->evbit);
+
+	input_set_abs_params(input_dev, ABS_X, x_min, x_max, 0, 0);
+	input_set_abs_params(input_dev, ABS_Y, y_min, y_max, 0, 0);
+	input_set_abs_params(input_dev, ABS_PRESSURE, 0, 255, 0, 0);
+
+	ret = request_irq(client->irq, tsc2007_interrupt, 
+		IRQF_DISABLED | IRQF_TRIGGER_FALLING,
+		 "tsc2007 irq", NULL);
+	if (ret){
+		printk(KERN_ERR "tsc2007 request irq failed\n");
+		goto fail2;
+	}
+
+	ret = input_register_device(tsc2007->dev);
+	if (ret){
+		printk(KERN_ERR "tsc2007 register device fail\n");
+		goto fail2;
+	}
+
+	/*init */
+	tsc2007->status = PEN_UP;
+	tsc2007->client = client;
+
+	INIT_WORK(&tsc2007->irq_work, tsc2007_irq_work);
+
+	/* init tsc2007 */
+	i2c_smbus_write_byte(client, TSC_CMD_SETUP);
+
 	return 0;
-}
 
-/*!
- * This function puts the touch screen controller in low-power mode/state.
- *
- * @param   pdev  the device structure used to give information on touch screen
- *                to suspend
- * @param   state the power state the device is entering
- *
- * @return  The function always returns 0.
- */
-static int tsc2007_suspend(struct i2c_client *client, pm_message_t state)
-{
-	struct tsc2007_data *d = i2c_get_clientdata(client);
-
-	if (!IS_ERR(d->tstask) && d->opened)
-		kthread_stop(d->tstask);
-
-	return 0;
-}
-
-/*!
- * This function brings the touch screen controller back from low-power state.
- *
- * @param   pdev  the device structure used to give information on touch screen
- *                to resume
- *
- * @return  The function always returns 0.
- */
-static int tsc2007_resume(struct i2c_client *client)
-{
-	struct tsc2007_data *d = i2c_get_clientdata(client);
-
-	if (d->opened)
-		d->tstask = kthread_run(tsc2007ts_thread, d, DRIVER_NAME "tsd");
-
-	return 0;
-}
-
-static int tsc2007_idev_open(struct input_dev *idev)
-{
-	struct tsc2007_data *d = input_get_drvdata(idev);
-	int ret = 0;
-
-	d->penirq_timer.data = (unsigned long)d;
-	d->penirq_timer.function = tsc2007_pen_up;
-
-	init_completion(&d->penup_completion);
-
-	d->tstask = kthread_run(tsc2007ts_thread, d, DRIVER_NAME "tsd");
-	if (IS_ERR(d->tstask))
-		ret = PTR_ERR(d->tstask);
-	else
-		d->opened++;
-
+ fail2:
+	free_irq(client->irq, client);
+ fail1:
+	i2c_set_clientdata(client, NULL);
+	input_free_device(input_dev);
+	kfree(tsc2007);
 	return ret;
 }
 
-static void tsc2007_idev_close(struct input_dev *idev)
+static int __devexit tsc2007_remove(struct i2c_client *client)
 {
-	struct tsc2007_data *d = input_get_drvdata(idev);
-	if (!IS_ERR(d->tstask))
-		kthread_stop(d->tstask);
+	struct _tsc2007 *tsc2007 = i2c_get_clientdata(client);
 
-	del_timer_sync(&d->penirq_timer);
+	if(client->irq)
+		free_irq(client->irq, client);
+	
+	i2c_set_clientdata(client, NULL);
+	input_unregister_device(tsc2007->dev);
+	kfree(tsc2007);
 
-	if (d->opened > 0)
-		d->opened--;
-}
-
-static int tsc2007_driver_register(struct tsc2007_data *data)
-{
-	struct input_dev *idev;
-	int ret = 0;
-
-	init_timer(&data->penirq_timer);
-	data->penirq_timer.data = (unsigned long)data;
-	data->penirq_timer.function = tsc2007_pen_up;
-
-	init_completion(&data->penirq_completion);
-
-	if (data->penirq) {
-		ret =
-		    request_irq(data->penirq, tsc2007_penirq, IRQF_TRIGGER_LOW,
-				DRIVER_NAME, data);
-		if (!ret) {
-			printk(KERN_INFO "%s: Registering Touchscreen device\n",
-			       __func__);
-			set_irq_wake(data->penirq, 1);
-		} else {
-			printk(KERN_ERR "%s: Cannot grab irq %d\n",
-			       __func__, data->penirq);
-		}
-	}
-	idev = input_allocate_device();
-	data->idev = idev;
-	input_set_drvdata(idev, data);
-	idev->name = DRIVER_NAME;
-	idev->evbit[0] = BIT(EV_ABS);
-	idev->open = tsc2007_idev_open;
-	idev->close = tsc2007_idev_close;
-	idev->absbit[0] = BIT(ABS_X) | BIT(ABS_Y) | BIT(ABS_PRESSURE);
-	input_set_abs_params(idev, ABS_X, 0, ADC_MAX, 0, 0);
-	input_set_abs_params(idev, ABS_Y, 0, ADC_MAX, 0, 0);
-	input_set_abs_params(idev, ABS_PRESSURE, 0, 0, 0, 0);
-
-	if (!ret)
-		ret = input_register_device(idev);
-
-	return ret;
-}
-
-static int tsc2007_i2c_remove(struct i2c_client *client)
-{
-	int err;
-	struct tsc2007_data *d = i2c_get_clientdata(client);
-	struct mxc_tsc_platform_data *tsc_data;
-
-	free_irq(d->penirq, d);
-	input_unregister_device(d->idev);
-
-	err = i2c_detach_client(client);
-	if (err) {
-		dev_err(&client->dev, "Client deregistration failed, "
-			"client not detached.\n");
-		return err;
-	}
-
-	tsc_data = (struct mxc_tsc_platform_data *)(client->dev).platform_data;
-	if (tsc_data && tsc_data->inactive)
-		tsc_data->inactive();
-
-	if (d->vdd_reg) {
-		regulator_disable(d->vdd_reg);
-		regulator_put(d->vdd_reg);
-		d->vdd_reg = NULL;
-	}
 	return 0;
 }
 
-static int tsc2007_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
-{
-	struct tsc2007_data *data;
-	struct mxc_tsc_platform_data *tsc_data;
-	int err = 0;
+static struct i2c_device_id tsc2007_idtable[] = { 
+	{ "tsc2007", 0 }, 
+	{ } 
+}; 
 
-	data = kzalloc(sizeof(struct tsc2007_data), GFP_KERNEL);
-	if (data == NULL)
-		return -ENOMEM;
-
-	i2c_set_clientdata(client, data);
-	data->client = client;
-	data->penirq = client->irq;
-
-	tsc_data = (struct mxc_tsc_platform_data *)(client->dev).platform_data;
-	if (tsc_data && tsc_data->vdd_reg) {
-		if (tsc_data->penup_threshold > (ADC_MAX >> 3))
-			data->penup_threshold = (ADC_MAX >> 3);
-		else if (tsc_data->penup_threshold > 0)
-			data->penup_threshold = tsc_data->penup_threshold;
-		else
-			data->penup_threshold = 10;
-
-		data->vdd_reg = regulator_get(&client->dev, tsc_data->vdd_reg);
-		if (!IS_ERR(data->vdd_reg))
-			regulator_enable(data->vdd_reg);
-		else
-			data->vdd_reg = NULL;
-		if (tsc_data->active)
-			tsc_data->active();
-	} else {
-		data->vdd_reg = NULL;
-		data->penup_threshold = 10;
-	}
-
-	err = tsc2007_powerdown(data);
-	if (err >= 0) {
-		data->m = M_12BIT;
-
-		err = tsc2007_driver_register(data);
-		if (err < 0)
-			goto exit;
-
-		return 0;
-	}
-
-      exit:
-	return err;
-}
-
-static const struct i2c_device_id tsc2007_id[] = {
-	{ "tsc2007", 0 },
-	{},
-};
-MODULE_DEVICE_TABLE(i2c, tsc2007_id);
+MODULE_DEVICE_TABLE(i2c, tsc2007_idtable);
 
 static struct i2c_driver tsc2007_driver = {
 	.driver = {
-		   .name = DRIVER_NAME,
-		   },
-	.probe = tsc2007_i2c_probe,
-	.remove = tsc2007_i2c_remove,
-	.suspend = tsc2007_suspend,
-	.resume = tsc2007_resume,
-	.command = NULL,
-	.id_table = tsc2007_id,
+		.name 	= "tsc2007",
+	},
+	.id_table       = tsc2007_idtable,
+	.probe		= tsc2007_probe,
+	.remove		= __devexit_p(tsc2007_remove),
 };
 
-static int __init tsc2007_init(void)
+static int __init tsc2007_ts_init(void)
 {
-	return i2c_add_driver(&tsc2007_driver);
+	init_sysctl();
+	return i2c_add_driver(&tsc2007_driver);	 
 }
 
-static void __exit tsc2007_exit(void)
+static void __exit tsc2007_ts_exit(void)
 {
+	cleanup_sysctl();
 	i2c_del_driver(&tsc2007_driver);
 }
 
-MODULE_AUTHOR("Freescale Semiconductor, Inc.");
-MODULE_DESCRIPTION("tsc2007 Touch Screen Controller driver");
-MODULE_LICENSE("GPL");
+module_init(tsc2007_ts_init);
+module_exit(tsc2007_ts_exit);
 
-module_init(tsc2007_init);
-module_exit(tsc2007_exit);
+MODULE_DESCRIPTION("tsc2007 touch screen driver");
+MODULE_LICENSE("GPL");

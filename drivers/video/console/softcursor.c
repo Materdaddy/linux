@@ -30,6 +30,9 @@ int soft_cursor(struct fb_info *info, struct fb_cursor *cursor)
 
 	if (info->state != FBINFO_STATE_RUNNING)
 		return 0;
+#if defined(CONFIG_MACH_CHUMBY_SILVERMOON)
+	return 0;
+#endif
 
 	s_pitch = (cursor->image.width + 7) >> 3;
 	dsize = s_pitch * cursor->image.height;

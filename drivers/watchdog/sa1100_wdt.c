@@ -29,7 +29,7 @@
 #include <linux/uaccess.h>
 
 #ifdef CONFIG_ARCH_PXA
-#include <mach/pxa-regs.h>
+#include <mach/regs-ost.h>
 #endif
 
 #include <mach/reset.h>

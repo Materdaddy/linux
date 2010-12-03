@@ -37,7 +37,32 @@
 #include <mach/hardware.h>
 #include <asm/irq.h>
 #include <asm/io.h>
-#include <mach/i2c.h>
+#include <plat/i2c.h>
+
+#if defined(CONFIG_DVFM)
+#include <mach/dvfm.h>
+static int dvfm_dev_idx;
+
+static void set_dvfm_constraint(void)
+{
+	/* Disable Low power mode */
+	dvfm_disable_op_name("apps_idle", dvfm_dev_idx);
+	dvfm_disable_op_name("apps_sleep", dvfm_dev_idx);
+	dvfm_disable_op_name("sys_sleep", dvfm_dev_idx);
+}
+
+static void unset_dvfm_constraint(void)
+{
+	/* Enable Low power mode */
+	dvfm_enable_op_name("apps_idle", dvfm_dev_idx);
+	dvfm_enable_op_name("apps_sleep", dvfm_dev_idx);
+	dvfm_enable_op_name("sys_sleep", dvfm_dev_idx);
+}
+
+#else
+static void set_dvfm_constraint() {}
+static void unset_dvfm_constraint() {}
+#endif
 
 /*
  * I2C registers and bit definitions
@@ -631,7 +656,9 @@ static int i2c_pxa_do_pio_xfer(struct pxa_i2c *i2c,
 {
 	unsigned long timeout = 500000; /* 5 seconds */
 	int ret = 0;
+	unsigned long flags;
 
+	local_irq_save(flags);
 	ret = i2c_pxa_pio_set_master(i2c);
 	if (ret)
 		goto out;
@@ -642,6 +669,7 @@ static int i2c_pxa_do_pio_xfer(struct pxa_i2c *i2c,
 	i2c->msg_ptr = 0;
 	i2c->irqlogidx = 0;
 
+	set_dvfm_constraint();
 	i2c_pxa_start_message(i2c);
 
 	while (timeout-- && i2c->msg_num > 0) {
@@ -650,6 +678,7 @@ static int i2c_pxa_do_pio_xfer(struct pxa_i2c *i2c,
 	}
 
 	i2c_pxa_stop_message(i2c);
+	unset_dvfm_constraint();
 
 	/*
 	 * We place the return code in i2c->msg_idx.
@@ -657,6 +686,7 @@ static int i2c_pxa_do_pio_xfer(struct pxa_i2c *i2c,
 	ret = i2c->msg_idx;
 
 out:
+	local_irq_restore(flags);
 	if (timeout == 0)
 		i2c_pxa_scream_blue_murder(i2c, "timeout");
 
@@ -697,6 +727,7 @@ static int i2c_pxa_do_xfer(struct pxa_i2c *i2c, struct i2c_msg *msg, int num)
 	i2c->msg_ptr = 0;
 	i2c->irqlogidx = 0;
 
+	set_dvfm_constraint();
 	i2c_pxa_start_message(i2c);
 
 	spin_unlock_irq(&i2c->lock);
@@ -706,6 +737,7 @@ static int i2c_pxa_do_xfer(struct pxa_i2c *i2c, struct i2c_msg *msg, int num)
 	 */
 	timeout = wait_event_timeout(i2c->wait, i2c->msg_num == 0, HZ * 5);
 	i2c_pxa_stop_message(i2c);
+	unset_dvfm_constraint();
 
 	/*
 	 * We place the return code in i2c->msg_idx.
@@ -723,14 +755,15 @@ static int i2c_pxa_pio_xfer(struct i2c_adapter *adap,
 			    struct i2c_msg msgs[], int num)
 {
 	struct pxa_i2c *i2c = adap->algo_data;
+	struct i2c_pxa_platform_data *plat = adap->dev.parent->platform_data;
 	int ret, i;
-
+	if(plat->get_ripc)
+	plat->get_ripc();
 	/* If the I2C controller is disabled we need to reset it
 	  (probably due to a suspend/resume destroying state). We do
 	  this here as we can then avoid worrying about resuming the
 	  controller before its users. */
-	if (!(readl(_ICR(i2c)) & ICR_IUE))
-		i2c_pxa_reset(i2c);
+	i2c_pxa_reset(i2c);
 
 	for (i = adap->retries; i >= 0; i--) {
 		ret = i2c_pxa_do_pio_xfer(i2c, msgs, num);
@@ -745,6 +778,8 @@ static int i2c_pxa_pio_xfer(struct i2c_adapter *adap,
 	ret = -EREMOTEIO;
  out:
 	i2c_pxa_set_slave(i2c, ret);
+	if(plat->release_ripc)
+        plat->release_ripc();
 	return ret;
 }
 
@@ -946,7 +981,6 @@ static int i2c_pxa_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num
 {
 	struct pxa_i2c *i2c = adap->algo_data;
 	int ret, i;
-
 	for (i = adap->retries; i >= 0; i--) {
 		ret = i2c_pxa_do_xfer(i2c, msgs, num);
 		if (ret != I2C_RETRY)
@@ -1153,16 +1187,22 @@ static struct platform_driver i2c_pxa_driver = {
 
 static int __init i2c_adap_pxa_init(void)
 {
+#ifdef CONFIG_DVFM
+	dvfm_register("I2C", &dvfm_dev_idx);
+#endif
 	return platform_driver_register(&i2c_pxa_driver);
 }
 
 static void __exit i2c_adap_pxa_exit(void)
 {
 	platform_driver_unregister(&i2c_pxa_driver);
+#ifdef CONFIG_DVFM
+	dvfm_unregister("I2C", &dvfm_dev_idx);
+#endif
 }
 
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:pxa2xx-i2c");
 
-subsys_initcall(i2c_adap_pxa_init);
+postcore_initcall(i2c_adap_pxa_init);
 module_exit(i2c_adap_pxa_exit);

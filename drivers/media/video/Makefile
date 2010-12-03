@@ -57,14 +57,6 @@ obj-$(CONFIG_VIDEO_ZORAN) += zoran/
 obj-$(CONFIG_VIDEO_PMS) += pms.o
 obj-$(CONFIG_VIDEO_VINO) += vino.o indycam.o
 obj-$(CONFIG_VIDEO_STRADIS) += stradis.o
-obj-$(CONFIG_VIDEO_MXC_IPU_CAMERA) += mxc/capture/
-obj-$(CONFIG_VIDEO_MXC_EMMA_CAMERA) += mxc/capture/
-obj-$(CONFIG_VIDEO_MXC_CSI_CAMERA) += mxc/capture/
-obj-$(CONFIG_VIDEO_MXC_IPU_OUTPUT) += mxc/output/
-obj-$(CONFIG_VIDEO_MXC_IPUV1_WVGA_OUTPUT) += mxc/output/
-obj-$(CONFIG_VIDEO_MXC_EMMA_OUTPUT) += mxc/output/
-obj-$(CONFIG_VIDEO_MXC_OPL) += mxc/opl/
-obj-$(CONFIG_VIDEO_PXP)	+= pxp.o
 obj-$(CONFIG_VIDEO_CPIA) += cpia.o
 obj-$(CONFIG_VIDEO_CPIA_PP) += cpia_pp.o
 obj-$(CONFIG_VIDEO_CPIA_USB) += cpia_usb.o
@@ -105,7 +97,10 @@ obj-$(CONFIG_VIDEO_UPD64083) += upd64083.o
 obj-$(CONFIG_VIDEO_CX2341X) += cx2341x.o
 
 obj-$(CONFIG_VIDEO_CAFE_CCIC) += cafe_ccic.o
-obj-$(CONFIG_VIDEO_OV7670) 	+= ov7670.o
+#obj-$(CONFIG_VIDEO_OV7670) 	+= ov7670.o
+obj-$(CONFIG_VIDEO_OV7660)      += ov7660.o
+obj-$(CONFIG_VIDEO_OV7670) 	+= ov7670_pxa.o
+obj-$(CONFIG_VIDEO_OV3640)      += ov3640.o
 
 obj-$(CONFIG_VIDEO_TCM825X) += tcm825x.o
 
@@ -146,7 +141,8 @@ obj-$(CONFIG_SOC_CAMERA_PLATFORM)	+= soc_camera_platform.o
 obj-$(CONFIG_VIDEO_AU0828) += au0828/
 
 obj-$(CONFIG_USB_VIDEO_CLASS)	+= uvc/
-
+obj-$(CONFIG_PXA168_CAMERA)          += pxa168_camera.o
+obj-$(CONFIG_VIDEO_SIV120A)          += siv120a.o
 EXTRA_CFLAGS += -Idrivers/media/dvb/dvb-core
 EXTRA_CFLAGS += -Idrivers/media/dvb/frontends
 EXTRA_CFLAGS += -Idrivers/media/common/tuners

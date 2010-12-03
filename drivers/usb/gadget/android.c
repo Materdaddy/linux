@@ -46,9 +46,9 @@ MODULE_VERSION("1.0");
 static const char longname[] = "Gadget Android";
 
 /* Default vendor and product IDs, overridden by platform data */
-#define VENDOR_ID		0x18D1
-#define PRODUCT_ID		0x0001
-#define ADB_PRODUCT_ID	0x0002
+#define VENDOR_ID		0x0bb4
+#define PRODUCT_ID		0x0c01
+#define ADB_PRODUCT_ID	0x0c02
 
 struct android_dev {
 	struct usb_gadget *gadget;
@@ -113,7 +113,7 @@ static int __init android_bind_config(struct usb_configuration *c)
 	return adb_function_add(c);
 }
 
-static struct usb_configuration android_config __initdata = {
+static struct usb_configuration android_config = {
 	.label		= "android",
 	.bind		= android_bind_config,
 	.bConfigurationValue = 1,

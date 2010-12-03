@@ -556,7 +556,7 @@ static int lookup_string(
 
 	while (*sp) {
 		s = *sp++;
-		if (s->language != language)
+		if ((s->language != language) && language)
 			continue;
 		value = usb_gadget_get_string(s, id, buf);
 		if (value > 0)
@@ -808,6 +808,8 @@ unknown:
 		 */
 		if ((ctrl->bRequestType & USB_RECIP_MASK)
 				== USB_RECIP_INTERFACE) {
+			if (!cdev->config || w_index >= MAX_CONFIG_INTERFACES)
+				break;
 			f = cdev->config->interface[w_index];
 			if (f && f->setup)
 				value = f->setup(f, ctrl);

@@ -4,6 +4,37 @@
 
 menu "Character devices"
 
+#
+# Generic chumby timer driver
+config CHUMBY_TIMER
+	tristate "Chumby /dev/timerx"
+	depends on MACH_CHUMBY_SILVERMOON
+	default m
+	---help---
+	  This provides the generic /dev/timerx device used by Chumby flashplayer.
+	  It basically exposes the kernel jiffie count, providing a monotonically
+	  incrementing count useful for timing without the overhead of get_systemtime().
+
+	  Say "m" to load this as a module.
+
+config CHUMBY_SENSE1
+	tristate "Chumby sensor package"
+	depends on MACH_CHUMBY_SILVERMOON
+	default m
+	---help---
+	  There is no help for the weary.
+
+	  Say "m" to load this as a module.
+
+config CHUMBY_REGISTERS
+	tristate "Chumby registers"
+	depends on MACH_CHUMBY_SILVERMOON
+	default m
+	---help---
+	  This exposes GPIO registers and other potentially useful items.
+
+	  Say "m" to load this as a module.
+
 config VT
 	bool "Virtual terminal" if EMBEDDED
 	depends on !S390
@@ -430,23 +461,6 @@ config SGI_MBCS
        help
          If you have an SGI Altix with an attached SABrick
          say Y or M here, otherwise say N.
-
-config FM_SI4702
-	tristate "SI4702 FM device driver"
-	depends on (MACH_MX31_3DS || MACH_MX35_3DS || MACH_MX37_3DS || MACH_MX51_3DS)
-	default n
-
-config MXC_IIM
-	tristate "MXC IIM device driver"
-	depends on ARCH_MXC
-	help
-	  Support for access to MXC IIM device, most people should say N here.
-
-config IMX_SIM
-	tristate "IMX SIM support"
-	depends on ARCH_MX51
-	---help---
-         Say Y to enable the SIM driver support.
 
 source "drivers/serial/Kconfig"
 
@@ -1106,6 +1120,21 @@ config DCC_TTY
 	depends on ARM
 
 source "drivers/s390/char/Kconfig"
+
+config PXA930_ACIPC
+        tristate "PXA930 AC-IPC Driver"
+        depends on CPU_PXA930 || CPU_PXA910
+        help
+          Please say Y here if want to support Application to Communication
+          Intel-Processor Communication on PXA930 chip
+
+config PXA910_IRE
+        tristate "image rotation engine"
+        depends on CPU_PXA910
+        help
+          Please say Y here if want to support image rotation engine
+
+source "drivers/char/icr/Kconfig"
 
 endmenu
 

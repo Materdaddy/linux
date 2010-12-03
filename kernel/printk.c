@@ -35,6 +35,9 @@
 
 #include <asm/uaccess.h>
 
+//#define CHUMBY_EARLY_DEBUG
+
+
 /*
  * Architectures can override it:
  */
@@ -43,10 +46,6 @@ void asmlinkage __attribute__((weak)) early_printk(const char *fmt, ...)
 }
 
 #define __LOG_BUF_LEN	(1 << CONFIG_LOG_BUF_SHIFT)
-
-#ifdef        CONFIG_DEBUG_LL
-extern void printascii(char *);
-#endif
 
 /* printk's without a loglevel use this.. */
 #define DEFAULT_MESSAGE_LOGLEVEL 4 /* KERN_WARNING */
@@ -484,8 +483,21 @@ static void call_console_drivers(unsigned start, unsigned end)
 	_call_console_drivers(start_print, end, msg_level);
 }
 
+#ifdef CHUMBY_EARLY_DEBUG
+#include <asm/io.h>
+#endif
 static void emit_log_char(char c)
 {
+#ifdef CHUMBY_EARLY_DEBUG
+	unsigned long COM_LSR = 0xfe000000 + 0x17014;
+	unsigned long COM_THR = 0xfe000000 + 0x17000;
+	if(c=='\n') {
+		while ((__raw_readl(COM_LSR) & 0x20) == 0);
+		__raw_writel('\r', COM_THR);
+	}
+	while ((__raw_readl(COM_LSR) & 0x20) == 0);
+	__raw_writel(c, COM_THR);
+#endif //CHUMBY_EARLY_DEBUG
 	LOG_BUF(log_end) = c;
 	log_end++;
 	if (log_end - log_start > log_buf_len)
@@ -671,10 +683,6 @@ asmlinkage int vprintk(const char *fmt, va_list args)
 	printed_len += vscnprintf(printk_buf + printed_len,
 				  sizeof(printk_buf) - printed_len, fmt, args);
 
-
-#ifdef	CONFIG_DEBUG_LL
-	printascii(printk_buf);
-#endif
 
 	/*
 	 * Copy the output into log_buf.  If the caller didn't provide

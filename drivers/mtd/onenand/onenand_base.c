@@ -24,8 +24,50 @@
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/onenand.h>
 #include <linux/mtd/partitions.h>
+#include <mach/pxa3xx_bbm.h>
 
 #include <asm/io.h>
+
+#if defined(CONFIG_DVFM)
+#include <mach/dvfm.h>
+
+static struct dvfm_lock dvfm_lock = {
+	.lock		= SPIN_LOCK_UNLOCKED,
+	.dev_idx	= -1,
+	.count		= 0,
+};
+
+static void set_dvfm_constraint(void)
+{
+	spin_lock_irqsave(&dvfm_lock.lock, dvfm_lock.flags);
+	if (dvfm_lock.count++ == 0) {
+		/* Disable Low power mode */
+		dvfm_disable_op_name("apps_idle", dvfm_lock.dev_idx);
+		dvfm_disable_op_name("apps_sleep", dvfm_lock.dev_idx);
+		dvfm_disable_op_name("sys_sleep", dvfm_lock.dev_idx);
+	}
+	spin_unlock_irqrestore(&dvfm_lock.lock, dvfm_lock.flags);
+}
+
+static void unset_dvfm_constraint(void)
+{
+	spin_lock_irqsave(&dvfm_lock.lock, dvfm_lock.flags);
+	if (dvfm_lock.count == 0) {
+		spin_unlock_irqrestore(&dvfm_lock.lock, dvfm_lock.flags);
+		return;
+	}
+	if (--dvfm_lock.count == 0) {
+		/* Enable Low power mode */
+		dvfm_enable_op_name("apps_idle", dvfm_lock.dev_idx);
+		dvfm_enable_op_name("apps_sleep", dvfm_lock.dev_idx);
+		dvfm_enable_op_name("sys_sleep", dvfm_lock.dev_idx);
+	}
+	spin_unlock_irqrestore(&dvfm_lock.lock, dvfm_lock.flags);
+}
+#else
+static void set_dvfm_constraint(void) {}
+static void unset_dvfm_constraint(void) {}
+#endif
 
 /**
  * onenand_oob_64 - oob info for large (2KB) page
@@ -195,7 +237,17 @@ static inline int onenand_get_density(int dev_id)
 static int onenand_command(struct mtd_info *mtd, int cmd, loff_t addr, size_t len)
 {
 	struct onenand_chip *this = mtd->priv;
+	struct pxa3xx_bbm *bbm = mtd->bbm;
 	int value, block, page;
+
+	if (cmd != ONENAND_CMD_UNLOCK
+			&& cmd != ONENAND_CMD_LOCK
+			&& cmd != ONENAND_CMD_LOCK_TIGHT
+			&& cmd != ONENAND_CMD_UNLOCK_ALL)
+
+		if (!bbm)
+			addr = bbm->search(mtd, addr);
+
 
 	/* Address translation */
 	switch (cmd) {
@@ -334,11 +386,11 @@ static int onenand_wait(struct mtd_info *mtd, int state)
 		int ecc = this->read_word(this->base + ONENAND_REG_ECC_STATUS);
 		if (ecc) {
 			if (ecc & ONENAND_ECC_2BIT_ALL) {
-				printk(KERN_ERR "onenand_wait: ECC error = 0x%04x\n", ecc);
+				//printk(KERN_ERR "onenand_wait: ECC error = 0x%04x\n", ecc);
 				mtd->ecc_stats.failed++;
 				return -EBADMSG;
 			} else if (ecc & ONENAND_ECC_1BIT_ALL) {
-				printk(KERN_INFO "onenand_wait: correctable ECC error = 0x%04x\n", ecc);
+				//printk(KERN_INFO "onenand_wait: correctable ECC error = 0x%04x\n", ecc);
 				mtd->ecc_stats.corrected++;
 			}
 		}
@@ -753,6 +805,9 @@ static int onenand_get_device(struct mtd_info *mtd, int new_state)
 		remove_wait_queue(&this->wq, &wait);
 	}
 
+	/* If get onenand device, set dvfm constraint */
+	set_dvfm_constraint();
+
 	return 0;
 }
 
@@ -771,6 +826,9 @@ static void onenand_release_device(struct mtd_info *mtd)
 	this->state = FL_READY;
 	wake_up(&this->wq);
 	spin_unlock(&this->chip_lock);
+
+	/* unset dvfm constraint when release onenand device */
+	unset_dvfm_constraint();
 }
 
 /**
@@ -1751,10 +1809,9 @@ static int onenand_write_oob(struct mtd_info *mtd, loff_t to,
 static int onenand_block_isbad_nolock(struct mtd_info *mtd, loff_t ofs, int allowbbt)
 {
 	struct onenand_chip *this = mtd->priv;
-	struct bbm_info *bbm = this->bbm;
 
 	/* Return info from the table */
-	return bbm->isbad_bbt(mtd, ofs, allowbbt);
+	return this->block_bad(mtd, ofs, allowbbt);
 }
 
 /**
@@ -1772,7 +1829,7 @@ static int onenand_erase(struct mtd_info *mtd, struct erase_info *instr)
 	int len;
 	int ret = 0;
 
-	DEBUG(MTD_DEBUG_LEVEL3, "onenand_erase: start = 0x%08x, len = %i\n", (unsigned int) instr->addr, (unsigned int) instr->len);
+	DEBUG(MTD_DEBUG_LEVEL3, "onenand_erase: start = 0x%012llx, len = %llu\n", (unsigned long long) instr->addr, (unsigned long long) instr->len);
 
 	block_size = (1 << this->erase_shift);
 
@@ -1810,7 +1867,7 @@ static int onenand_erase(struct mtd_info *mtd, struct erase_info *instr)
 
 		/* Check if we have a bad block, we do not erase bad blocks */
 		if (onenand_block_isbad_nolock(mtd, addr, 0)) {
-			printk (KERN_WARNING "onenand_erase: attempt to erase a bad block at addr 0x%08x\n", (unsigned int) addr);
+			printk (KERN_WARNING "onenand_erase: attempt to erase a bad block at addr 0x%012llx\n", (unsigned long long) addr);
 			instr->state = MTD_ERASE_FAILED;
 			goto erase_exit;
 		}
@@ -1840,6 +1897,12 @@ erase_exit:
 
 	/* Deselect and wake up anyone waiting on the device */
 	onenand_release_device(mtd);
+
+	if (ret && (this->options & ONENAND_RELOC_IFBAD)) {
+		this->block_markbad(mtd, addr);
+		instr->state = MTD_ERASE_DONE;
+		ret = 0;
+	}
 
 	/* Do call back function */
 	if (!ret)
@@ -2029,7 +2092,7 @@ static int onenand_do_lock_cmd(struct mtd_info *mtd, loff_t ofs, size_t len, int
  *
  * Lock one or more blocks
  */
-static int onenand_lock(struct mtd_info *mtd, loff_t ofs, size_t len)
+static int onenand_lock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 {
 	int ret;
 
@@ -2047,7 +2110,7 @@ static int onenand_lock(struct mtd_info *mtd, loff_t ofs, size_t len)
  *
  * Unlock one or more blocks
  */
-static int onenand_unlock(struct mtd_info *mtd, loff_t ofs, size_t len)
+static int onenand_unlock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 {
 	int ret;
 
@@ -2648,6 +2711,9 @@ static int onenand_probe(struct mtd_info *mtd)
 		mtd->erasesize <<= 1;
 	}
 
+#if defined(CONFIG_DVFM)
+	dvfm_register("OneNAND", &dvfm_lock.dev_idx);
+#endif
 	return 0;
 }
 
@@ -2709,6 +2775,8 @@ int onenand_scan(struct mtd_info *mtd, int maxchips)
 		this->block_markbad = onenand_default_block_markbad;
 	if (!this->scan_bbt)
 		this->scan_bbt = onenand_default_bbt;
+	if (!this->block_bad)
+		this->block_bad = onenand_isbad_bbt;
 
 	if (onenand_probe(mtd))
 		return -ENXIO;
@@ -2824,6 +2892,18 @@ int onenand_scan(struct mtd_info *mtd, int maxchips)
 void onenand_release(struct mtd_info *mtd)
 {
 	struct onenand_chip *this = mtd->priv;
+#ifdef CONFIG_PXA3XX_BBM
+	struct pxa3xx_bbm *bbm = mtd->bbm;
+
+	bbm->uninit(mtd);
+#else
+	/* Free bad block table memory, if allocated */
+	if (this->bbm) {
+		struct bbm_info *bbm = this->bbm;
+		kfree(bbm->bbt);
+		kfree(this->bbm);
+	}
+#endif
 
 #ifdef CONFIG_MTD_PARTITIONS
 	/* Deregister partitions */
@@ -2832,12 +2912,6 @@ void onenand_release(struct mtd_info *mtd)
 	/* Deregister the device */
 	del_mtd_device (mtd);
 
-	/* Free bad block table memory, if allocated */
-	if (this->bbm) {
-		struct bbm_info *bbm = this->bbm;
-		kfree(bbm->bbt);
-		kfree(this->bbm);
-	}
 	/* Buffers allocated by onenand_scan */
 	if (this->options & ONENAND_PAGEBUF_ALLOC)
 		kfree(this->page_buf);

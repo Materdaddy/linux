@@ -9,13 +9,9 @@ FONTMAPFILE = cp437.uni
 
 obj-y	 += mem.o random.o tty_io.o n_tty.o tty_ioctl.o tty_ldisc.o tty_buffer.o tty_port.o
 
-obj-m += chumby_timer.o
-#obj-m += chumby_bend.o
-
-
-obj-$(CONFIG_FM_SI4702)		+= mxc_si4702.o
-obj-$(CONFIG_MXC_IIM)		+= mxc_iim.o
-obj-$(CONFIG_IMX_SIM) 		+= imx_sim.o
+obj-$(CONFIG_CHUMBY_TIMER)	+= chumby_timer.o
+obj-$(CONFIG_CHUMBY_SENSE1)	+= chumby_sense1.o
+obj-$(CONFIG_CHUMBY_REGISTERS)	+= chumby_regs.o
 
 obj-$(CONFIG_LEGACY_PTYS)	+= pty.o
 obj-$(CONFIG_UNIX98_PTYS)	+= pty.o
@@ -103,6 +99,7 @@ obj-$(CONFIG_CS5535_GPIO)	+= cs5535_gpio.o
 obj-$(CONFIG_GPIO_VR41XX)	+= vr41xx_giu.o
 obj-$(CONFIG_GPIO_TB0219)	+= tb0219.o
 obj-$(CONFIG_TELCLOCK)		+= tlclk.o
+
 obj-$(CONFIG_MWAVE)		+= mwave/
 obj-$(CONFIG_AGP)		+= agp/
 obj-$(CONFIG_PCMCIA)		+= pcmcia/
@@ -116,6 +113,11 @@ obj-$(CONFIG_PS3_FLASH)		+= ps3flash.o
 
 obj-$(CONFIG_JS_RTC)		+= js-rtc.o
 js-rtc-y = rtc.o
+
+obj-$(CONFIG_IMM)		+= imm.o
+obj-$(CONFIG_PXA930_ACIPC)	+= pxa930_acipc.o
+obj-$(CONFIG_PXA910_IRE)	+= pxa910_ire.o
+obj-$(CONFIG_PXA_ICR)           += icr/
 
 # Files generated that shall be removed upon make clean
 clean-files := consolemap_deftbl.c defkeymap.c

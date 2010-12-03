@@ -94,6 +94,14 @@
 # endif
 #endif
 
+#if defined(CONFIG_CPU_MOHAWK)
+# ifdef _CACHE
+#  define MULTI_CACHE 1
+# else
+#  define _CACHE mohawk
+# endif
+#endif
+
 #if defined(CONFIG_CPU_FEROCEON)
 # define MULTI_CACHE 1
 #endif
@@ -206,7 +214,6 @@ struct outer_cache_fns {
 	void (*inv_range)(unsigned long, unsigned long);
 	void (*clean_range)(unsigned long, unsigned long);
 	void (*flush_range)(unsigned long, unsigned long);
-	void (*flush_all)(void);
 };
 
 /*
@@ -284,11 +291,6 @@ static inline void outer_flush_range(unsigned long start, unsigned long end)
 	if (outer_cache.flush_range)
 		outer_cache.flush_range(start, end);
 }
-static inline void outer_flush_all(void)
-{
-	if (outer_cache.flush_all)
-		outer_cache.flush_all();
-}
 
 #else
 
@@ -297,8 +299,6 @@ static inline void outer_inv_range(unsigned long start, unsigned long end)
 static inline void outer_clean_range(unsigned long start, unsigned long end)
 { }
 static inline void outer_flush_range(unsigned long start, unsigned long end)
-{ }
-static inline void outer_flush_all(void)
 { }
 
 #endif

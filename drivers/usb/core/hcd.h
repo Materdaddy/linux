@@ -217,6 +217,10 @@ struct hc_driver {
 	void	(*relinquish_port)(struct usb_hcd *, int);
 		/* has a port been handed over to a companion? */
 	int	(*port_handed_over)(struct usb_hcd *, int);
+#ifdef CONFIG_USB_OTG
+	int	(*disconnect)(struct usb_hcd *);
+	int	(*connect)(struct usb_hcd *);
+#endif
 };
 
 extern int usb_hcd_link_urb_to_ep(struct usb_hcd *hcd, struct urb *urb);

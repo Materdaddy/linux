@@ -240,8 +240,9 @@ static int m25p80_erase(struct mtd_info *mtd, struct erase_info *instr)
 	/* sanity checks */
 	if (instr->addr + instr->len > flash->mtd.size)
 		return -EINVAL;
-	if ((instr->addr % mtd->erasesize) != 0
-			|| (instr->len % mtd->erasesize) != 0) {
+
+	if ((mtd_mod_by_eb(instr->addr, mtd) != 0)
+			|| (mtd_mod_by_eb(instr->len, mtd) != 0)) {
 		return -EINVAL;
 	}
 
@@ -502,6 +503,11 @@ static struct flash_info __devinitdata m25p_data [] = {
 	{ "at26df081a", 0x1f4501, 0, 64 * 1024, 16, SECT_4K, },
 	{ "at26df161a", 0x1f4601, 0, 64 * 1024, 32, SECT_4K, },
 	{ "at26df321",  0x1f4701, 0, 64 * 1024, 64, SECT_4K, },
+
+	/* Macronix -- mx25lxxx */
+	{ "mx25l32",  0xc22016, 0, 64 * 1024,  64, },
+	{ "mx25l64",  0xc22017, 0, 64 * 1024, 128, },
+	{ "mx25l128", 0xc22018, 0, 64 * 1024, 256, },
 
 	/* Spansion -- single (large) sector size only, at least
 	 * for the chips listed here (without boot sectors).

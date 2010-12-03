@@ -57,6 +57,12 @@ __mmap_switched:
 	str	r2, [r6]			@ Save atags pointer
 	bic	r4, r0, #CR_A			@ Clear 'A' bit
 	stmia	r7, {r0, r4}			@ Save control register values
+//#define ENDLESS_LOOP_DEBUG
+#ifdef ENDLESS_LOOP_DEBUG:
+__start_endless_loop:
+	nop
+	b __start_endless_loop
+#endif
 	b	start_kernel
 ENDPROC(__mmap_switched)
 

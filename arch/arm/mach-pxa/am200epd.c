@@ -30,6 +30,8 @@
 #include <linux/irq.h>
 #include <linux/gpio.h>
 
+#include <mach/pxa25x.h>
+#include <mach/gumstix.h>
 #include <mach/pxafb.h>
 
 #include <video/metronomefb.h>

@@ -35,10 +35,20 @@ extern const struct linux_logo logo_superh_mono;
 extern const struct linux_logo logo_superh_vga16;
 extern const struct linux_logo logo_superh_clut224;
 extern const struct linux_logo logo_m32r_clut224;
+extern const struct linux_logo logo_silvermoon_normal_clut224;
+extern const struct linux_logo logo_silvermoon_recovery_clut224;
 
 static int nologo;
 module_param(nologo, bool, 0);
 MODULE_PARM_DESC(nologo, "Disables startup logo");
+
+static int recovery;
+module_param(recovery, bool, 0);
+MODULE_PARM_DESC(recovery, "Shows recovery logo");
+
+static char *brand = "chumby";
+module_param(brand, charp, 0);
+MODULE_PARM_DESC(brand, "Which branded logo to show");
 
 /* logo's are marked __initdata. Use __init_refok to tell
  * modpost that it is intended that this function uses data
@@ -61,7 +71,7 @@ const struct linux_logo * __init_refok fb_find_logo(int depth)
 		logo = &logo_superh_mono;
 #endif
 	}
-	
+
 	if (depth >= 4) {
 #ifdef CONFIG_LOGO_LINUX_VGA16
 		/* Generic Linux logo */
@@ -76,7 +86,7 @@ const struct linux_logo * __init_refok fb_find_logo(int depth)
 		logo = &logo_superh_vga16;
 #endif
 	}
-	
+
 	if (depth >= 8) {
 #ifdef CONFIG_LOGO_LINUX_CLUT224
 		/* Generic Linux logo */
@@ -114,6 +124,17 @@ const struct linux_logo * __init_refok fb_find_logo(int depth)
 #ifdef CONFIG_LOGO_M32R_CLUT224
 		/* M32R Linux logo */
 		logo = &logo_m32r_clut224;
+#endif
+#ifdef CONFIG_LOGO_SILVERMOON_CLUT224
+		if(!strcmp(brand, "insignia")) {
+			if(recovery)
+				logo = &logo_silvermoon_recovery_clut224;
+			else
+				logo = &logo_silvermoon_normal_clut224;
+		}
+		else {
+			logo = &logo_linux_clut224;
+		}
 #endif
 	}
 	return logo;

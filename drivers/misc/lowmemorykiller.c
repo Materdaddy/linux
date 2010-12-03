@@ -19,6 +19,9 @@
 #include <linux/oom.h>
 #include <linux/sched.h>
 
+#define NR_ACTIVE	NR_ACTIVE_ANON
+#define NR_INACTIVE	NR_INACTIVE_ANON
+
 static int lowmem_shrink(int nr_to_scan, gfp_t gfp_mask);
 
 static struct shrinker lowmem_shrinker = {

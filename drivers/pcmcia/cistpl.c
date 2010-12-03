@@ -54,6 +54,11 @@ static const u_int exponent[] = {
 /* Upper limit on reasonable # of tuples */
 #define MAX_TUPLES		200
 
+#ifdef CONFIG_PXA168_CF
+extern void pxa168_cf_mem_writeb(u8 attr_mem_transfer, u8 val, u32 addr);
+extern u8 pxa168_cf_mem_readb(u8 attr_mem_transfer, u32 addr);
+#endif /* CONFIG_PXA168_CF */
+
 /*====================================================================*/
 
 /* Parameters that can be set with 'insmod' */
@@ -89,6 +94,7 @@ set_cis_map(struct pcmcia_socket *s, unsigned int card_offset, unsigned int flag
 	pccard_mem_map *mem = &s->cis_mem;
 	int ret;
 
+#ifndef CONFIG_PXA168_CF
 	if (!(s->features & SS_CAP_STATIC_MAP) && (mem->res == NULL)) {
 		mem->res = pcmcia_find_mem_region(0, s->map_size, s->map_size, 0, s);
 		if (mem->res == NULL) {
@@ -117,7 +123,13 @@ set_cis_map(struct pcmcia_socket *s, unsigned int card_offset, unsigned int flag
 			iounmap(s->cis_virt);
 		s->cis_virt = ioremap(mem->static_start, s->map_size);
 	}
-
+#else
+	if (!s->cis_virt)
+	{
+		ret = s->ops->set_mem_map(s, mem);
+		s->cis_virt = (void __iomem*)mem->static_start;
+	}
+#endif 
 	return s->cis_virt;
 }
 
@@ -150,18 +162,36 @@ int pcmcia_read_cis_mem(struct pcmcia_socket *s, int attr, u_int addr,
 	}
 
 	sys = set_cis_map(s, 0, MAP_ACTIVE | ((cis_width) ? MAP_16BIT : 0));
+#ifndef CONFIG_PXA168_CF
 	if (!sys) {
 	    memset(ptr, 0xff, len);
 	    return -1;
 	}
+#else
+	sys = 0; /* pxa168 CF Controller doesnot support 
+		    memory-mapping Common/Attrib Memory*/
+#endif
 
+#ifndef CONFIG_PXA168_CF
 	writeb(flags, sys+CISREG_ICTRL0);
 	writeb(addr & 0xff, sys+CISREG_IADDR0);
 	writeb((addr>>8) & 0xff, sys+CISREG_IADDR1);
 	writeb((addr>>16) & 0xff, sys+CISREG_IADDR2);
 	writeb((addr>>24) & 0xff, sys+CISREG_IADDR3);
+#else
+	pxa168_cf_mem_writeb((flags & MAP_ATTRIB),(u8)flags,(u32)(sys+CISREG_ICTRL0));
+	pxa168_cf_mem_writeb((flags & MAP_ATTRIB),(u8)(addr & 0xff),(u32)(sys+CISREG_IADDR0));
+	pxa168_cf_mem_writeb((flags & MAP_ATTRIB),(u8)((addr>>8) & 0xff),(u32)(sys+CISREG_IADDR1));
+	pxa168_cf_mem_writeb((flags & MAP_ATTRIB),(u8)((addr>>16) & 0xff),(u32)(sys+CISREG_IADDR2));
+	pxa168_cf_mem_writeb((flags & MAP_ATTRIB),(u8)((addr>>24) & 0xff),(u32)(sys+CISREG_IADDR3));
+#endif
+
 	for ( ; len > 0; len--, buf++)
+#ifndef CONFIG_PXA168_CF
 	    *buf = readb(sys+CISREG_IDATA0);
+#else
+	    *buf = pxa168_cf_mem_readb((flags & MAP_ATTRIB),((u32)(sys+CISREG_IDATA0)));
+#endif
     } else {
 	u_int inc = 1, card_offset, flags;
 
@@ -175,16 +205,24 @@ int pcmcia_read_cis_mem(struct pcmcia_socket *s, int attr, u_int addr,
 	card_offset = addr & ~(s->map_size-1);
 	while (len) {
 	    sys = set_cis_map(s, card_offset, flags);
+#ifndef CONFIG_PXA168_CF
 	    if (!sys) {
 		memset(ptr, 0xff, len);
 		return -1;
 	    }
+#else
+	    sys = 0;
+#endif
 	    end = sys + s->map_size;
 	    sys = sys + (addr & (s->map_size-1));
 	    for ( ; len > 0; len--, buf++, sys += inc) {
 		if (sys == end)
 		    break;
+#ifndef CONFIG_PXA168_CF
 		*buf = readb(sys);
+#else
+		*buf = pxa168_cf_mem_readb((flags & MAP_ATTRIB),((u32) sys));
+#endif
 	    }
 	    card_offset += s->map_size;
 	    addr = 0;
@@ -216,16 +254,33 @@ void pcmcia_write_cis_mem(struct pcmcia_socket *s, int attr, u_int addr,
 	}
 
 	sys = set_cis_map(s, 0, MAP_ACTIVE | ((cis_width) ? MAP_16BIT : 0));
+#ifndef CONFIG_PXA168_CF
 	if (!sys)
 		return; /* FIXME: Error */
+#else
+	sys = 0;
+#endif
 
+#ifndef CONFIG_PXA168_CF
 	writeb(flags, sys+CISREG_ICTRL0);
 	writeb(addr & 0xff, sys+CISREG_IADDR0);
 	writeb((addr>>8) & 0xff, sys+CISREG_IADDR1);
 	writeb((addr>>16) & 0xff, sys+CISREG_IADDR2);
 	writeb((addr>>24) & 0xff, sys+CISREG_IADDR3);
+#else
+	pxa168_cf_mem_writeb((flags & MAP_ATTRIB),(u8)flags,(u32)(sys+CISREG_ICTRL0));
+	pxa168_cf_mem_writeb((flags & MAP_ATTRIB),(u8)(addr & 0xff),(u32)(sys+CISREG_IADDR0));
+	pxa168_cf_mem_writeb((flags & MAP_ATTRIB),(u8)((addr>>8) & 0xff),(u32)(sys+CISREG_IADDR1));
+	pxa168_cf_mem_writeb((flags & MAP_ATTRIB),(u8)((addr>>16) & 0xff),(u32)(sys+CISREG_IADDR2));
+	pxa168_cf_mem_writeb((flags & MAP_ATTRIB),(u8)((addr>>24) & 0xff),(u32)(sys+CISREG_IADDR3));
+#endif
+
 	for ( ; len > 0; len--, buf++)
+#ifndef CONFIG_PXA168_CF
 	    writeb(*buf, sys+CISREG_IDATA0);
+#else
+	    pxa168_cf_mem_writeb((flags & MAP_ATTRIB),(u8)(*buf),(u32)(sys+CISREG_IDATA0));
+#endif
     } else {
 	u_int inc = 1, card_offset, flags;
 
@@ -239,15 +294,23 @@ void pcmcia_write_cis_mem(struct pcmcia_socket *s, int attr, u_int addr,
 	card_offset = addr & ~(s->map_size-1);
 	while (len) {
 	    sys = set_cis_map(s, card_offset, flags);
+#ifndef CONFIG_PXA168_CF
 	    if (!sys)
 		return; /* FIXME: error */
+#else
+	    sys = 0;
+#endif
 
 	    end = sys + s->map_size;
 	    sys = sys + (addr & (s->map_size-1));
 	    for ( ; len > 0; len--, buf++, sys += inc) {
 		if (sys == end)
 		    break;
+#ifndef CONFIG_PXA168_CF
 		writeb(*buf, sys);
+#else
+		pxa168_cf_mem_writeb((flags & MAP_ATTRIB),(u8)(*buf),(u32)sys);
+#endif
 	    }
 	    card_offset += s->map_size;
 	    addr = 0;

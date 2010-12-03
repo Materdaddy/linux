@@ -363,15 +363,6 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
 		goto err;
 
 	/*
-	 * For SPI, enable CRC as appropriate.
-	 */
-	if (mmc_host_is_spi(host)) {
-		err = mmc_spi_set_crc(host, use_spi_crc);
-		if (err)
-			goto err;
-	}
-
-	/*
 	 * Fetch CID from card.
 	 */
 	if (mmc_host_is_spi(host))
@@ -458,6 +449,18 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
 	}
 
 	/*
+	 * For SPI, enable CRC as appropriate.
+	 * This CRC enable is located AFTER the reading of the
+	 * card registers because some SDHC cards are not able
+	 * to provide valid CRCs for non-512-byte blocks.
+	 */
+	if (mmc_host_is_spi(host)) {
+		err = mmc_spi_set_crc(host, use_spi_crc);
+		if (err)
+			goto free_card;
+	}
+
+	/*
 	 * Attempt to change to high-speed (if supported)
 	 */
 	err = mmc_switch_hs(card);
@@ -539,7 +542,7 @@ static void mmc_sd_detect(struct mmc_host *host)
 
 	BUG_ON(!host);
 	BUG_ON(!host->card);
-
+       
 	mmc_claim_host(host);
 
 	/*

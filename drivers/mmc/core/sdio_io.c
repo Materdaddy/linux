@@ -377,6 +377,41 @@ u8 sdio_readb(struct sdio_func *func, unsigned int addr, int *err_ret)
 }
 EXPORT_SYMBOL_GPL(sdio_readb);
 
+#if 0
+/**
+ *	sdio_readb_ext - read a single byte from a SDIO function
+ *	@func: SDIO function to access
+ *	@addr: address to read
+ *	@err_ret: optional status value from transfer
+ *	@in: value to add to argument
+ *
+ *	Reads a single byte from the address space of a given SDIO
+ *	function. If there is a problem reading the address, 0xff
+ *	is returned and @err_ret will contain the error code.
+ */
+unsigned char sdio_readb_ext(struct sdio_func *func, unsigned int addr,
+	int *err_ret, unsigned in)
+{
+	int ret;
+	unsigned char val;
+
+	BUG_ON(!func);
+
+	if (err_ret)
+		*err_ret = 0;
+
+	ret = mmc_io_rw_direct(func->card, 0, func->num, addr, (u8)in, &val);
+	if (ret) {
+		if (err_ret)
+			*err_ret = ret;
+		return 0xFF;
+	}
+
+	return val;
+}
+EXPORT_SYMBOL_GPL(sdio_readb_ext);
+#endif
+
 /**
  *	sdio_writeb - write a single byte to a SDIO function
  *	@func: SDIO function to access
@@ -635,3 +670,34 @@ void sdio_f0_writeb(struct sdio_func *func, unsigned char b, unsigned int addr,
 		*err_ret = ret;
 }
 EXPORT_SYMBOL_GPL(sdio_f0_writeb);
+
+
+// this code is used to fix a h/w issue in the 8686 hardware
+// for sdio 1 bit mode to work -- require ECSI to be enabled
+// Enable continuous SPI Interrupt 
+
+#warning ECSI HACK FOR 8686
+
+#ifndef SDIO_BUS_ECSI_ENABLED
+#define SDIO_BUS_ECSI_ENABLED	(1<<5)
+#endif
+int sdio_force_ecsi_on_if_1bit_mode(struct sdio_func *func)
+{
+	int ret;
+	unsigned char val;
+
+	ret = mmc_io_rw_direct(func->card, 0, 0, SDIO_CCCR_IF, 0, &val);
+	if (ret)
+		return ret;
+
+	// check if bus width set
+	if ((val & 0x3) == SDIO_BUS_WIDTH_1BIT)
+	{		
+		val |= SDIO_BUS_ECSI_ENABLED;
+	
+		ret = mmc_io_rw_direct(func->card, 1, 0, SDIO_CCCR_IF, val, NULL);
+	}
+	return ret;
+}
+EXPORT_SYMBOL_GPL(sdio_force_ecsi_on_if_1bit_mode);
+

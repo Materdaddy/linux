@@ -428,6 +428,7 @@ struct usb_gadget_ops {
 	int	(*pullup) (struct usb_gadget *, int is_on);
 	int	(*ioctl)(struct usb_gadget *,
 				unsigned code, unsigned long param);
+#define USB_GADGET_POLLING 	1
 };
 
 /**
@@ -690,6 +691,13 @@ static inline int usb_gadget_disconnect(struct usb_gadget *gadget)
 	return gadget->ops->pullup(gadget, 0);
 }
 
+static inline int usb_gadget_ioctl(struct usb_gadget *gadget,
+	       unsigned code, unsigned long param)
+{
+	if (!gadget->ops->ioctl)
+		return -EOPNOTSUPP;
+	return gadget->ops->ioctl(gadget, code, param);
+}
 
 /*-------------------------------------------------------------------------*/
 
