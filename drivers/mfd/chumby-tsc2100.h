@@ -24,6 +24,11 @@
 #define TSC2100_MODE_TS   1
 #define TSC2100_MODE_MISC 2
 
+#define TSC2100_STATE_BAT1  0
+#define TSC2100_STATE_BAT2  1
+#define TSC2100_STATE_TEMP1 2
+#define TSC2100_STATE_TEMP2 3
+
 /* Address constructs */
 #define TSC2100_READ     (1 << 15)    /* Read Register */
 #define TSC2100_WRITE    (0 << 15)    /* Write Register */
@@ -196,17 +201,30 @@ struct tsc2100_regs {
 };
 
 
+#define TS_BAT1  0
+#define TS_BAT2  1
+#define TS_TEMP1 2
+#define TS_TEMP2 3
+
+#define TS_IDLE  0
+#define TS_XMODE 1
+#define TS_YMODE 2
+#define TS_MISC  3
+
 struct tsc2100_data {
-	spinlock_t                      lock;
+    spinlock_t                      lock;
     int                             tson;
-  int   touchclick;
-  int   misc_pending;
-	int                             pendown;
- 	/* count of timer-triggered interrupt calls with no data available.
-	 * Used to work around problem with irq enable going dead.
-	 */
-	unsigned int			inactive_count;
-	int                             mode;
+    int                             touchclick;
+    int                             misc_pending;
+    int                             misc_state; /* TS_BAT1...TS_TEMP2 */
+    int                             pendown;
+
+    /* count of timer-triggered interrupt calls with no data available.
+     * Used to work around problem with irq enable going dead.
+     */
+    unsigned int                    inactive_count;
+    int                             mode;
+    int                             state;  /* TS_IDLE...TS_MISC */
 
     int                             dac_sample_rate;
     int                             adc_sample_rate;
@@ -222,15 +240,15 @@ struct tsc2100_data {
     struct tsc2100_ringbuf          ring_temp1;
     struct tsc2100_ringbuf          ring_temp2;
 
-	struct input_dev*               inputdevice;
-	struct timer_list               ts_timer;
-	struct timer_list               misc_timer;
+    struct input_dev*               inputdevice;
+    struct timer_list               ts_timer;
+    struct timer_list               misc_timer;
 
     struct tsc2100_ts_event         tsdata;
-	struct tsc2100_misc_data        miscdata;
+    struct tsc2100_misc_data        miscdata;
     
     struct proc_dir_entry*          proc_dirs[ 16 ];
-    struct proc_dir_entry*          proc_files[ 32 ];
+    struct proc_dir_entry*          proc_files[ 48 ];
 };
 
 
@@ -315,13 +333,14 @@ static inline void spi_write_zeros(int zeros)
         SSP_TX_REG(TSC2100_SPIDEV) = 0;
 }
 
-static inline void spi_wait_for_txspace( void ) {
 
+static inline void spi_wait_for_txspace( void ) 
+{
   while( !(SSP_INT_REG(TSC2100_SPIDEV) & SSP_INT_TH ) )
     ndelay(50); // wait 50 nsecs...
-    
 }
 
+    
 static inline int spi_write( int regaddr, int regdata )
 {
     unsigned long flags;

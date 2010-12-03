@@ -1,7 +1,8 @@
 /*
        chumby_timerx.c
-       bunnie -- August 2006 -- 1.0 -- linux 2.4.20
-       bunnie -- April 2007 -- 2.0 -- port to Ironforge linux 2.6.16
+       bunnie    -- August 2006 -- 1.0 -- linux 2.4.20
+       bunnie    -- April 2007  -- 2.0 -- port to Ironforge linux 2.6.16
+       ghutchins -- Nov. 2007   -- 2.1 -- added minor 1, returns msecs
 
        This file is part of the chumby sensor suite driver in the linux kernel.
        Copyright (c) Chumby Industries, 2007
@@ -21,7 +22,7 @@
        Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 */
 
-#define TIMERX_VERSION "2.0-Ironforge"
+#define TIMERX_VERSION "2.1-Ironforge"
 
 #include <linux/config.h>
 #include <linux/module.h>
@@ -29,6 +30,9 @@
 #include <linux/init.h>
 
 #include <linux/kernel.h>       /* printk() */
+#include <linux/stddef.h>
+#include <linux/ioport.h>
+#include <linux/delay.h>
 #include <linux/slab.h>         /* kmalloc() */
 #include <linux/fs.h>           /* everything... */
 #include <linux/errno.h>        /* error codes */
@@ -38,10 +42,6 @@
 #include <linux/seq_file.h>
 #include <linux/cdev.h>
 
-#include <asm/io.h>
-#include <asm/system.h>         /* cli(), *_flags */
-#include <asm/uaccess.h>        /* copy_*_user */
-
 #include <linux/miscdevice.h>
 #include <linux/ioport.h>
 #include <linux/poll.h>
@@ -50,11 +50,35 @@
 #include <linux/delay.h>
 #include <linux/rtc.h>
 
+#include <linux/root_dev.h>
+#include <linux/cpu.h>
+#include <linux/interrupt.h>
+#include <linux/smp.h>
+
+#include <asm/cpu.h>
+#include <asm/elf.h>
+#include <asm/io.h>
+#include <asm/procinfo.h>
+#include <asm/setup.h>
+#include <asm/mach-types.h>
+#include <asm/cacheflush.h>
+#include <asm/tlbflush.h>
+#include <asm/system.h>         /* cli(), *_flags */
+#include <asm/uaccess.h>        /* copy_*_user */
+
+#include <asm/mach/arch.h>
+#include <asm/mach/irq.h>
+#include <asm/mach/time.h>
+
+
 #include <linux/timer.h>
 
 #include <asm/arch/imx-regs.h>
 
 #include "chumby_timer.h"
+
+//#include "compat.h"
+
 
 /*
  * basic parameters
@@ -62,7 +86,7 @@
 
 int timerx_major = 0; // dynamic allocation
 int timerx_minor = 0;
-int timerx_nr_devs = 1;
+int timerx_nr_devs = 2;
 
 module_param(timerx_major, int, S_IRUGO);
 module_param(timerx_minor, int, S_IRUGO);
@@ -72,8 +96,8 @@ MODULE_AUTHOR("bunnie@chumby.com");
 MODULE_LICENSE("GPL");
 
 // static data
-static int gDone = 0;
-static unsigned long timerx_status = 0;	/* bitmapped status byte.	*/
+static unsigned long timerx_active = 0;	/* bitmapped status byte.	*/
+static unsigned long previous_timestamp = 0;    // minor==1 only!
 
 /*
  * Timerx sensor data logs, tracked by tasks that are scheduled by the
@@ -149,19 +173,25 @@ static struct file_operations timerx_fops = {
 ///////////// code /////////////
 
 static int chumby_timerx_release(struct inode *inode, struct file *file) {
-  CHUMTIMERX_DEBUG( Trace, "Top of release.\n" );
-  timerx_status &= ~TIMERX_IS_OPEN;
+  int minor = iminor(inode);
+  CHUMTIMERX_DEBUG( Trace, "Top of release(minor=%d).\n", minor );
+  timerx_active &= ~(1<<minor);
   return 0;
 }
+
 
 static int timerx_proc_output (char *buf) {
   int printlen = 0;
   
   // insert proc debugging output here
-  printlen = sprintf(buf, "Chumby timerx driver version %s (bunnie@chumby.com)\nThe current time is: %08lX\n", TIMERX_VERSION, jiffies );
+  printlen = sprintf(buf, 
+                     "Chumby timerx driver version %s (bunnie@chumby.com)\n"
+                     "The current time is: %08lX\n", 
+                     TIMERX_VERSION, jiffies );
   
   return(printlen);
 }
+
 
 static int timerx_read_proc(char *page, char **start, off_t off,
                          int count, int *eof, void *data)
@@ -175,13 +205,19 @@ static int timerx_read_proc(char *page, char **start, off_t off,
         return len;
 }
 
+
 static int chumby_timerx_open(struct inode *inode, struct file *file) {
-  // make sure we're not opened twice
-  if( timerx_status & TIMERX_IS_OPEN)
-    return -EBUSY;
-  
-  timerx_status |= TIMERX_IS_OPEN;
-  return(0);
+    int minor = iminor(inode);
+    
+    // make sure we're not opened twice
+    if (timerx_active & (1<<minor))
+        return -EBUSY;
+    
+    timerx_active |= (1<<minor);
+    file->private_data = (void*) minor;
+    if (minor == 1)
+        previous_timestamp = 0;
+    return(0);
 }
 
 
@@ -191,8 +227,12 @@ static int __init chumby_timerx_init(void) {
 
   timerxtask_data.timerx_cdev = cdev_alloc();
 
+  if (timerx_nr_devs > 32)
+      timerx_nr_devs = 32;
+
   // insert all device specific hardware initializations here
-  printk( "Chumby timerx driver version %s initializing (bunnie@chumby.com)...show me your jiffies!!!\n", TIMERX_VERSION );
+  printk( "Chumby timerx[%d] driver version %s initializing (bunnie@chumby.com)...show me your jiffies!!!\n", 
+          timerx_nr_devs, TIMERX_VERSION );
 
   /*
    * Get a range of minor numbers to work with, asking for a dynamic
@@ -202,8 +242,7 @@ static int __init chumby_timerx_init(void) {
     dev = MKDEV(timerx_major, timerx_minor);
     result = register_chrdev_region(dev, timerx_nr_devs, "timerx");
   } else {
-    result = alloc_chrdev_region(&dev, timerx_minor, timerx_nr_devs,
-				 "timerx");
+    result = alloc_chrdev_region(&dev, timerx_minor, timerx_nr_devs, "timerx");
     timerx_major = MAJOR(dev);
   }
   if (result < 0) {
@@ -216,7 +255,7 @@ static int __init chumby_timerx_init(void) {
   cdev_init(timerxtask_data.timerx_cdev, &timerx_fops);
   timerxtask_data.timerx_cdev->owner = THIS_MODULE;
   timerxtask_data.timerx_cdev->ops = &timerx_fops;
-  err = cdev_add (timerxtask_data.timerx_cdev, dev, 1);
+  err = cdev_add (timerxtask_data.timerx_cdev, dev, timerx_nr_devs);
   /* Fail gracefully if need be */
   if (err)
     printk(KERN_NOTICE "Error %d adding timerx device\n", err);
@@ -231,26 +270,50 @@ static int __init chumby_timerx_init(void) {
   return (0);
 }
 
-static ssize_t chumby_timerx_read(struct file *file, char *buf,
-			size_t count, loff_t *ppos) {
-  unsigned long retval;
-  size_t retlen = 0;
+static ssize_t chumby_timerx_read(struct file   *file, 
+                                  char          *buf,
+                                  size_t        count, 
+                                  loff_t        *ppos) {
+    int minor = (int) file->private_data;
+    unsigned long timestamp;
+    
+    CHUMTIMERX_DEBUG( Trace, "Top of read(minor=%d).\n", minor );
+    
+    if (minor != 1)
+        timestamp = jiffies;
+    else {
+        // if minor == 1 we return milliseconds instead of jiffies, note this
+        // code is *NOT* portable and assumes that system_timer is exported
+        // and system_timer->offset() returns microseconds -- reading of
+        // jiffies and usecs was borrowed from do_gettimeofday()
+        unsigned long flags;
+        unsigned long seq;
+        
+        do {
+            seq = read_seqbegin_irqsave(&xtime_lock, flags);
+            timestamp = jiffies_to_msecs(jiffies) + 
+                        (system_timer->offset()/1000) % 10;
+        } while (read_seqretry_irqrestore(&xtime_lock, seq, flags));
 
-  CHUMTIMERX_DEBUG( Trace, "Top of read.\n" );
-  
-  retval = jiffies;
-  retlen = sizeof(unsigned long);
-  copy_to_user(buf,&retval,retlen);
-  
-  return(retlen);
+        // timestamp *MUST* be monotonically increasing, unless 32-bit wrap
+        // has occurred -- every 29 days timestamp will wrap
+        if (timestamp < previous_timestamp) {
+            if (timestamp > 100 && previous_timestamp < 0xFFFFFF00) {
+                printk( KERN_ERR "%s(): time travel, %lu -> %lu!\n",
+                        __FUNCTION__, previous_timestamp, timestamp );
+            }
+        }
+        previous_timestamp = timestamp;
+    }
+
+    copy_to_user(buf, &timestamp, sizeof(timestamp));
+    return sizeof(timestamp);
 }
 
 static void __exit chumby_timerx_exit(void) {
   dev_t devno = MKDEV(timerx_major, timerx_minor);
 
   CHUMTIMERX_DEBUG( Trace, "Top of exit.\n" );
-  // set global flag that we're out of here and force a call to remove ourselves
-  gDone = 1;
 
   mdelay(200);  // wait to dequeue self; if kernel panics on rmmod try adding 100 to this value
   

@@ -57,31 +57,27 @@
 #include <asm/arch/imx-dma.h>
 #include <asm/arch/imx-regs.h>
 
-
 #include "chumby_udma.h"
 
 
-MODULE_AUTHOR("ghutchins@gmail.com");
-MODULE_LICENSE("GPL");
-
-
-
-int udma_major = 0;          // 0 denotes dynamic allocation
-int udma_bufsz = 0x180000;   // default to 1.5Mb DMA buffer
+static int udma_major = 0;          // 0 denotes dynamic allocation
+static int udma_bufsz = 0x180000;   // default to 1.5Mb DMA buffer
+static int use_cached_memory = 1;   // 1 -- cached, 0 -- uncached
 
 module_param(udma_major, int, S_IRUGO);
 module_param(udma_bufsz, int, S_IRUGO);
+module_param(use_cached_memory, int, S_IRUGO);
 
 
 static struct cdev*             udma_cdev = NULL;
 static atomic_t                 opened = ATOMIC_INIT( -1 );
 static void*                    buf_addr = NULL;
 static dma_addr_t               dma_addr = 0;
-static atomic_t                 dma_done = ATOMIC_INIT( 0 );
+static atomic_t                 dma_done = ATOMIC_INIT( 1 );
 static int                      dma_lock[ IMX_DMA_CHANNELS ] = { 0 };
 static DECLARE_WAIT_QUEUE_HEAD(dma_wait);
 static struct fasync_struct*    fasync_queue = NULL;
-
+static struct vm_area_struct*   dma_vma = NULL;
 
 
 
@@ -158,15 +154,31 @@ static int udma_ioctl(struct inode* inode, struct file* file,
     UDMA_DESC       desc;
     UDMA_REGS       regs;
     UDMA_STATUS     status;
+    UDMA_ZONE       zone;
     UDMA_LCDC_REGS  lcd_regs;
     imx_dmach_t     dmac = ( imx_dmach_t ) arg;
-    unsigned long   pa;
-    unsigned long   pgoff;
     int             rc;
 
     switch (cmd) {
+    case UDMA_GET_ZONE:
+        if ( dma_vma == NULL )
+            return -ENXIO;
+        zone.vma         = dma_vma;
+        zone.phys_addr   = dma_addr;
+        zone.byte_length = udma_bufsz;
+        return copy_to_user((void __user *)arg, &zone, sizeof(zone))? -EFAULT : 0;
+
     case UDMA_GETBUFSZ:         // return the size of the allocated DMA buffer
         return put_user( udma_bufsz, (unsigned long __user *)arg );
+
+    case UDMA_PA:
+        return __put_user(dma_addr, (unsigned long __user *)arg);
+
+    case UDMA_FBPA:
+        lcd_regs.ssa = LCDC_SSA;
+        lcd_regs.lgwsar = LCDC_LGWSAR;
+        lcd_regs.lgwpor = LCDC_LGWPOR;
+        return copy_to_user((void __user *)arg, &lcd_regs, sizeof(lcd_regs))? -EFAULT : 0;
 
     case UDMA_ALLOC_DMA:        // allocate the specified DMAC 0 to 15
         if ( dmac >= IMX_DMA_CHANNELS )
@@ -239,6 +251,27 @@ static int udma_ioctl(struct inode* inode, struct file* file,
         while (CCR(desc.dmac) & CCR_CEN) {
             printk("DMA is already enabled\n");
         }
+
+        if ( use_cached_memory && dma_vma != NULL ) {
+            unsigned long ysra = YSRA;
+            unsigned long wsra = WSRA;
+            unsigned long addr;
+            unsigned long offset;
+
+            // flush the user cache in the source and dest buffer
+            offset = desc.sar - dma_addr;
+            if ( offset < udma_bufsz ) {
+                addr = dma_vma->vm_start + offset;
+                flush_cache_range( dma_vma, addr, addr + (ysra * wsra) );
+            }
+            offset = desc.dar - dma_addr;
+            if ( offset < udma_bufsz ) {
+                addr = dma_vma->vm_start + offset;
+                flush_cache_range( dma_vma, addr, addr + (ysra * wsra) );
+            }
+        }
+
+        atomic_set( &dma_done, 0 ); // clear dma_done for next transfer
         SAR(desc.dmac)  = desc.sar;
         DAR(desc.dmac)  = desc.dar;
         CNTR(desc.dmac) = desc.cntr;
@@ -263,19 +296,6 @@ static int udma_ioctl(struct inode* inode, struct file* file,
             return -EBADF;
         status.ccr  = CCR(status.dmac);
         return copy_to_user((void __user *)arg, &status, sizeof(status))? -EFAULT : 0;
-
-    case UDMA_PA:
-        rc = get_user(pgoff, (unsigned long __user *)arg);
-        if ( rc )
-            return rc;
-        pa = dma_addr + (pgoff << PAGE_SHIFT);
-        return __put_user(pa, (unsigned long __user *)arg);
-
-    case UDMA_FBPA:
-        lcd_regs.ssa = LCDC_SSA;
-        lcd_regs.lgwsar = LCDC_LGWSAR;
-        lcd_regs.lgwpor = LCDC_LGWPOR;
-        return copy_to_user((void __user *)arg, &lcd_regs, sizeof(lcd_regs))? -EFAULT : 0;
 
     default:
         break;
@@ -314,13 +334,15 @@ static int udma_mmap(struct file * file, struct vm_area_struct * vma)
                     __FILE__, __FUNCTION__, PHYS_PFN_OFFSET, max_mapnr );
             return -EIO;
         }
+        dma_vma = vma;
     }
 
     vma->vm_pgoff = map_pfn;
     if (!valid_mmap_phys_addr_range(vma->vm_pgoff << PAGE_SHIFT, &size))
         return -EINVAL;
 
-    vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+    if (!use_cached_memory)
+        vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 
     /* Remap-pfn-range will mark the range VM_IO and VM_RESERVED */
     if (remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff, size,
@@ -343,7 +365,12 @@ static unsigned int udma_poll(struct file* file, poll_table* wait)
 
     poll_wait( file, &dma_wait, wait );
     if ( atomic_read( &dma_done ) ) {
-        atomic_set( &dma_done, 0 ); // is this ok?  or use ioctl() to clear?
+        // dma_done is intialized to 1, cleared when a dma transfer starts
+        // and incremented when a dma transfer is completed (in the ISR)
+        // 
+        // so -- this routine will set the POLLIN and POLLRDNORM bits when
+        // the DMA channel is idle, the bits will remain clear when the DMA
+        // channel is busy
         mask |= POLLIN | POLLRDNORM;
     }
     return mask;
@@ -370,7 +397,13 @@ static void __exit udma_exit(void)
         udma_cdev = NULL;
 
         if ( buf_addr != NULL ) {
-            dma_free_coherent( NULL, udma_bufsz, buf_addr, dma_addr );
+            if (use_cached_memory)
+                free_pages( (unsigned long)buf_addr, get_order(udma_bufsz) );
+            else {
+                // see the comments above about allocating UDMA memory
+                //dma_free_writecombine( NULL, udma_bufsz, buf_addr, dma_addr );
+                dma_free_coherent( NULL, udma_bufsz, buf_addr, dma_addr );
+            }
             buf_addr = NULL;
         }
     }
@@ -417,7 +450,16 @@ static int __init udma_init(void)
     }
 
     do {
-        buf_addr = dma_alloc_coherent( NULL, udma_bufsz, &dma_addr, GFP_KERNEL );
+        if (use_cached_memory) {
+            buf_addr = (void*) __get_free_pages( GFP_KERNEL, get_order(udma_bufsz) );
+            dma_addr = virt_to_dma( NULL, buf_addr );
+        } else {
+            // using these routines were too slow for flashplayer because they
+            // allocate memory that is *ALWAYS* uncached and we need cached
+            // memory for color conversion or the flashplayer is slower with DMA!
+            //buf_addr = dma_alloc_writecombine( NULL, udma_bufsz, &dma_addr, GFP_KERNEL );
+            buf_addr = dma_alloc_coherent( NULL, udma_bufsz, &dma_addr, GFP_KERNEL );
+        }
         if ( buf_addr != NULL ) 
             break;
         udma_bufsz >>= 1;
@@ -430,7 +472,7 @@ static int __init udma_init(void)
         return -ENOMEM;
     }
 
-    #if 1
+    #if 0
     /* make DMAC registers accessable in user space -- not necessary if ioctl()
     ** interface is adequate or security issues with user space access
     */
@@ -438,11 +480,14 @@ static int __init udma_init(void)
     __REG(IMX_AIPI2_BASE + 8) = 0;
     #endif
 
-    printk(KERN_NOTICE "UserDMA device major=%d, allocated %d bytes. (buf_addr=%p, dma_addr=%x)\n",
-           udma_major, udma_bufsz, buf_addr, dma_addr);
+    printk(KERN_NOTICE "UserDMA device major=%d, allocated %d bytes. (buf_addr=%p, dma_addr=%x, cached=%d)\n",
+           udma_major, udma_bufsz, buf_addr, dma_addr, use_cached_memory);
     return 0;
 }
 
 
 module_init(udma_init);
 module_exit(udma_exit);
+
+MODULE_AUTHOR("ghutchins@gmail.com");
+MODULE_LICENSE("GPL");

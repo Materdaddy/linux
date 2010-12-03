@@ -24,9 +24,6 @@
 #include <linux/ioctl.h>
 
 
-////// local macros; eventually migrate to custom .h file ////
-#define TIMERX_IS_OPEN  0x1
-
 // device numbers are allocated dynamically
 // see /proc/devices
 

@@ -18,6 +18,8 @@
 
 #define DEBUG 1
 
+// pr_debug was replaced with printk
+
 #include <linux/config.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -44,9 +46,10 @@
 /*
  * Complain if VAR is out of range.
  */
-#define DEBUG_VAR 1
+#define DEBUG_VAR 0
 
 #include "imxfb.h"
+extern unsigned int chumby_hwversion;
 
 static struct imxfb_rgb def_rgb_32 = {
 	.red	= { .offset = 16, .length = 8, },
@@ -56,9 +59,9 @@ static struct imxfb_rgb def_rgb_32 = {
 };
 
 static struct imxfb_rgb def_rgb_16 = {
-	.red	= { .offset = 8,  .length = 4, },
-	.green	= { .offset = 4,  .length = 4, },
-	.blue	= { .offset = 0,  .length = 4, },
+	.red	= { .offset = 11, .length = 5, },
+	.green	= { .offset = 5,  .length = 6, },
+	.blue	= { .offset = 0,  .length = 5, },
 	.transp = { .offset = 0,  .length = 0, },
 };
 
@@ -89,6 +92,7 @@ imxfb_setpalettereg(u_int regno, u_int red, u_int green, u_int blue,
 	struct imxfb_info *fbi = info->par;
 	u_int val, ret = 1;
 
+	printk( "imxfb_setpalettereg\n" );
 	if (regno < fbi->palette_size) {
 		val = (CNVT_TOHW(red, 4) << 8) |
 		      (CNVT_TOHW(green,4) << 4) |
@@ -106,6 +110,7 @@ imxfbov_setpalettereg(u_int regno, u_int red, u_int green, u_int blue,
 	struct imxfb_info *fbi = info->par;
 	u_int val, ret = 1;
 
+	printk( "imxfbov_setpalettereg\n" );
 	if (regno < fbi->palette_size) {
 		val = (CNVT_TOHW(red, 4) << 8) |
 		      (CNVT_TOHW(green,4) << 4) |
@@ -249,7 +254,7 @@ imxfb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 	var->xres_virtual = max(var->xres_virtual, var->xres);
 	var->yres_virtual = max(var->yres_virtual, var->yres);
 
-	pr_debug("var->bits_per_pixel=%d\n", var->bits_per_pixel);
+	printk("var->bits_per_pixel=%d\n", var->bits_per_pixel);
 	switch (var->bits_per_pixel) {
 	case 32:
 		rgbidx = RGB_32;
@@ -273,11 +278,11 @@ imxfb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 	var->blue   = fbi->rgb[rgbidx]->blue;
 	var->transp = fbi->rgb[rgbidx]->transp;
 
-	pr_debug("RGBT length = %d:%d:%d:%d\n",
+	printk("RGBT length = %d:%d:%d:%d\n",
 		var->red.length, var->green.length, var->blue.length,
 		var->transp.length);
 
-	pr_debug("RGBT offset = %d:%d:%d:%d\n",
+	printk("RGBT offset = %d:%d:%d:%d\n",
 		var->red.offset, var->green.offset, var->blue.offset,
 		var->transp.offset);
 
@@ -294,7 +299,7 @@ static int imxfb_set_par(struct fb_info *info)
 	struct imxfb_info *fbi = info->par;
 	struct fb_var_screeninfo *var = &info->var;
 
-	pr_debug("set_par\n");
+	printk("set_par\n");
 
 	if (var->bits_per_pixel >= 16)
 		info->fix.visual = FB_VISUAL_TRUECOLOR;
@@ -327,7 +332,7 @@ static int imxfbov_set_par(struct fb_info *info)
 	struct imxfb_info *fbi = info->par;
 	struct fb_var_screeninfo *var = &info->var;
 
-	pr_debug("set_par\n");
+	printk("set_par\n");
 
 	if (var->bits_per_pixel >= 16)
 		info->fix.visual = FB_VISUAL_TRUECOLOR;
@@ -399,15 +404,15 @@ static void imxfb_enable_controller(struct imxfb_info *fbi)
 	if(fbi->lcd_power)
 		fbi->lcd_power(1);
 
-	pr_debug( "LCDC register set:\n" );
+	printk( "LCDC register set:\n" );
 	for( i = 0; i < 0x68; i+= 4 ) {
-	  pr_debug( "LCDbase + 0x%02X: %08X\n", i, __REG(IMX_LCDC_BASE+i) );
+	  printk( "LCDbase + 0x%02X: %08X\n", i, __REG(IMX_LCDC_BASE+i) );
 	}
 
 }
 static void imxfbov_enable_controller(struct imxfb_info *fbi)
 {
-	pr_debug("Enabling LCD controller\n");
+	printk("Enabling LCD controller\n");
 
 	/* initialize LCDC */
 	LCDC_RMCR &= ~RMCR_LCDC_EN;		/* just to be safe... */
@@ -441,8 +446,8 @@ static int imxfb_blank(int blank, struct fb_info *info)
 {
 	// struct imxfb_info *fbi = info->par;
 
-	pr_debug("imxfb_blank: blank=%d\n", blank);
-	pr_debug("imxfb_blank IGNORED because some stupid thing keeps on calling this to turn off my @#)$!)($ display.\n" );
+	printk("imxfb_blank: blank=%d\n", blank);
+	printk("imxfb_blank IGNORED because some stupid thing keeps on calling this to turn off my @#)$!)($ display.\n" );
 
 #if 0 // HA! SCREW YOU PHANTOM POWER MANAGER!!!
 	switch (blank) {
@@ -490,10 +495,12 @@ static struct fb_ops imxfbov_ops = {
 static int imxfb_activate_var(struct fb_var_screeninfo *var, struct fb_info *info)
 {
 	struct imxfb_info *fbi = info->par;
-	pr_debug("var: xres=%d hslen=%d lm=%d rm=%d\n",
+	printk( "imxfb_activate_var!\n" );
+
+	printk("var: xres=%d hslen=%d lm=%d rm=%d\n",
 		var->xres, var->hsync_len,
 		var->left_margin, var->right_margin);
-	pr_debug("var: yres=%d vslen=%d um=%d bm=%d\n",
+	printk("var: yres=%d vslen=%d um=%d bm=%d\n",
 		var->yres, var->vsync_len,
 		var->upper_margin, var->lower_margin);
 
@@ -547,42 +554,84 @@ static int imxfb_activate_var(struct fb_var_screeninfo *var, struct fb_info *inf
 	// crap code here, delete it later and fix what's wrong above
 	// Disable self-refresh by clearing bit LRMCR[9]
 	LCDC_RMCR = 0x00000000;
-	
-	// Setup LCDC panel configuration
-	//   TFT      (LPCR[31])    = 1  		:TFT display
-	//   COLOR    (LPCR[30])    = 1  		:Color display
-	//   PBSIZ    (LPCR[29:28]) = 00 		:Active matrix fixed at 16bpp
-	
-	//   BPIX     (LPCR[27:25]) = 101		:16pp in memory
-	//   PIXPOL   (LPCR[24])    = 0  		:Pixels are active low
-	
-	//   FLMPOL   (LPCR[23])    = 0  		:VSYNC is active high
-	//   LPPOL    (LPCR[22])    = 0  		:HSYNC is active high
-	//   CLKPOL   (LPCR[21])    = 0  		:LSCLK is active on positive edge
-	//   OEPOL    (LPCR[20])    = 0  		:OE is active high
-	
-	//   SCLKIDLE (LPCR[19])    = 1  		:Enable LSCLK when VSYNC is idle
-	//   END_SEL  (LPCR[18])    = 0  		:Image in memory is in little endian format
-	//   SWAP_SEL (LPCR[17])    = 0  		:Ignored for big endian format
-	//   REV_VS   (LPCR[16])    = 0  		:Vertical scan in normal direction
-	
-	//   ACDSEL   (LPCR[15])    = 0  		:Ignored for TFT display
-	//   ACD      (LPCR[14:8])  = 0000000 	:Ignored for TFT display
 
-	//   SCLKSEL  (LPCR[7])     = 1  		:Enable OE and LSCLK when no data output
-	//   SHARP    (LPCR[6])     = 0  		:Disable Sharp signals
-	//   PCD      (LPCR[5:0])   = 000100  	:Pixel Clock = LSCLK = 33.25MHz/5 = 6.65MHz (DI demo board is @ 5.26MHz)
-	//                          = 000111  	:V and H timing calculated with Pixel Clock = LSCLK = 33.25MHz/8 = 4.15MHz, but less noise at higher LSCLK
-	LCDC_PCR = 0xCA080084;	
-	
-	// If we're not using a Sharp panel, clear this register to be safe
-	LCDC_LSCR1 = 0x00000000;
-			 
-	// Configure horizontal LCD timing
-	LCDC_HCR = 0x48003F2F;
-	
-	// Configure vertical LCD timing
-	LCDC_VCR = 0x10000F0F;
+	if( chumby_hwversion == 0x38 ) {
+	  // Setup LCDC panel configuration
+	  //   TFT      (LPCR[31])    = 1  		:TFT display
+	  //   COLOR    (LPCR[30])    = 1  		:Color display
+	  //   PBSIZ    (LPCR[29:28]) = 00 		:Active matrix fixed at 16bpp
+	  
+	  //   BPIX     (LPCR[27:25]) = 101		:16pp in memory
+	  //   PIXPOL   (LPCR[24])    = 0  		:Pixels are active high
+	  
+	  //   FLMPOL   (LPCR[23])    = 1  		:VSYNC is active low
+	  //   LPPOL    (LPCR[22])    = 1  		:HSYNC is active low
+	  //   CLKPOL   (LPCR[21])    = 0  		:LSCLK is active on positive edge
+	  //   OEPOL    (LPCR[20])    = 1  		:OE is active low
+	  
+	  //   SCLKIDLE (LPCR[19])    = 1  		:Enable LSCLK when VSYNC is idle
+	  //   END_SEL  (LPCR[18])    = 0  		:Image in memory is in little endian format
+	  //   SWAP_SEL (LPCR[17])    = 0  		:Ignored for big endian format
+	  //   REV_VS   (LPCR[16])    = 0  		:Vertical scan in normal direction
+	  
+	  //   ACDSEL   (LPCR[15])    = 0  		:Ignored for TFT display
+	  //   ACD      (LPCR[14:8])  = 0000000 	:Ignored for TFT display
+	  
+	  //   SCLKSEL  (LPCR[7])     = 1  		:Enable OE and LSCLK when no data output
+	  //   SHARP    (LPCR[6])     = 0  		:Disable Sharp signals
+	  //   PCD      (LPCR[5:0])   = 000100  	:Pixel Clock = LSCLK = 33.25MHz/5 = 6.65MHz (DI demo board is @ 5.26MHz)
+	  //                          = 000111  	:V and H timing calculated with Pixel Clock = LSCLK = 33.25MHz/8 = 4.15MHz, but less noise at higher LSCLK
+	  // 1100 1010 1101 1000 0000 0000 1000 0100
+	  LCDC_PCR = 0xCAD80084;
+	  
+	  // If we're not using a Sharp panel, clear this register to be safe
+	  LCDC_LSCR1 = 0x00000000;
+	  
+	  // Configure horizontal LCD timing
+	  // hwidth = 2, h_wait_2 = 68 - 3 - 3 = 62 = 0x3e, h_wait_1 = 19 = 0x13
+	  // 0000 1000 0000 0000 0001 0011 0011 1110 
+	  LCDC_HCR = 0x0800133E;
+	  
+	  // Configure vertical LCD timing
+	  // v_width = 2, v_wait_1 = 18, v_wait_2 = 4
+	  LCDC_VCR = 0x10001204;
+	} else {
+	  // Setup LCDC panel configuration
+	  //   TFT      (LPCR[31])    = 1  		:TFT display
+	  //   COLOR    (LPCR[30])    = 1  		:Color display
+	  //   PBSIZ    (LPCR[29:28]) = 00 		:Active matrix fixed at 16bpp
+	  
+	  //   BPIX     (LPCR[27:25]) = 101		:16pp in memory
+	  //   PIXPOL   (LPCR[24])    = 0  		:Pixels are active low
+	  
+	  //   FLMPOL   (LPCR[23])    = 0  		:VSYNC is active high
+	  //   LPPOL    (LPCR[22])    = 0  		:HSYNC is active high
+	  //   CLKPOL   (LPCR[21])    = 0  		:LSCLK is active on positive edge
+	  //   OEPOL    (LPCR[20])    = 0  		:OE is active high
+	  
+	  //   SCLKIDLE (LPCR[19])    = 1  		:Enable LSCLK when VSYNC is idle
+	  //   END_SEL  (LPCR[18])    = 0  		:Image in memory is in little endian format
+	  //   SWAP_SEL (LPCR[17])    = 0  		:Ignored for big endian format
+	  //   REV_VS   (LPCR[16])    = 0  		:Vertical scan in normal direction
+	  
+	  //   ACDSEL   (LPCR[15])    = 0  		:Ignored for TFT display
+	  //   ACD      (LPCR[14:8])  = 0000000 	:Ignored for TFT display
+
+	  //   SCLKSEL  (LPCR[7])     = 1  		:Enable OE and LSCLK when no data output
+	  //   SHARP    (LPCR[6])     = 0  		:Disable Sharp signals
+	  //   PCD      (LPCR[5:0])   = 000100  	:Pixel Clock = LSCLK = 33.25MHz/5 = 6.65MHz (DI demo board is @ 5.26MHz)
+	  //                          = 000111  	:V and H timing calculated with Pixel Clock = LSCLK = 33.25MHz/8 = 4.15MHz, but less noise at higher LSCLK
+	  LCDC_PCR = 0xCA080084;	
+	  
+	  // If we're not using a Sharp panel, clear this register to be safe
+	  LCDC_LSCR1 = 0x00000000;
+	  
+	  // Configure horizontal LCD timing
+	  LCDC_HCR = 0x48003F2F;
+	  
+	  // Configure vertical LCD timing
+	  LCDC_VCR = 0x10000F0F;
+	}
 		
 	// Setup DMA for main frame buffer
 	//   BURST (LDCR[31])    = 0 :Dynamic burst length
@@ -601,6 +650,7 @@ static int imxfbov_activate_var(struct fb_var_screeninfo *var, struct fb_info *i
 {
 	struct imxfb_info *fbi = info->par;
 
+	printk( "imxfbov_activate_var\n" );
 	LCDC_LGWSR	= SIZE_XMAX(var->xres) | SIZE_YMAX(var->yres);
 	LCDC_LGWDCR	= fbi->dmacr;
 	LCDC_LGWPR      = 0;
@@ -611,7 +661,8 @@ static int imxfbov_activate_var(struct fb_var_screeninfo *var, struct fb_info *i
 static void imxfb_setup_gpio(struct imxfb_info *fbi)
 {
 	int width;
-
+	
+	printk( "imxfb_setup_gpio\n" );
 	LCDC_RMCR	&= ~(RMCR_LCDC_EN | RMCR_SELF_REF);
 
 	if( fbi->pcr & PCR_TFT )
@@ -818,7 +869,7 @@ static int __init imxfbov_init_fbinfo(struct device *dev, struct fb_info *info)
 	struct imxfb_mach_info *inf = dev->platform_data;
 	struct imxfb_info *fbi = info->par;
 
-	pr_debug("%s\n",__FUNCTION__);
+	printk("%s\n",__FUNCTION__);
 
 	info->pseudo_palette = kmalloc( sizeof(u32) * 16, GFP_KERNEL);
 	if (!info->pseudo_palette)
@@ -941,6 +992,7 @@ static int imxfb_proc_write_alpha(struct file *file, const char *buf,
 
     alpha = simple_strtoul(buf, NULL, 0);
 
+    printk( "imxfb_proc_write_alpha\n" );
     LCDC_LGWCR = ((LCDC_LGWCR & ~(0xff << 24)) | LGWCR_ALPHA(alpha));
     
     return count;
@@ -967,6 +1019,8 @@ static int imxfb_proc_write_enable(struct file *file, const char *buf,
     unsigned long en;
 
     en = simple_strtoul(buf, NULL, 0);
+
+    printk( "imxfb_proc_write_enable\n" );
 
     if (en) {
         uint32_t saveClock = PCCR0 & PCCR0_HCLK_LCDC_EN; // save state of HCLK
@@ -1011,6 +1065,7 @@ static int imxfb_proc_write_key(struct file *file, const char *buf,
 
     lgwcr |= ((red << 12) | (green << 6) | (blue));
 
+    printk( "imxfb_proc_write_key %lx\n", (unsigned long) lgwcr );
     LCDC_LGWCR = lgwcr;
     
     return count;
@@ -1037,6 +1092,7 @@ static int imxfb_proc_write_key_en(struct file *file, const char *buf,
 {
     unsigned long en;
 
+    printk( "imxfb_proc_write_key_en\n" );
     en = simple_strtoul(buf, NULL, 0);
 
     if (en) {

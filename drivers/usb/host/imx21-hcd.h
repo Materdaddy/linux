@@ -21,6 +21,9 @@
 #ifndef __LINUX_IMX21_HCD_H__
 #define __LINUX_IMX21_HCD_H__
 
+#define IMX_USB_DMEM_SIZE       4096
+#define FAST_MEM_SIZE           64
+
 #define NUM_ISO_ETDS 2
 
 #define IMX_USB_TD_DIR_SETUP        0
@@ -81,7 +84,13 @@ if (reg & mask) reg = mask;\
 if (!(reg & mask)) reg = mask;\
 } while (0)
 
-typedef struct {
+
+typedef struct fast_mem_s {
+    struct fast_mem_s *next;
+    char               data[ FAST_MEM_SIZE - sizeof(void*) ];
+} fast_mem_t;
+
+typedef struct td_s {
     struct list_head list;
     struct urb *urb;
     void *data;
@@ -92,6 +101,8 @@ typedef struct {
     int frame;
     int dma;
     int iso_index;
+
+    struct td_s *next;
 } td_t;
 
 typedef struct urb_priv_s {
@@ -101,6 +112,8 @@ typedef struct urb_priv_s {
     int active;
     int state;
     int iso_index;
+
+    struct urb_priv_s* next;
 } urb_priv_t;
 
 typedef struct ep_priv_s {
@@ -151,21 +164,35 @@ typedef struct etd_priv_s {
     struct usb_host_endpoint *ep;
     struct urb *urb;
     int len;
+    int  zero_copy;
     char *buf;
     int busy;
-
     td_t *td;
+
+    struct etd_priv_s *next;
 } etd_priv_t;
     
 
 struct imx21 {
-    spinlock_t lock;
-    
-    imx21_dmem_area_t *dmem_list;
+    spinlock_t          lock;
 
-    etd_priv_t etd[USB_NUM_ETD];
-    int active_urbs;
-    
+    unsigned long       dmem_pages[8];
+    imx21_dmem_area_t   *dmem_free_list;
+    imx21_dmem_area_t   *dmem_list;
+
+    etd_priv_t          etd[USB_NUM_ETD];
+    etd_priv_t          *etd_free_list;
+
+    urb_priv_t          *urb_free_list;
+    int                 urb_free_count;
+
+    td_t                *td_free_list;
+    int                 td_free_count;
+
+    unsigned long       fast_page;
+    unsigned long       fast_page_end;
+    fast_mem_t          *fast_free_list;
+
     struct imx21_usb_platform_data *board;
 };
 

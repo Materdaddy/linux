@@ -9,8 +9,11 @@ FONTMAPFILE = cp437.uni
 
 obj-y	 += mem.o random.o tty_io.o n_tty.o tty_ioctl.o
 
-obj-m := chumby_sense1.o
+obj-m += chumby_sense1.o
 chumby-sense1-objs := chumby_sense1.o
+
+obj-m += chumby_sense1_v38.o
+chumby-sense1-objs := chumby_sense1_v38.o
 
 obj-m += chumby_accel.o
 chumby-accel-objs := chumby_accel.o

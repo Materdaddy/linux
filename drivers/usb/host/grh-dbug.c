@@ -7,21 +7,26 @@
 typedef struct _dbug_page_ {
     struct _dbug_page_* next;
     int                 leng;
-    char                data[ PAGE_SIZE - 1024 ];
+    char                data[ PAGE_SIZE - (sizeof(void*)+sizeof(int)) ];
 } DBUG_PAGE;
 
 static spinlock_t   dbug_lock;
 static DBUG_PAGE*   dbug_head;
 static DBUG_PAGE*   dbug_tail;
-static int          dbug_pages = 1024;
+static int          dbug_pages = 0;
+static int          dbug_max_pages = 1024;
+static int          dbug_oneshot = 1;
+static int          dbug_jiffies = 0;
 int                 dbug_level = 0;
 EXPORT_SYMBOL(dbug_level);
+
 
 static void dbug_init( void )
 {
 	spin_lock_init(&dbug_lock);
-    dbug_head = NULL;
-    dbug_tail = NULL;
+    dbug_head  = NULL;
+    dbug_tail  = NULL;
+    dbug_pages = 0;
 }
 
 
@@ -31,8 +36,10 @@ static void _free_first_page( void )
 
     page = dbug_head;
     if ( !page ) {
+        dbug_pages = 0;
         return;
     }
+    dbug_pages--;
     dbug_head = dbug_head->next;
     if ( dbug_head == NULL )
         dbug_tail = NULL;
@@ -51,41 +58,27 @@ static void free_first_page( void )
 }
 
 
-static int _number_pages( void )
-{
-    int count = 0;
-    DBUG_PAGE* page;
-
-    for ( page = dbug_head; page != NULL; page = page->next) {
-        ++count;
-    }
-    return count;
-}
-
-
-static int number_pages( void )
-{
-    unsigned long   flags;
-    int             pages;
-
-	spin_lock_irqsave(&dbug_lock, flags);
-    pages = _number_pages();
-	spin_unlock_irqrestore(&dbug_lock, flags);
-    return pages;
-}
-
-
 static DBUG_PAGE*   append_new_page( void )
 {
-    DBUG_PAGE*    page = ( DBUG_PAGE* ) get_zeroed_page( GFP_ATOMIC );
-    int           npages;
+    DBUG_PAGE*    page;
 
-    // limit the size of the trace buffer based on dbug_pages setting
-    for (npages = _number_pages(); npages >= dbug_pages; --npages) {
+    // if oneshot is enabled -- stop once all of the pages have been filled
+    if (dbug_oneshot && dbug_pages >= dbug_max_pages) {
+        return NULL;
+    }
+    page = ( DBUG_PAGE* ) get_zeroed_page( GFP_ATOMIC );
+
+    // limit the size of the trace buffer based on dbug_max_pages setting
+    while (dbug_pages >= dbug_max_pages && dbug_pages > 0) {
         _free_first_page();
     }
 
-    if ( page == NULL ) {
+    if ( page )
+        ++dbug_pages;
+    else
+    {
+        // could not allocate another page, reuse the first page on the list
+        // if possible
         if ( dbug_head == NULL )
             return NULL;
         if ( dbug_head == dbug_tail ) {
@@ -100,14 +93,11 @@ static DBUG_PAGE*   append_new_page( void )
         memset( page, 0, PAGE_SIZE );
     }
 
-    if ( dbug_head == NULL ) {
-        dbug_tail = page;
+    if ( dbug_head == NULL )
         dbug_head = page;
-    } else {
+    else
         dbug_tail->next = page;
-        dbug_tail = page;
-    }
-
+    dbug_tail = page;
     return page;
 }
 
@@ -123,7 +113,8 @@ static void   append_new_data( char* text, int leng )
             dbug_tail->leng += leng;
             break;
         }
-        append_new_page();
+        if (append_new_page() == NULL)
+            break;
     } while ( dbug_tail != NULL );
 	spin_unlock_irqrestore(&dbug_lock, flags);
 }
@@ -218,8 +209,9 @@ static int proc_get_trace_cb( char* buf, char** start, off_t offset,
 static int proc_set_trace_cb( struct file* file, const char* buf, 
                               unsigned long count, void* data )
 {
-    int   len = count;
-    char  string[256];
+    int             len = count;
+    char            string[256];
+    struct timeval  tv;
 
     if ( len > sizeof(string)-1 ) 
         len = sizeof(string)-1;
@@ -227,7 +219,11 @@ static int proc_set_trace_cb( struct file* file, const char* buf,
         return -EFAULT;
 
     string[len] = '\0';
-    return dbug_printk("%lu-%s", jiffies, string);
+    if (dbug_jiffies)
+        return dbug_printk("%lu-%s", jiffies, string);
+
+    do_gettimeofday(&tv);
+    return dbug_printk("%lu.%lu-%s", tv.tv_sec, tv.tv_usec, string);
 }
 
 
@@ -252,7 +248,7 @@ static int proc_get_debugpages_cb( char* buf, char** start, off_t offset,
                                    int count, int* eof, void* data )
 {
     *eof = 1;
-    return sprintf( buf, "%d of %d\n", number_pages(), dbug_pages );
+    return sprintf( buf, "%d of %d\n", dbug_pages, dbug_max_pages );
 }
 
 
@@ -264,7 +260,7 @@ static int proc_set_debugpages_cb( struct file* file, const char* buf,
     if ( rc ) 
         return rc;
 
-    dbug_pages = value;
+    dbug_max_pages = value;
     return count;
 }
 
@@ -286,6 +282,48 @@ static int proc_set_debuglevel_cb( struct file* file, const char* buf,
         return rc;
 
     dbug_level = value;
+    return count;
+}
+
+
+static int proc_get_oneshot_cb( char* buf, char** start, off_t offset,
+                                int count, int* eof, void* data )
+{
+    *eof = 1;
+    return sprintf( buf, "%d\n", dbug_oneshot );
+}
+
+
+static int proc_set_oneshot_cb( struct file* file, const char* buf, 
+                                unsigned long count, void* data )
+{
+    u32  value;
+    int  rc = getval_from_user(file,buf,count,&value);
+    if ( rc ) 
+        return rc;
+
+    dbug_oneshot = value;
+    return count;
+}
+
+
+static int proc_get_jiffies_cb( char* buf, char** start, off_t offset,
+                                int count, int* eof, void* data )
+{
+    *eof = 1;
+    return sprintf( buf, "%d\n", dbug_jiffies );
+}
+
+
+static int proc_set_jiffies_cb( struct file* file, const char* buf, 
+                                unsigned long count, void* data )
+{
+    u32  value;
+    int  rc = getval_from_user(file,buf,count,&value);
+    if ( rc ) 
+        return rc;
+
+    dbug_jiffies = value;
     return count;
 }
 
@@ -317,6 +355,8 @@ static struct {
  { "pages",  DBUG_DIR, proc_get_debugpages_cb, proc_set_debugpages_cb, NULL },
  { "trace",  DBUG_DIR, proc_get_trace_cb,      proc_set_trace_cb,      NULL },
  { "erase",  DBUG_DIR, proc_get_erase_cb,      proc_set_erase_cb,      NULL },
+ { "oneshot",DBUG_DIR, proc_get_oneshot_cb,    proc_set_oneshot_cb,    NULL },
+ { "jiffies",DBUG_DIR, proc_get_jiffies_cb,    proc_set_jiffies_cb,    NULL },
 };
 
 

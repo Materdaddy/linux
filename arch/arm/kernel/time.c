@@ -37,6 +37,7 @@
  * Our system timer.
  */
 struct sys_timer *system_timer;
+EXPORT_SYMBOL(system_timer);
 
 extern unsigned long wall_jiffies;
 

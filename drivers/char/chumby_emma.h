@@ -17,6 +17,10 @@
 #define EMMA_PrP_ABORT		_IO( EMMA_IOC_MAGIC, 11 )
 #define EMMA_PrP_RESET		_IO( EMMA_IOC_MAGIC, 12 )
 
+#define EMMA_SET_ZONE       _IOW( EMMA_IOC_MAGIC, 13, EMMA_ZONE )
+
+#define EMMA_MAX_AREA    8
+
 /* EMMA PP Control Register bit settings
 */
 #define PP_CNTL_EN              ( 1 << 0 )
@@ -159,5 +163,16 @@ typedef struct {
     int           done;
 } EMMA_PrP_STAT;
 
+
+typedef struct {
+    unsigned long offset;  // offset in vma_area_struct of memory
+    unsigned long length;  // # of bytes -- offset TO offset+length
+} EMMA_AREA;
+
+typedef struct {
+    void*     vma;                   // pointer to vma_area_struct
+    int       count;                 // # of valid EMMA_AREAs
+    EMMA_AREA area[EMMA_MAX_AREA];   // areas of memory
+} EMMA_ZONE;
 
 #endif

@@ -438,6 +438,24 @@ MFI	MFN	MFD	PD	UPCTL0/MPCTL0	actual   	actual
         CSCR &= ~ CSCR_USB_DIV_MASK;
         CSCR |= CSCR_USB_DIV(5);  /* Divide by 6 = 288/48 */
 
+#define USE_175MHZ_CLOCK 0    // set to 1 for chumbys with high-performance RAM installed
+                              // experimental ONLY!
+#if USE_175MHZ_CLOCK
+	//////////////warning bad don't ever commit this change
+	CSCR &= ~ CSCR_BCLKDIV_MASK;	//////////////warning bad don't ever commit this change
+	CSCR |= CSCR_BCLKDIV(1); // divide by 2, not 3!!!
+
+	{
+	  int i;
+	  for( i = 0; i < 1000000; i++ ) 
+	    ; // wait for things to stabilize
+	}
+#endif
+	/////////////warning bad
+
+	// next up: random cache replacement vs. round robin??
+
+
 	//	CSCR |= CSCR_SP_SEL; // select the 26 MHz clock
 	
 	/* Restart the SPLL and wait for the CSCR_SPLL_RESTART bit to clear */

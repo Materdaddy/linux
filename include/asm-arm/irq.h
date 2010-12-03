@@ -34,7 +34,7 @@ extern void enable_irq(unsigned int);
 #define __IRQT_HIGHLVL	(1 << 2)
 #define __IRQT_LOWLVL	(1 << 3)
 
-#define IRQT_NOEDGE	(0)
+// #define IRQT_NOEDGE	(0)  // this has no meaning in MX21 land
 #define IRQT_RISING	(__IRQT_RISEDGE)
 #define IRQT_FALLING	(__IRQT_FALEDGE)
 #define IRQT_BOTHEDGE	(__IRQT_RISEDGE|__IRQT_FALEDGE)

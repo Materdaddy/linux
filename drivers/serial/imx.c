@@ -490,23 +490,23 @@ static int imx_startup(struct uart_port *port)
 	
 	UCR3((u32)sport->port.membase) |= UCR3_RXDMUXSEL;
 #if 0	
-	printk( "UART %08lX\n", (u32)sport->port.membase);
-	  printk( "URXD0(x) : %08lX\n", URXD0((u32)sport->port.membase) );
-	  printk( "URTX0(x) : %08lX\n", URTX0((u32)sport->port.membase) );
-	  printk( "UCR1(x)  : %08lX\n", UCR1((u32)sport->port.membase)  );
-	  printk( "UCR2(x)  : %08lX\n", UCR2((u32)sport->port.membase)  );
-	  printk( "UCR3(x)  : %08lX\n", UCR3((u32)sport->port.membase)  );
-	  printk( "UCR4(x)  : %08lX\n", UCR4((u32)sport->port.membase)  );
-	  printk( "UFCR(x)  : %08lX\n", UFCR((u32)sport->port.membase)  );
-	  printk( "USR1(x)  : %08lX\n", USR1((u32)sport->port.membase)  );
-	  printk( "USR2(x)  : %08lX\n", USR2((u32)sport->port.membase)  );
-	  printk( "UESC(x)  : %08lX\n", UESC((u32)sport->port.membase)  );
-	  printk( "UTIM(x)  : %08lX\n", UTIM((u32)sport->port.membase)  );
-	  printk( "UBIR(x)  : %08lX\n", UBIR((u32)sport->port.membase)  );
-	  printk( "UBMR(x)  : %08lX\n", UBMR((u32)sport->port.membase)  );
-	  printk( "UBRC(x)  : %08lX\n", UBRC((u32)sport->port.membase)  );
-	  printk( "ONMES(x) : %08lX\n", ONMES((u32)sport->port.membase) );
-	  printk( "UTS(x)   : %08lX\n", UTS((u32)sport->port.membase)   );
+	printk( "UART %08lX\n", (unsigned long int)(u32)sport->port.membase);
+	//	  printk( "URXD0(x) : %08lX\n", URXD0((u32)sport->port.membase) );
+	//	  printk( "URTX0(x) : %08lX\n", URTX0((u32)sport->port.membase) );
+	  printk( "UCR1(x)  : %08lX\n", (unsigned long int)UCR1((u32)sport->port.membase)  );
+	  printk( "UCR2(x)  : %08lX\n", (unsigned long int)UCR2((u32)sport->port.membase)  );
+	  printk( "UCR3(x)  : %08lX\n", (unsigned long int)UCR3((u32)sport->port.membase)  );
+	  printk( "UCR4(x)  : %08lX\n", (unsigned long int)UCR4((u32)sport->port.membase)  );
+	  printk( "UFCR(x)  : %08lX\n", (unsigned long int)UFCR((u32)sport->port.membase)  );
+	  //	  printk( "USR1(x)  : %08lX\n", USR1((u32)sport->port.membase)  );
+	  //	  printk( "USR2(x)  : %08lX\n", USR2((u32)sport->port.membase)  );
+	  //	  printk( "UESC(x)  : %08lX\n", UESC((u32)sport->port.membase)  );
+	  //	  printk( "UTIM(x)  : %08lX\n", UTIM((u32)sport->port.membase)  );
+	  printk( "UBIR(x)  : %08lX\n", (unsigned long int)UBIR((u32)sport->port.membase)  );
+	  printk( "UBMR(x)  : %08lX\n", (unsigned long int)UBMR((u32)sport->port.membase)  );
+	  //	  printk( "UBRC(x)  : %08lX\n", UBRC((u32)sport->port.membase)  );
+	  //	  printk( "ONMES(x) : %08lX\n", ONMES((u32)sport->port.membase) );
+	  printk( "UTS(x)   : %08lX\n", (unsigned long int)UTS((u32)sport->port.membase)   );
 #endif
 
 	return 0;
@@ -906,10 +906,11 @@ static void __init imx_init_ports(void)
 
 #endif /* defined(CONFIG_ARCH_IMX21) */
 
-	imx_gpio_mode( GPIO_PORTE | 9 | GPIO_PF | GPIO_IN ); // UART3 Rxd
-	imx_gpio_mode( GPIO_PORTE | 8 | GPIO_PF | GPIO_OUT );// UART3 Txd
-	imx_gpio_mode( GPIO_PORTE | 11 | GPIO_PF | GPIO_IN ); // UART3 Rts
-	imx_gpio_mode( GPIO_PORTE | 10 | GPIO_PF | GPIO_OUT );// UART3 Cts
+	printk( "enabling PU's on UART3\n" );
+	imx_gpio_mode( GPIO_PORTE | 9 | GPIO_PF | GPIO_IN | GPIO_PUEN ); // UART3 Rxd
+	imx_gpio_mode( GPIO_PORTE | 8 | GPIO_PF | GPIO_OUT | GPIO_PUEN );// UART3 Txd
+	imx_gpio_mode( GPIO_PORTE | 11 | GPIO_PF | GPIO_IN | GPIO_PUEN ); // UART3 Rts
+	imx_gpio_mode( GPIO_PORTE | 10 | GPIO_PF | GPIO_OUT | GPIO_PUEN );// UART3 Cts
 
 }
 

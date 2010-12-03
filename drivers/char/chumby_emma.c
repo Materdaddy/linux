@@ -1,5 +1,5 @@
 /*
-       imx21_emma.c
+       chumby_emma.c
        ghutchins -- August 2007 -- initial version
 
        This file is part of the chumby imx21 emma driver in the linux kernel.
@@ -73,10 +73,17 @@ static struct cdev*             emma_cdev = NULL;
 static atomic_t                 opened = ATOMIC_INIT( -1 );
 static struct fasync_struct*    fasync_queue = NULL;
 static DECLARE_WAIT_QUEUE_HEAD(waitq);
-static atomic_t                 pp_done = ATOMIC_INIT( 0 );
-static atomic_t                 prp_done = ATOMIC_INIT( 0 );
+static atomic_t                 pp_done = ATOMIC_INIT( 1 );
+static atomic_t                 prp_done = ATOMIC_INIT( 1 );
 static EMMA_PP_REGS             pp_regs = { 0 };
 static EMMA_PrP_REGS            prp_regs = { 0 };
+static EMMA_ZONE                emma_zone = { 0 };
+static struct vm_area_struct*   user_vma = NULL;
+
+static unsigned long emma_prp_intrcntl = PrP_INT_MASK;
+static unsigned long emma_pp_intrcntl  = PP_ERR_INTR | PP_FRAME_COMP_INTR;
+module_param(emma_prp_intrcntl, ulong, S_IRUGO);
+module_param(emma_pp_intrcntl, ulong, S_IRUGO);
 
 
 static int pphw_reset(void)
@@ -153,6 +160,12 @@ static int emma_ioctl(struct inode* inode, struct file* file,
     int i;
 
     switch (cmd) {
+    case EMMA_SET_ZONE:
+        if (copy_from_user(&emma_zone, (void* __user) arg, sizeof(emma_zone)))
+            return -EFAULT;
+        user_vma = emma_zone.vma;
+        return 0;
+
     case EMMA_PP_SET_REGS:
         printk( "EMMA_PP_SET_REGS...\n" );
         if (copy_from_user(&pp_regs, (void __user *)arg, sizeof(pp_regs)))
@@ -219,7 +232,8 @@ static int emma_ioctl(struct inode* inode, struct file* file,
                     __FILE__, __FUNCTION__ );
             return -EBUSY;
         }
-        EMMA_PP_INTRCNTL = PP_ERR_INTR | PP_FRAME_COMP_INTR;
+        atomic_set( &pp_done, 0 ); // clear pp_done for next transfer
+        EMMA_PP_INTRCNTL = emma_pp_intrcntl;
         EMMA_PP_CNTL = pp_regs.cntl | PP_CNTL_EN;
         printk( "PP_CNTL=0x%x, PP_INTRCNTL=0x%x, PP_INTRSTATUS=0x%x\n",
                 EMMA_PP_CNTL, EMMA_PP_INTRCNTL, EMMA_PP_INTRSTATUS );
@@ -345,7 +359,18 @@ static int emma_ioctl(struct inode* inode, struct file* file,
                     __FILE__, __FUNCTION__ );
             return -EBUSY;
         }
-        EMMA_PrP_INTRCNTL = PrP_INT_MASK;
+
+        // flush the user cache -- if any is specified
+        if ( user_vma ) {
+            int i;
+            for (i=0; i<emma_zone.count; ++i) {
+                unsigned long addr = user_vma->vm_start + emma_zone.area[i].offset;
+                flush_cache_range( user_vma, addr, addr + emma_zone.area[i].length ); 
+            }
+        }
+
+        atomic_set( &prp_done, 0 ); // clear prp_done for next transfer
+        EMMA_PrP_INTRCNTL = emma_prp_intrcntl;
         EMMA_PrP_CNTL = prp_regs.cntl | enflags;
         return 0;
 
@@ -380,11 +405,9 @@ static unsigned int emma_poll(struct file* file, poll_table* wait)
 
     poll_wait( file, &waitq, wait );
     if ( atomic_read( &pp_done ) ) {
-        atomic_set( &pp_done, 0 ); // is this ok?  or use ioctl() to clear?
         mask |= POLLIN | POLLRDNORM;
     }
     if ( atomic_read( &prp_done ) ) {
-        atomic_set( &prp_done, 0 ); // is this ok?  or use ioctl() to clear?
         mask |= POLLIN | POLLRDNORM;
     }
     return mask;
@@ -511,21 +534,30 @@ static int __init emma_init(void)
         return err;
     }
 
-    err = request_irq( INT_EMMAPRP, prp_irq_handler, 0, "EMMA-PRP", NULL );
-    if (err < 0) {
-        printk(KERN_NOTICE 
-               "%s/%s(): request_irq(INT_EMMAPRP) failed with error %d\n", 
-               __FILE__, __FUNCTION__, err);
-        emma_exit();
-        return err;
+    if (emma_prp_intrcntl) {
+        // only install PrP interrupt handler if we are going to enable
+        // interrupts
+        err = request_irq( INT_EMMAPRP, prp_irq_handler, 0, "EMMA-PRP", NULL );
+        if (err < 0) {
+            printk(KERN_NOTICE 
+                   "%s/%s(): request_irq(INT_EMMAPRP) failed with error %d\n", 
+                   __FILE__, __FUNCTION__, err);
+            emma_exit();
+            return err;
+        }
     }
-    err = request_irq( INT_EMMAPP,  pp_irq_handler, 0, "EMMA-PP", NULL );
-    if (err < 0) {
-        printk(KERN_NOTICE 
-               "%s/%s(): request_irq(INT_EMMAPRP) failed with error %d\n", 
-               __FILE__, __FUNCTION__, err);
-        emma_exit();
-        return err;
+
+    if (emma_pp_intrcntl) {
+        // only install PP interrupt handler if we are going to enable
+        // interrupts
+        err = request_irq( INT_EMMAPP,  pp_irq_handler, 0, "EMMA-PP", NULL );
+        if (err < 0) {
+            printk(KERN_NOTICE 
+                   "%s/%s(): request_irq(INT_EMMAPRP) failed with error %d\n", 
+                   __FILE__, __FUNCTION__, err);
+            emma_exit();
+            return err;
+        }
     }
 
     MAX_MGPCR(4) = 1;
@@ -533,7 +565,8 @@ static int __init emma_init(void)
     __REG(IMX_AIPI2_BASE + 8) = 0;
     PCCR0 |= PCCR0_EMMA_EN | PCCR0_HCLK_EMMA_EN;
 
-    printk(KERN_NOTICE "EMMA device major=%d.\n", emma_major);
+    printk(KERN_NOTICE "EMMA device major=%d, PrP_INTRCNTL=0x%lx, PP_INTRCNTL=0x%lx.\n", 
+           emma_major, emma_prp_intrcntl, emma_pp_intrcntl);
     return 0;
 }
 

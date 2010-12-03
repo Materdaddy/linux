@@ -16,4 +16,4 @@ endif
 
 #obj-m := snd-imx21-tsc2100.o
 #snd-imx21-tsc2100-objs	:= imx21-tsc2100.o
-obj-m := chumby-tsc2100.o
+obj-m := chumby-tsc2100.o chumby-tsc2100_v38.o

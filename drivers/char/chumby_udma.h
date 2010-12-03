@@ -48,6 +48,8 @@
 #define UDMA_ABORT_DMA      _IO( UDMA_IOC_MAGIC, 8 )
 #define UDMA_DMA_STATUS     _IOR( UDMA_IOC_MAGIC, 9, UDMA_STATUS )
 #define UDMA_FBPA           _IOR( UDMA_IOC_MAGIC, 10, UDMA_LCDC_REGS )
+#define UDMA_GET_ZONE       _IOR( UDMA_IOC_MAGIC, 11, UDMA_ZONE )
+
 
 typedef struct {
     int             dmac;
@@ -80,5 +82,11 @@ typedef struct {
     unsigned long   lgwsar;
     unsigned long   lgwpor;
 } UDMA_LCDC_REGS;
+
+typedef struct {
+    void*           vma;
+    unsigned long   phys_addr;
+    unsigned long   byte_length;
+} UDMA_ZONE;
 
 #endif

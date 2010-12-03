@@ -72,6 +72,9 @@
 #include <asm/arch/imxfb.h>
 static void mx21ads_lcd_power(int on);
 
+unsigned int chumby_hwversion;
+EXPORT_SYMBOL(chumby_hwversion);
+
 static struct imxfb_mach_info mx21ads_fb_info __initdata = {
   // PERDIV3 = 7, 44 MHz clock rate
     .pixclock     = 62500,
@@ -106,6 +109,18 @@ static struct imxfb_mach_info mx21ads_fb_info __initdata = {
     
     .lcd_power = mx21ads_lcd_power,
 };
+
+static int __init chumbyhwver_setup(char *line) {
+  if( (line[0] == '3') && (line[2] == '8') )  // very simple parser
+    chumby_hwversion = 0x38; 
+  else
+    chumby_hwversion = 0x37;
+
+  printk( "Chumby hardware version (from kernel command line): %02X\n", chumby_hwversion );
+  
+  return 1;
+}
+__setup("chumby_hwversion=", chumbyhwver_setup);
 
 static void mx21ads_lcd_power(int on)
 {
@@ -313,15 +328,15 @@ mx21ads_init(void)
     PCCR0 |= PCCR0_HCLK_USBOTG_EN | PCCR0_USBOTG_EN;
 
     /* Configure the GPIO */
-    imx_gpio_mode(23 | GPIO_PORTB );   /* USB Host PWR */
+    imx_gpio_mode(23 | GPIO_PORTB | GPIO_PUEN  );   /* USB Host PWR */
 
-    imx_gpio_mode(13 | GPIO_PORTC );   /* USB Host RXDP */
-    imx_gpio_mode(12 | GPIO_PORTC );   /* USB Host RXDM */
-    imx_gpio_mode(11 | GPIO_PORTC );   /* USB Host TXDP */
-    imx_gpio_mode(10 | GPIO_PORTC );   /* USB Host TXDM */
-    imx_gpio_mode( 9 | GPIO_PORTC );   /* USB Host OE */
+    imx_gpio_mode(13 | GPIO_PORTC | GPIO_PUEN  );   /* USB Host RXDP */
+    imx_gpio_mode(12 | GPIO_PORTC | GPIO_PUEN  );   /* USB Host RXDM */
+    imx_gpio_mode(11 | GPIO_PORTC | GPIO_PUEN  );   /* USB Host TXDP */
+    imx_gpio_mode(10 | GPIO_PORTC | GPIO_PUEN  );   /* USB Host TXDM */
+    imx_gpio_mode( 9 | GPIO_PORTC | GPIO_PUEN  );   /* USB Host OE */
     //    imx_gpio_mode( 8 | GPIO_PORTC | GPIO_IN | GPIO_GPIO | GPIO_PUEN); /* FS */
-    imx_gpio_mode( 8 | GPIO_PORTC ); /* FS */
+    imx_gpio_mode( 8 | GPIO_PORTC | GPIO_PUEN  ); /* FS */
     //    imx_gpio_mode( 7 | GPIO_PORTC );   /* USB Host ON */
     //    imx_gpio_mode( 6 | GPIO_PORTC );   /* USB Host SCL */
     //    imx_gpio_mode( 5 | GPIO_PORTC );   /* USB Host SDA */
@@ -397,14 +412,14 @@ mx21ads_init(void)
     // A12 USBH1_OE    PB27
     // G11 USBH_ON     PB25
     
-    imx_gpio_mode(29 | GPIO_PORTB | GPIO_PF | GPIO_OUT );   // USBH1_TXDP
-    imx_gpio_mode(28 | GPIO_PORTB | GPIO_PF | GPIO_OUT );   // USBH1_TXDM
-    imx_gpio_mode(31 | GPIO_PORTB | GPIO_PF | GPIO_IN );   // USBH1_RXDP
-    imx_gpio_mode(30 | GPIO_PORTB | GPIO_PF | GPIO_IN );   // USBH1_RXDM
+    imx_gpio_mode(29 | GPIO_PORTB | GPIO_PF | GPIO_OUT | GPIO_PUEN  );   // USBH1_TXDP
+    imx_gpio_mode(28 | GPIO_PORTB | GPIO_PF | GPIO_OUT | GPIO_PUEN  );   // USBH1_TXDM
+    imx_gpio_mode(31 | GPIO_PORTB | GPIO_PF | GPIO_IN | GPIO_PUEN  );   // USBH1_RXDP
+    imx_gpio_mode(30 | GPIO_PORTB | GPIO_PF | GPIO_IN | GPIO_PUEN  );   // USBH1_RXDM
     imx_gpio_mode(26 | GPIO_PORTB | GPIO_PF | GPIO_OUT );   /* USBH1 FS */
-    imx_gpio_mode(27 | GPIO_PORTB | GPIO_PF | GPIO_OUT );   // USBH1_OE
-    imx_gpio_mode(25 | GPIO_PORTB | GPIO_PF | GPIO_OUT );   // USBH_ON
-    PUEN(1) |= 0x08000000; // enable pull-up on OE line
+    imx_gpio_mode(27 | GPIO_PORTB | GPIO_PF | GPIO_OUT | GPIO_PUEN );   // USBH1_OE
+    imx_gpio_mode(25 | GPIO_PORTB | GPIO_PF | GPIO_OUT | GPIO_PUEN  );   // USBH_ON
+    PUEN(1) |= 0x08000000; // enable pull-up on OE line -- may want to consider this also on the other 2 ports
 
     printk( "DDIR(1): %08X\n", DDIR(1));
     printk( "OCR2(1): %08X\n", OCR2(1));
@@ -428,6 +443,9 @@ mx21ads_init(void)
     OCR2(3) &= 0xFFFC03FF;  // bits 21, 22, 23, and 24
     ICONFA2(3) &= 0xFFFFFC3F;  // bits 19 and 20
     GIUS(3) |= 0x01F80000;
+    PUEN(3) |= 0x01F80000;
+    printk( "PUEN(3): %08X\n", PUEN(3)); // figure out OE states on other USB ports
+    printk( "PUEN(2): %08X\n", PUEN(2)); // this belongs to the OTG port above, but printed here for debug convenience
 
     // turn off over current reporting, because we don't have it
     USBH_ROOTHUBA |= USBH_ROOTHUBA_NOOVRCURP;
