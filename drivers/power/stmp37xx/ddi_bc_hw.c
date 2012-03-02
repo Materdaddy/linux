@@ -383,6 +383,7 @@ void ddi_bc_hwGetDieTemp(int16_t * pLow, int16_t * pHigh)
 ddi_bc_Status_t ddi_bc_hwGetBatteryTemp(uint16_t * pReading)
 {
     uint32_t  ch0Value;
+	uint32_t  retries = 0;
 
     /* Mux channel 0 to use LRADC0 */
     HW_LRADC_CTRL4_CLR(BF_LRADC_CTRL4_LRADC0SELECT(0xF));
@@ -393,8 +394,22 @@ ddi_bc_Status_t ddi_bc_hwGetBatteryTemp(uint16_t * pReading)
     HW_LRADC_CTRL0_SET(BF_LRADC_CTRL0_SCHEDULE(1 << LRADC_CH0));
 
     /* Wait for conversion to complete */
-    while (!(HW_LRADC_CTRL1_RD() & BM_LRADC_CTRL1_LRADC0_IRQ))
+    while (!(HW_LRADC_CTRL1_RD() & BM_LRADC_CTRL1_LRADC0_IRQ)) {
+		if(++retries >= 256)
+			break;
+
+		/*
+		 * There's a lockup bug here.  For some reason, the conversion just
+		 * fails to happen, leaving the process that requested it to be
+		 * stuck forever.
+		 * As a workaround, we retry every 0x1f times, and time out
+		 * completely after 0xff tries.
+		 */
+		if(!(HW_LRADC_CTRL1_RD()&BM_LRADC_CTRL1_LRADC0_IRQ) && !(retries&0x1f))
+			HW_LRADC_CTRL0_SET(BF_LRADC_CTRL0_SCHEDULE(1 << LRADC_CH0));
+
         cpu_relax();
+	}
 
     /* Clear the interrupt flag again */
     HW_LRADC_CTRL1_CLR(BM_LRADC_CTRL1_LRADC0_IRQ);

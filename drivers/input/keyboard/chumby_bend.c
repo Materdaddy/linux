@@ -25,7 +25,6 @@
 */
 
 #define FW_BEND_VERSION "2.3-Falconwing"
-#define BEND_KEYCODE 130
 
 #include <linux/moduleparam.h>
 
@@ -45,20 +44,21 @@
 #include <linux/io.h>
 
 #include <mach/regs-pinctrl.h>
+#include <mach/pinmux.h>
 
 
 
+// Begin legacy switch mode
 static int legacy_open(struct inode *inode, struct file *file);
 static int legacy_release(struct inode *inode, struct file *file);
 static ssize_t legacy_read(struct file *file, char *buf,
                            size_t count, loff_t * ppos);
 
 
-// True or false depending on whether the switch is pressed or not.
-static int pressed = 0;
+// True or false depending on whether the "bend" key is pressed or not.
+static int bend_pressed = 0;
 
 
-// For legacy switch mode
 #include <linux/cdev.h>
 #include <asm/uaccess.h>    /* copy_*_user */
 static struct cdev *legacy_switch;
@@ -88,31 +88,120 @@ static struct file_operations legacy_fops = {
 
 
 // Do some debouncing.  Figure that events must happen 5 jiffies apart.
-static unsigned int last_jiffies = 0;
-static irqreturn_t chumby_bend_pressed(int irq, void *arg)
-{
-    struct input_dev *input_dev = arg;
-    pressed = !(HW_PINCTRL_DIN1_RD()&0x40000000);
+static int keys[5];
+#define CKEY_UP 0
+#define CKEY_RIGHT 1
+#define CKEY_LEFT 2
+#define CKEY_DOWN 3
+#define CKEY_BEND 4
 
+static int timer_queued;
 
+static void update_key_polarities(int *new_keys) {
     // Set the key to fire when the polarity of the switch flips.
-    if(pressed)
-        HW_PINCTRL_IRQPOL1_SET(0x40000000);
+    if(new_keys[CKEY_UP])
+        HW_PINCTRL_IRQPOL0_SET(1<<24);
     else
-        HW_PINCTRL_IRQPOL1_CLR(0x40000000);
+        HW_PINCTRL_IRQPOL0_CLR(1<<24);
 
-    // Fire only if the event happened more than 5 jiffies ago.
-    if(jiffies > last_jiffies+5) {
-        CHLOG(">>> Pressed switch: %d\n", pressed);
-        input_event(input_dev, EV_KEY, BEND_KEYCODE, pressed);
-    }
-    else {
-        CHLOG(">>> Debouncing switch, not sending event.  Jiffies: %ld  Last_jiffies: %d\n", jiffies, last_jiffies);
-    }
-    last_jiffies = jiffies;
+	if(new_keys[CKEY_RIGHT])
+        HW_PINCTRL_IRQPOL0_SET(1<<25);
+    else
+        HW_PINCTRL_IRQPOL0_CLR(1<<25);
 
+	if(new_keys[CKEY_LEFT])
+        HW_PINCTRL_IRQPOL2_SET(1<<28);
+    else
+        HW_PINCTRL_IRQPOL2_CLR(1<<28);
+
+	if(new_keys[CKEY_DOWN])
+        HW_PINCTRL_IRQPOL0_SET(1<<23);
+    else
+        HW_PINCTRL_IRQPOL0_CLR(1<<23);
+
+	stmp3xxx_configure_irq(PINID_GPMI_WRN,  new_keys[CKEY_UP]?IRQ_TYPE_EDGE_RISING:IRQ_TYPE_EDGE_FALLING);
+	stmp3xxx_configure_irq(PINID_GPMI_RDN, new_keys[CKEY_RIGHT]?IRQ_TYPE_EDGE_RISING:IRQ_TYPE_EDGE_FALLING);
+	stmp3xxx_configure_irq(PINID_GPMI_CE0N, new_keys[CKEY_LEFT]?IRQ_TYPE_EDGE_RISING:IRQ_TYPE_EDGE_FALLING);
+	stmp3xxx_configure_irq(PINID_GPMI_WPN,  new_keys[CKEY_DOWN]?IRQ_TYPE_EDGE_RISING:IRQ_TYPE_EDGE_FALLING);
+	stmp3xxx_configure_irq(PINID_PWM4,      new_keys[CKEY_BEND]?IRQ_TYPE_EDGE_RISING:IRQ_TYPE_EDGE_FALLING);
+
+	if(new_keys[CKEY_BEND])
+        HW_PINCTRL_IRQPOL1_SET(1<<30);
+    else
+        HW_PINCTRL_IRQPOL1_CLR(1<<30);
+}
+
+static void read_key_values(int *new_keys) {
+	int bank0, bank1, bank2;
+
+	/* Read all keys at once.  We'll see chich changed later. */
+	bank0 = HW_PINCTRL_DIN0_RD();
+	bank1 = HW_PINCTRL_DIN1_RD();
+	bank2 = HW_PINCTRL_DIN2_RD();
+
+	/* Pull out the current key values */
+	new_keys[CKEY_UP]    = !(bank0&(1<<24));
+	new_keys[CKEY_RIGHT] = !(bank0&(1<<25));
+	new_keys[CKEY_LEFT]  = !(bank2&(1<<28));
+	new_keys[CKEY_DOWN]  = !(bank0&(1<<23));
+	new_keys[CKEY_BEND]  = !(bank1&(1<<30));
+}
+
+static void update_keys(unsigned long arg) {
+	struct input_dev *input_dev = (struct input_dev *)arg;
+	int new_keys[5];
+
+	read_key_values(new_keys);
+
+	CHLOG("Compare UP:    %d/%d\n", keys[CKEY_UP], new_keys[CKEY_UP]);
+	CHLOG("Compare DOWN:  %d/%d\n", keys[CKEY_DOWN], new_keys[CKEY_DOWN]);
+	CHLOG("Compare LEFT:  %d/%d\n", keys[CKEY_LEFT], new_keys[CKEY_LEFT]);
+	CHLOG("Compare RIGHT: %d/%d\n", keys[CKEY_RIGHT], new_keys[CKEY_RIGHT]);
+	CHLOG("Compare BEND:  %d/%d\n", keys[CKEY_BEND], new_keys[CKEY_BEND]);
+
+	if(new_keys[CKEY_UP] != keys[CKEY_UP])
+        input_event(input_dev, EV_KEY, KEY_UP, new_keys[CKEY_UP]);
+	if(new_keys[CKEY_RIGHT] != keys[CKEY_RIGHT])
+        input_event(input_dev, EV_KEY, KEY_RIGHT, new_keys[CKEY_RIGHT]);
+	if(new_keys[CKEY_LEFT] != keys[CKEY_LEFT])
+        input_event(input_dev, EV_KEY, KEY_LEFT, new_keys[CKEY_LEFT]);
+	if(new_keys[CKEY_DOWN] != keys[CKEY_DOWN])
+        input_event(input_dev, EV_KEY, KEY_DOWN, new_keys[CKEY_DOWN]);
+	if(new_keys[CKEY_BEND] != keys[CKEY_BEND]) {
+		bend_pressed = new_keys[CKEY_BEND];
+        input_event(input_dev, EV_KEY, KEY_ENTER, new_keys[CKEY_BEND]);
+	}
+
+	memcpy(keys, new_keys, sizeof(keys));
+	update_key_polarities(keys);
+	timer_queued = 0;
+}
+
+static void update_keys_after(int msecs, void *data) {
+	static struct timer_list timer;
+	if(!timer_queued) {
+		CHLOG("Updating keyboard in %d msecs\n", msecs);
+		timer_queued=1;
+
+		init_timer(&timer);
+		timer.data = (unsigned long)data;
+		timer.function = update_keys;
+		timer.expires = jiffies + (HZ/1000)*msecs;
+		add_timer(&timer);
+	}
+	else
+		CHLOG("Not updating keys, as there was already a request pending\n");
+}
+
+static irqreturn_t chumby_key_pressed(int irq, void *arg)
+{
+
+	/* Actually update the keys after a delay.  To debounce. */
+	CHLOG("Someone pressed a key!!!\n");
+	update_keys_after(2, arg);
     return IRQ_HANDLED;
 }
+
 
 
 
@@ -127,7 +216,7 @@ static int legacy_release(struct inode *inode, struct file *file) {
 }
 static ssize_t legacy_read(struct file *file, char *buf,
                            size_t count, loff_t * ppos) {
-    char retval = !!pressed;
+    char retval = !!bend_pressed;
     if(copy_to_user(buf, &retval, sizeof(retval)))
         return -EFAULT;
     return sizeof(retval);
@@ -152,37 +241,37 @@ static int chumby_bend_probe(struct platform_device *pdev)
     platform_set_drvdata(pdev, input_dev);
 
 
+	/* Grab the pins used for this keyboard */
+	stmp3xxx_request_pin(PINID_PWM4, PIN_GPIO, "bend sensor");
+	stmp3xxx_configure_irq(PINID_PWM4, IRQ_TYPE_EDGE_RISING);
+	stmp3xxx_configure_irq_handler(PINID_PWM4, chumby_key_pressed, input_dev);
 
-    // Allocate the hardware by reassigning the pins.
+	stmp3xxx_request_pin(PINID_GPMI_WRN, PIN_GPIO, "up key");
+	stmp3xxx_configure_irq(PINID_GPMI_WRN, IRQ_TYPE_EDGE_RISING);
+	stmp3xxx_configure_irq_handler(PINID_GPMI_WRN, chumby_key_pressed, input_dev);
 
-    // Set up the bend sensor to be a GPIO.  It lives on bank 1, pin 30.
-    HW_PINCTRL_MUXSEL3_SET(0x30000000);
+	stmp3xxx_request_pin(PINID_GPMI_RDN, PIN_GPIO, "right key");
+	stmp3xxx_configure_irq(PINID_GPMI_RDN, IRQ_TYPE_EDGE_RISING);
+	stmp3xxx_configure_irq_handler(PINID_GPMI_RDN, chumby_key_pressed, input_dev);
 
-    // Set up the bend sensor to fire an IRQ when pressed.
-    HW_PINCTRL_IRQLEVEL1_CLR(0x40000000);
+	stmp3xxx_request_pin(PINID_GPMI_CE0N, PIN_GPIO, "left key");
+	stmp3xxx_configure_irq(PINID_GPMI_CE0N, IRQ_TYPE_EDGE_RISING);
+	stmp3xxx_configure_irq_handler(PINID_GPMI_CE0N, chumby_key_pressed, input_dev);
 
-    // Set the IRQ to fire on rising edge, indicating the switch was pressed.
-    HW_PINCTRL_IRQPOL1_CLR(0x40000000);
-
-    // Set up the IRQ to fire.
-    HW_PINCTRL_IRQSTAT1_CLR(0x40000000);
-    HW_PINCTRL_PIN2IRQ1_SET(0x40000000);
-    HW_PINCTRL_IRQEN1_SET(0x40000000);
+	stmp3xxx_request_pin(PINID_GPMI_WPN, PIN_GPIO, "down key");
+	stmp3xxx_configure_irq(PINID_GPMI_WPN, IRQ_TYPE_EDGE_RISING);
+	stmp3xxx_configure_irq_handler(PINID_GPMI_WPN, chumby_key_pressed, input_dev);
 
 
-
-    // Grab the IRQ for bank1.
-    ret = request_irq(IRQ_GPIO1, chumby_bend_pressed, 0, "Bend sensor", input_dev);
-    if(ret < 0) {
-        CHLOG("Unable to initialize IRQ for bend sensor: %d\n", ret);
-        goto fail;
-    }
+	/* Read the current key state, then set the appropriate IRQ polarities */
+	read_key_values(keys);
+	update_key_polarities(keys);
 
 
     // Indicate that we send key events.
     set_bit(EV_KEY, input_dev->evbit);
     bitmap_fill(input_dev->keybit, KEY_MAX);
-    //input_set_capability(input, EV_KEY, BEND_KEYCODE);
+    //input_set_capability(input, EV_KEY, KEY_ENTER);
 
 
     input_dev->name = pdev->name;
@@ -257,7 +346,6 @@ static int __devexit chumby_bend_remove(struct platform_device *pdev)
 
 
     CHLOG("Removing bend sensor\n");
-    free_irq(IRQ_GPIO1, input_dev);
     input_unregister_device(input_dev);
     platform_set_drvdata(pdev, NULL);
     return 0;
@@ -306,5 +394,7 @@ module_exit(chumby_bend_exit);
 
 
 MODULE_AUTHOR("scross@chumby.com");
+MODULE_DESCRIPTION("chumby bend sensor driver with fake keyboard emulation");
 MODULE_LICENSE("GPL");
+MODULE_VERSION("2.3");
 MODULE_ALIAS("platform:bend-sensor");

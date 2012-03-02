@@ -44,18 +44,13 @@
 #include <media/videobuf-dma-contig.h>
 
 #include <mach/regs-pxp.h>
+#include <mach/cpu.h>
 
-
-// CHUMBY_logo
-#include <chumby_boot_logo_2.h>
-#include <chumby_boot_logo_recovery.h>
 #include <linux/init.h>
-// ! CHUMBY_logo
 
 
-// We keep this around because if we don't, memory corruption seems to
-// happen as soon as we enable fbcon, and then try to toggle "enable".
-static dma_addr_t plane_0_phys;
+#define LOGO_OFFSET 0x44844000
+
 
 
 // CHUMBY_fbsize
@@ -72,7 +67,7 @@ static struct fb_var_screeninfo default_mode __devinitdata = {
     .yres           = 240,
     .xres_virtual   = 320,
     .yres_virtual   = 240*2,
-    .yoffset        = 1,
+    .yoffset        = 0,
     .pixclock       = 154000,
     .left_margin    = 5,
     .right_margin   = 4,
@@ -105,14 +100,13 @@ static struct fb_var_screeninfo default_mode __devinitdata = {
     printk("chumbyfbfw.c - %s():%d - " format, __func__, __LINE__, ## arg)
 
 
-#define NUM_SCREENS 4
+#define NUM_SCREENS 3
 
 #define PXP_STATUS_OFF          0
 #define PXP_STATUS_ON           1
 #define PXP_STATUS_TURNING_ON   2
 #define PXP_STATUS_TURNING_OFF  3
-#define PXP_STATUS_QUEUED       4   // PXP should fire next time.
-#define PXP_STATUS_READY        5   // PXP should fire this time.
+#define PXP_STATUS_READY        4   // PXP should fire this time.
 
 
 struct chumbyfw_fb_plane {
@@ -149,14 +143,15 @@ struct chumbyfw_fb_data {
     wait_queue_head_t                 vsync_wait_q;
     u32                               vsync_count;
     u32                               pxp_missed_count;
-    void                             *par;
     int                               pxp_status;
     struct chumbyfw_fb_plane         *planes[NUM_SCREENS];
 };
 
+#define MAX_PALETTES 16
+
 // forward declaration.
 static int chumbyfwfb_blank(int blank, struct fb_info *info);
-static int pxp_setup(struct chumbyfw_fb_data *data, int pxp_pass);
+static int pxp_setup(struct chumbyfw_fb_data *data);
 //static void pxp_run(unsigned long ptr);
 static int chumbyfwfb_wait_for_vsync(u32 channel, struct fb_info *info);
 
@@ -231,16 +226,11 @@ static irqreturn_t lcd_irq_handler(int irq, void *dev_id) {
             data->pxp_status = PXP_STATUS_ON;
         }
         else if(data->pxp_status == PXP_STATUS_TURNING_OFF) {
-            HW_LCDIF_NEXT_BUF_WR(plane_0_phys);//planes[0]->phys_start);
+            HW_LCDIF_NEXT_BUF_WR(data->planes[0]->phys_start);
             data->pxp_status = PXP_STATUS_OFF;
         }
 
-
-
         // If the PXP is enabled, queue the PXP.
-//        if(data->pxp_status == PXP_STATUS_ON) {
-//            data->pxp_status = PXP_STATUS_QUEUED;
-//        }
         else if(data->pxp_status == PXP_STATUS_ON) {
             data->pxp_status = PXP_STATUS_READY;
         }
@@ -257,6 +247,12 @@ static irqreturn_t lcd_irq_handler(int irq, void *dev_id) {
             else
                 data->pxp_missed_count++;
         }
+
+        else if(data->pxp_status == PXP_STATUS_OFF)
+            ;
+
+        else
+            CHLOG("Unknown pxp_status: %d\n", data->pxp_status);
     }
 
     times_fired++;
@@ -314,7 +310,7 @@ static int chumbyfwfb_proc_read_fb3_alpha(char *buf, char **start, off_t offset,
                                  int count, int *eof, void *data)
 {
     int len;
-    len = sprintf(buf, "0x%x\n", ((HW_PXP_OLnPARAM_RD(2) >> 8) & 0xff));
+    len = sprintf(buf, "0x%x\n", ((HW_PXP_OLnPARAM_RD(NUM_SCREENS-4) >> 8) & 0xff));
     *eof = 1;
 
     return len;
@@ -324,12 +320,12 @@ static int chumbyfwfb_proc_write_fb3_alpha(struct file *file, const char *buf,
                                   unsigned long count, void *data)
 {
     unsigned long alpha = (simple_strtoul(buf, NULL, 0)<<8)&0x0000FF00;
-    HW_PXP_OLnPARAM_CLR(2, 0x0000FF00);
-    HW_PXP_OLnPARAM_SET(2, alpha);
+    HW_PXP_OLnPARAM_CLR(NUM_SCREENS-4, 0x0000FF00);
+    HW_PXP_OLnPARAM_SET(NUM_SCREENS-4, alpha);
     if(alpha)
-        HW_PXP_OLnPARAM_SET(2, 1);
+        HW_PXP_OLnPARAM_SET(NUM_SCREENS-4, 1);
     else
-        HW_PXP_OLnPARAM_CLR(2, 1);
+        HW_PXP_OLnPARAM_CLR(NUM_SCREENS-4, 1);
     
     return count;
 }
@@ -342,7 +338,7 @@ static int chumbyfwfb_proc_read_fb2_alpha(char *buf, char **start, off_t offset,
                                  int count, int *eof, void *data)
 {
     int len;
-    len = sprintf(buf, "0x%x\n", ((HW_PXP_OLnPARAM_RD(1) >> 8) & 0xff));
+    len = sprintf(buf, "0x%x\n", ((HW_PXP_OLnPARAM_RD(NUM_SCREENS-3) >> 8) & 0xff));
     *eof = 1;
 
     return len;
@@ -355,12 +351,12 @@ static int chumbyfwfb_proc_write_fb2_alpha(struct file *file, const char *buf,
 
     alpha = (simple_strtoul(buf, NULL, 0)<<8)&0x0000FF00;
 
-    HW_PXP_OLnPARAM_CLR(1, 0x0000FF00);
-    HW_PXP_OLnPARAM_SET(1, alpha);
+    HW_PXP_OLnPARAM_CLR(NUM_SCREENS-3, 0x0000FF00);
+    HW_PXP_OLnPARAM_SET(NUM_SCREENS-3, alpha);
     if(alpha)
-        HW_PXP_OLnPARAM_SET(1, BM_PXP_OLnPARAM_ENABLE);
+        HW_PXP_OLnPARAM_SET(NUM_SCREENS-3, BM_PXP_OLnPARAM_ENABLE);
     else
-        HW_PXP_OLnPARAM_CLR(1, BM_PXP_OLnPARAM_ENABLE);
+        HW_PXP_OLnPARAM_CLR(NUM_SCREENS-3, BM_PXP_OLnPARAM_ENABLE);
     
     return count;
 }
@@ -373,7 +369,7 @@ static int chumbyfwfb_proc_read_alpha(char *buf, char **start, off_t offset,
                                  int count, int *eof, void *data)
 {
     int len;
-    len = sprintf(buf, "0x%x\n", ((HW_PXP_OLnPARAM_RD(0) >> 8) & 0xff));
+    len = sprintf(buf, "0x%x\n", ((HW_PXP_OLnPARAM_RD(NUM_SCREENS-2) >> 8) & 0xff));
     *eof = 1;
 
     return len;
@@ -386,49 +382,17 @@ static int chumbyfwfb_proc_write_alpha(struct file *file, const char *buf,
 
     alpha = (simple_strtoul(buf, NULL, 0)<<8)&0x0000FF00;
 
-    HW_PXP_OLnPARAM_CLR(0, 0x0000FF00);
-    HW_PXP_OLnPARAM_SET(0, alpha);
+    HW_PXP_OLnPARAM_CLR(NUM_SCREENS-2, 0x0000FF00);
+    HW_PXP_OLnPARAM_SET(NUM_SCREENS-2, alpha);
     if(alpha)
-        HW_PXP_OLnPARAM_SET(0, BM_PXP_OLnPARAM_ENABLE);
+        HW_PXP_OLnPARAM_SET(NUM_SCREENS-2, BM_PXP_OLnPARAM_ENABLE);
     else
-        HW_PXP_OLnPARAM_CLR(0, BM_PXP_OLnPARAM_ENABLE);
+        HW_PXP_OLnPARAM_CLR(NUM_SCREENS-2, BM_PXP_OLnPARAM_ENABLE);
     
     return count;
 }
 
 
-
-static int chumbyfwfb_proc_read_enable(char *buf, char **start, off_t offset,
-                                  int count, int *eof, void *data)
-{
-    int len;
-    int enabled = gdata->pxp_status == PXP_STATUS_ON 
-               || gdata->pxp_status == PXP_STATUS_TURNING_ON
-               || gdata->pxp_status == PXP_STATUS_QUEUED;
-    len = sprintf(buf, "%d\n", enabled);
-    *eof = 1;
-    return len;
-}
-
-static int chumbyfwfb_proc_write_enable(struct file *file, const char *buf,
-                                   unsigned long count, void *data)
-{
-    unsigned long en;
-
-    en = simple_strtoul(buf, NULL, 0);
-    if (en) {
-        gdata->pxp_status = PXP_STATUS_TURNING_ON;
-        //gdata->pxp_status = PXP_STATUS_ON;
-        //HW_PXP_OLnPARAM_SET(0, BM_PXP_OLnPARAM_ENABLE);
-    }
-    else {
-        gdata->pxp_status = PXP_STATUS_TURNING_OFF;
-        //gdata->pxp_status = PXP_STATUS_OFF;
-        //HW_PXP_OLnPARAM_CLR(0, BM_PXP_OLnPARAM_ENABLE);
-    }
-
-    return count;
-}
 
 static int chumbyfwfb_proc_read_key(char *buf, char **start, off_t offset,
                                int count, int *eof, void *data)
@@ -458,14 +422,14 @@ static int chumbyfwfb_proc_read_fb_stats(char *buf, char **start,
                             off_t offset, int count, int *eof, void *data)
 {
     int len;
-    len = sprintf(buf, "PXP frequency:		%d Hz\n"
-                       "LCDIF frequency:	%d Hz\n"
-                       "VSYNC Edge IRQs:	%d\n"
-                       "Cur Frame Done IRQs:	%d\n"
-                       "Missed PXP firings:	%d\n"
-//                       "PXP started:		%lu\n"
-//                       "PXP stopped:		%lu\n"
-//                       "PXP duration:		%lu uS / % mS\n"
+    len = sprintf(buf, "PXP frequency:      %d Hz\n"
+                       "LCDIF frequency:    %d Hz\n"
+                       "VSYNC Edge IRQs:    %d\n"
+                       "Cur Frame Done IRQs:    %d\n"
+                       "Missed PXP firings: %d\n"
+//                       "PXP started:      %lu\n"
+//                       "PXP stopped:      %lu\n"
+//                       "PXP duration:     %lu uS / % mS\n"
                        ,
                        pxp_irq_frequency, lcdif_irq_frequency,
                        vsync_edge_irqs, cur_frame_done_irqs,
@@ -483,7 +447,7 @@ static int chumbyfwfb_proc_read_key_en(char *buf, char **start, off_t offset,
 {
     int len;
 
-    if (HW_PXP_OLnPARAM_RD(0) & BM_PXP_OLnPARAM_ENABLE_COLORKEY) {
+    if (HW_PXP_OLnPARAM_RD(NUM_SCREENS-2) & BM_PXP_OLnPARAM_ENABLE_COLORKEY) {
         len = sprintf(buf, "1\n");
     } else {
         len = sprintf(buf, "0\n");
@@ -500,9 +464,9 @@ static int chumbyfwfb_proc_write_key_en(struct file *file, const char *buf,
     en = simple_strtoul(buf, NULL, 0);
 
     if (en) {
-        HW_PXP_OLnPARAM_SET(0, 0x00000008);//BM_PXP_OLnPARAM_ENABLE_COLORKEY);
+        HW_PXP_OLnPARAM_SET(NUM_SCREENS-2, 0x00000008);
     } else {
-        HW_PXP_OLnPARAM_CLR(0, 0x00000008);//BM_PXP_OLnPARAM_ENABLE_COLORKEY);
+        HW_PXP_OLnPARAM_CLR(NUM_SCREENS-2, 0x00000008);
     }
     
     return count;
@@ -542,11 +506,6 @@ static void chumbyfwfb_proc_init(void)
     struct proc_dir_entry *pde;
 
     proc_mkdir("driver/chumbyfwfb", 0);
-
-
-    pde = create_proc_read_entry("driver/chumbyfwfb/enable", 0, NULL, 
-                                 chumbyfwfb_proc_read_enable, NULL);
-    pde->write_proc = chumbyfwfb_proc_write_enable;
 
 
     pde = create_proc_read_entry("driver/chumbyfwfb/alpha", 0, NULL, 
@@ -617,6 +576,7 @@ static struct fb_fix_screeninfo chumbyfwfb_fix __devinitdata = {
     .ywrapstep      = 0,
     .type_aux       = 0,
     .accel          = FB_ACCEL_NONE,
+    .line_length    = 320*2,
 };
 
 void chumbyfwfb_get_info(struct fb_var_screeninfo *var,
@@ -704,7 +664,7 @@ static int chumbyfwfb_setcolreg(u_int regno, u_int red, u_int green, u_int blue,
     /* Truecolor has hardware independent palette */
     if (info->fix.visual == FB_VISUAL_TRUECOLOR) {
 
-        if (regno >= 16)
+        if (regno >= MAX_PALETTES)
             return 1;
 
         ((u32 *) (info->pseudo_palette))[regno] =
@@ -808,7 +768,7 @@ static int chumbyfwfb_set_par(struct fb_info *info) {
     // the device panel.
     if (pentry == pdata->cur || !pdata->cur)
         return 0;
-    CHLOG("Detected that you're switching devices.\n");
+    CHLOG("Detected that you're switching output devices.\n");
 
 
     // release prev panel.
@@ -828,6 +788,7 @@ static int chumbyfwfb_set_par(struct fb_info *info) {
     pentry->run_panel();
     chumbyfwfb_blank(FB_BLANK_UNBLANK, (struct fb_info *)&data->planes[0]);
 
+    pxp_setup(data);
 
     return 0;
 }
@@ -871,13 +832,15 @@ static int chumbyfwfb_check_var(struct fb_var_screeninfo *var,
         var->yres_virtual = var->yoffset + var->yres;
 
     line_length = get_line_length(var->xres_virtual, var->bits_per_pixel);
-    if (line_length * var->yres_virtual > plane->map_size) {
-        CHLOG("Out of memory to perform that effect.\n");
+    if (line_length * var->yres_virtual > data->map_size) {
+        CHLOG("Not enough memory to switch to %dx%d@%d\n",
+                var->xres_virtual, var->yres_virtual, var->bits_per_pixel);
         return -ENOMEM;
     }
 
     if (!stmp3xxx_lcd_iterate_pdata(pdata, get_matching_pentry, var)) {
-        CHLOG("Fail!\n");
+        CHLOG("Couldn't find a screen that matched %dx%d@%d\n",
+                var->xres_virtual, var->yres_virtual, var->bits_per_pixel);
         return -EINVAL;
     }
 
@@ -885,20 +848,20 @@ static int chumbyfwfb_check_var(struct fb_var_screeninfo *var,
     if (var->bits_per_pixel == 16) {
         /* RGBA 5551 */
         if (var->transp.length) {
-            var->red.offset = 0;
+            var->red.offset = 10;
             var->red.length = 5;
             var->green.offset = 5;
             var->green.length = 5;
-            var->blue.offset = 10;
+            var->blue.offset = 0;
             var->blue.length = 5;
             var->transp.offset = 15;
             var->transp.length = 1;
         } else {    /* RGB 565 */
-            var->red.offset = 0;
+            var->red.offset = 11;
             var->red.length = 5;
             var->green.offset = 5;
             var->green.length = 6;
-            var->blue.offset = 11;
+            var->blue.offset = 0;
             var->blue.length = 5;
             var->transp.offset = 0;
             var->transp.length = 0;
@@ -1009,7 +972,7 @@ static int chumbyfwfb_pan_display(struct fb_var_screeninfo *var,
                                              * var->yoffset));
             break;
         default:
-            HW_PXP_OLn_WR(plane->idx-1,
+            HW_PXP_OLn_WR(NUM_SCREENS-plane->idx-1,
                           plane->phys_start+(info->fix.line_length
                                            * var->yoffset));
             break;
@@ -1091,7 +1054,7 @@ static int get_max_memsize(struct stmp3xxx_platform_fb_entry *pentry,
                void *data, int ret_prev)
 {
     struct chumbyfw_fb_data *fbdata = data;
-    int sz = (pentry->x_res * pentry->y_res * pentry->bpp / 8);
+    int sz = 2 * (pentry->x_res * pentry->y_res * pentry->bpp / 8);
     fbdata->mem_size = sz < ret_prev ? ret_prev : sz;
     pr_debug("%s: mem_size now %d\n", __func__, fbdata->mem_size);
     CHLOG("%s: mem_size now %d (%d x %d x %d)\n", __func__, fbdata->mem_size, pentry->x_res, pentry->y_res, pentry->bpp);
@@ -1099,9 +1062,9 @@ static int get_max_memsize(struct stmp3xxx_platform_fb_entry *pentry,
 }
 
 
-static int pxp_setup(struct chumbyfw_fb_data *data, int pxp_pass) {
+static int pxp_setup(struct chumbyfw_fb_data *data) {
     int screen_width, screen_height, screen_bpp;
-    int screen_bpp_value;
+    int screen_bpp_value, plane_bpp_value;
     int do_scale = 0;
     struct stmp3xxx_platform_fb_data *pdata;
     int screen;
@@ -1120,13 +1083,29 @@ static int pxp_setup(struct chumbyfw_fb_data *data, int pxp_pass) {
 
     screen_width  = pdata->cur->x_res;
     screen_height = pdata->cur->y_res;
-    screen_bpp    = pdata->cur->bpp;
+    screen_bpp    = (screen_width==320 && screen_height==240)?16:32;//pdata->cur->bpp;
+
+
+    // Start it running.  Set the correct format, enable the interrupt,
+    // and start it.
+    if(16==screen_bpp) {
+        screen_bpp_value = 4;
+        plane_bpp_value = 4;
+    }
+    else if(32==screen_bpp) {
+        screen_bpp_value = 0;
+        plane_bpp_value = 4;
+    }
+    else {
+        CHLOG("Unrecognized bpp value: %d\n", screen_bpp);
+        screen_bpp_value = 4;
+        plane_bpp_value = 4;
+    }
 
     
     // Set up the parameters for width and height.
     // The first two octets are panning offsets, which are 0.
     // The last two octets are the width and height, divided by 8.
-    //HW_PXP_S0PARAM_WR(0x0000281E);
     HW_PXP_S0PARAM_WR( ((screen_width/8)<<8) | ((screen_height/8)<<0) );
 
 
@@ -1148,20 +1127,21 @@ static int pxp_setup(struct chumbyfw_fb_data *data, int pxp_pass) {
 
     // Point Overlay n at our fbn+1.
     for(screen=1; screen<NUM_SCREENS; screen++)
-        HW_PXP_OLn_WR(screen-1, data->planes[screen]->phys_start);
+        HW_PXP_OLn_WR(NUM_SCREENS-screen-1, data->planes[screen]->phys_start);
 
 
     // Set up the size of Overlay 0 to 320/8 x 240/8 (since the overlay
     // works in macroblocks of 8x8 pixels, we need to divide everything by 8).
     for(screen=1; screen<NUM_SCREENS; screen++)
-        HW_PXP_OLnSIZE_WR(screen-1, (((data->planes[screen]->width)/8)<<8) 
-                                  | (((data->planes[screen]->height)/8)<<0) );
+        HW_PXP_OLnSIZE_WR(NUM_SCREENS-screen-1, (((screen_width)/8)<<8) 
+                                  | (((screen_height)/8)<<0) );
 
 
     // Set the overlay format of RGB565, with a status of "enabled".
     // Bits 15-8 are the alpha lebel, which we set to 0.
     for(screen=1; screen<NUM_SCREENS; screen++)
-        HW_PXP_OLnPARAM_WR(screen-1, 0x00000042);
+        HW_PXP_OLnPARAM_WR(NUM_SCREENS-screen-1,
+                        0x0000002 | (plane_bpp_value<<4));
 
 
     // Point the PXP's output buffer at the screen's offset.
@@ -1171,22 +1151,16 @@ static int pxp_setup(struct chumbyfw_fb_data *data, int pxp_pass) {
     HW_PXP_RGBSIZE_WR( (screen_width<<12) | (screen_height<<0) );
 
 
-    // Start it running.  Set the correct format, enable the interrupt,
-    // and start it.
-    if(16==screen_bpp)
-        screen_bpp_value = 4;
-    else if(32==screen_bpp)
-        screen_bpp_value = 0;
-    else {
-        CHLOG("Unrecognized bpp value: %d\n", screen_bpp);
-        screen_bpp_value = 4;
-    }
-
     data->pxp_status = PXP_STATUS_ON;
 
     // XXX This pre-defines the plane bpp value to 16-bit.
-    HW_PXP_CTRL_WR(0x00004003 | (screen_bpp_value<<4) | (do_scale<<18));
+    HW_PXP_CTRL_WR(0x00000003
+            | (screen_bpp_value<<4) | (plane_bpp_value<<12) | (do_scale<<18));
 
+
+    // We key the PXP to run during the vsync periods.  Enable the IRQ that
+    // will fire the PXP.
+    HW_LCDIF_CTRL1_SET(BM_LCDIF_CTRL1_CUR_FRAME_DONE_IRQ_EN);
 
     return 0;
 }
@@ -1210,6 +1184,15 @@ static int __devinit chumbyfwfb_probe(struct platform_device *pdev) {
         goto out;
     }
 
+
+    // Define the default panel name based on the chumby hardware version.
+    // Version 8 is an OEM board that defaults to the composite out.
+    if(chumby_revision() == 9) {
+        default_panel_name = "tvenc_ntsc";
+    }
+    else {
+        default_panel_name = "lms350";
+    }
 
     // Locate the panel, which is stored in the pentry field.  This
     // contains all sorts of information about the panel, including bit
@@ -1304,7 +1287,15 @@ static int __devinit chumbyfwfb_probe(struct platform_device *pdev) {
     default_mode.yres           = pentry->y_res;
     default_mode.xres_virtual   = pentry->x_res;
     default_mode.yres_virtual   = pentry->y_res*2;
-    default_mode.yoffset        = 1;
+    default_mode.yoffset        = 0;
+
+    // Recalculate the line length, as it may have changed.
+    for(current_memory_plane=0;
+        current_memory_plane<NUM_SCREENS;
+        current_memory_plane++)
+            fb_info[current_memory_plane]->fix.line_length 
+              = get_line_length(fb_info[current_memory_plane]->var.xres_virtual,
+                          fb_info[current_memory_plane]->var.bits_per_pixel);
 
 
 
@@ -1325,7 +1316,11 @@ static int __devinit chumbyfwfb_probe(struct platform_device *pdev) {
 
 
         // Allocate memory for the current screen.
-        plane->mem_size = plane->width * plane->height * (plane->bpp/8) * 2;
+        //plane->mem_size = plane->width * plane->height * (plane->bpp/8) * 2;
+        if(current_memory_plane == 0 || current_memory_plane == 1)
+            plane->mem_size = 720 * 576 * 2 * 2;
+        else
+            plane->mem_size = 320 * 240 * 2 * 2;
         plane->map_size = PAGE_ALIGN(plane->mem_size);
         CHLOG("memory to allocate for plane %d: %d\n", 
               current_memory_plane, plane->map_size);
@@ -1340,33 +1335,29 @@ static int __devinit chumbyfwfb_probe(struct platform_device *pdev) {
         }
         CHLOG("allocated at %p:0x%x\n", plane->virt_start, plane->phys_start);
     }
-    plane_0_phys = data->planes[0]->phys_start;
 
 
 // CHUMBY_logo
     // Pre-copy the logo to both the screen (where the PXP will point to)
     // as well as pxp buffer 0.
     printk("Going to copy splash image from %p (%d bytes) to %p (not %p)\n",
-            (void *)chumby_boot_logo_2, chumby_boot_logo_2_size,
+            (void *)LOGO_OFFSET, 320*240*2,
             data->virt_start, (void *)data->phys_start);
-
-    if(strstr(boot_command_line, "partition=recovery")) {
-        memcpy(data->planes[0]->virt_start, chumby_boot_logo_recovery,
-               chumby_boot_logo_recovery_size);
-        memcpy(data->virt_start, chumby_boot_logo_recovery,
-               chumby_boot_logo_recovery_size);
-    }
-    else {
-        memcpy(data->planes[0]->virt_start, chumby_boot_logo_2,
-               chumby_boot_logo_2_size);
-        memcpy(data->virt_start, chumby_boot_logo_2,
-               chumby_boot_logo_2_size);
+    {
+        char *old_fb = ioremap(LOGO_OFFSET, 320*240*2);
+        if(old_fb) {
+            memcpy(data->planes[0]->virt_start, old_fb, 320*240*2);
+            memcpy(data->virt_start, old_fb, 320*240*2);
+            iounmap(old_fb);
+        }
+        else
+            CHLOG("Unable to call ioremap!");
     }
 // ! CHUMBY_logo
 
 
     chumbyfwfb_fix.smem_start = data->phys_start;
-    chumbyfwfb_fix.smem_len   = 2 * pentry->y_res * pentry->x_res * pentry->bpp / 8;
+    chumbyfwfb_fix.smem_len   = data->map_size;
     chumbyfwfb_fix.ypanstep   = 1;
 
 
@@ -1375,15 +1366,11 @@ static int __devinit chumbyfwfb_probe(struct platform_device *pdev) {
         fb_info[plane_n]->fbops             = &chumbyfwfb_ops;
         fb_info[plane_n]->var               = default_mode;
         fb_info[plane_n]->fix               = chumbyfwfb_fix;
-        fb_info[plane_n]->pseudo_palette    = &data->par;
+        fb_info[plane_n]->pseudo_palette    = kmalloc(sizeof (u32) * MAX_PALETTES, GFP_KERNEL);
         fb_info[plane_n]->flags             = FBINFO_FLAG_DEFAULT;
         fb_info[plane_n]->node              = plane_n;
     }
 
-
-
-    // We're done with the pseudo-palette, so get rid of it.
-    data->par = NULL;
 
 
     // Set up a spinlock for the PXP IRQ handler.
@@ -1504,13 +1491,8 @@ static int __devinit chumbyfwfb_probe(struct platform_device *pdev) {
     // Init the PXP, which will set up the framebuffer compositing.
     HW_PXP_CTRL_WR(0);  // Pull PxP out of reset.
     //CHLOG("Setting up pxp...\n");
-    pxp_setup(data, 1);
+    pxp_setup(data);
 
-
-    // We key the PXP to run during the vsync periods.  Enable the IRQ that
-    // will fire the PXP.
-    //CHLOG("Enabling IRQ...\n");
-    HW_LCDIF_CTRL1_SET(BM_LCDIF_CTRL1_CUR_FRAME_DONE_IRQ_EN);
 
 
     goto out;
@@ -1540,22 +1522,25 @@ out:
 
 static int chumbyfwfb_remove(struct platform_device *pdev)
 {
+    int fb_num;
     struct chumbyfw_fb_data *data = platform_get_drvdata(pdev);
     struct stmp3xxx_platform_fb_data *pdata = pdev->dev.platform_data;
     struct stmp3xxx_platform_fb_entry *pentry = pdata->cur;
 
-    chumbyfwfb_blank(FB_BLANK_POWERDOWN, &data->planes[0]->fb_info);
-    chumbyfwfb_blank(FB_BLANK_POWERDOWN, &data->planes[1]->fb_info);
+    for(fb_num=0; fb_num<NUM_SCREENS; fb_num++)
+        chumbyfwfb_blank(FB_BLANK_POWERDOWN, &data->planes[fb_num]->fb_info);
+
     if (pentry->stop_panel)
         pentry->stop_panel();
     pentry->release_panel(&pdev->dev, pentry);
 
-    unregister_framebuffer(&data->planes[0]->fb_info);
-    unregister_framebuffer(&data->planes[1]->fb_info);
-    framebuffer_release(&data->planes[0]->fb_info);
-    framebuffer_release(&data->planes[1]->fb_info);
-    fb_dealloc_cmap(&data->planes[0]->fb_info.cmap);
-    fb_dealloc_cmap(&data->planes[1]->fb_info.cmap);
+    for(fb_num=0; fb_num<NUM_SCREENS; fb_num++) {
+        unregister_framebuffer(&data->planes[fb_num]->fb_info);
+        framebuffer_release(&data->planes[fb_num]->fb_info);
+        fb_dealloc_cmap(&data->planes[fb_num]->fb_info.cmap);
+        kfree(data->planes[fb_num]->fb_info.pseudo_palette);
+    }
+
     free_irq(data->dma_irq, data);
     free_irq(data->err_irq, data);
     dma_free_writecombine(&pdev->dev, data->map_size, data->virt_start,

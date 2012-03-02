@@ -427,8 +427,8 @@ static struct stmp3xxx_platform_fb_entry fb_entry = {
 	.x_res		= 320,
 	.y_res		= 240,
 	.bpp		= 16,
-//	.cycle_time_ns	= 154,
-	.cycle_time_ns	= 303, // SMC changed to higher value for a lower frequency
+	.cycle_time_ns	= 154,
+//	.cycle_time_ns	= 303, // SMC changed to higher value for a lower frequency
 	.lcd_type	= STMP3XXX_LCD_PANEL_DOTCLK,
 	.init_panel	= init_panel,
 	.release_panel	= release_panel,
@@ -564,8 +564,13 @@ static int set_bl_intensity(struct stmp3xxx_platform_bl_data *data,
     if(intensity < 0)
         intensity = 0;
 
-    // Perform a transformation function.  Make lower values brighter.
-    intensity = (intensity*intensity)/100;
+    // Perform a brightness transformation function.
+	if(chumby_revision() == 7)
+		// On BBY hardware, make lower values brighter.
+		intensity = 100-((intensity-100)*(intensity-100))/100;
+	else
+		// On other hardware, make lower values darker.
+		intensity = (intensity*intensity)/100;
 
 
     // Since the cycle is 600 units long, scale the intensity so that it's

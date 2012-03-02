@@ -32,6 +32,7 @@
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 
+#include <mach/cpu.h>
 #include <mach/stmp3xxx.h>
 #include <mach/gpmi.h>
 #include <mach/power.h>
@@ -389,6 +390,22 @@ static void __init stmp378x_devb_init(void)
 	if (pwm_leds_enable)
 		platform_device_register(&stmp378x_leds);
 }
+
+static int global_chumbyrev = 0;
+int chumby_revision(void)
+{
+	return global_chumbyrev;
+}
+EXPORT_SYMBOL(chumby_revision);
+
+static int __init chumbyrev_setup(char *str)
+{
+	global_chumbyrev = simple_strtoul(str, NULL, 16);
+	printk("Detected chumby version %d (from str %s)\n", global_chumbyrev, str);
+}
+
+__setup("chumbyrev=", chumbyrev_setup);
+
 
 MACHINE_START(STMP378X, "STMP378X")
 	.phys_io	= 0x80000000,

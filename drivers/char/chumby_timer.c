@@ -52,7 +52,9 @@ module_param(timerx_minor, int, S_IRUGO);
 module_param(timerx_nr_devs, int, S_IRUGO);
 
 MODULE_AUTHOR("bunnie@chumby.com");
+MODULE_DESCRIPTION("Expose jiffies and msecs of uptime");
 MODULE_LICENSE("GPL");
+MODULE_VERSION("2.1");
 
 // static data
 static unsigned long timerx_active = 0;	/* bitmapped status byte.	*/

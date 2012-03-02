@@ -26,10 +26,13 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <mach/ddi_bc.h>
+#include <mach/cpu.h>
 #include "ddi_bc_internal.h"
 
 #define CHLOG(format, arg...)            \
     printk("power/ddi_bc_sm.c - %s():%d - " format, __func__, __LINE__, ## arg)
+#define is_battery_present() ((chumby_revision()!=0)&&(chumby_revision()!=7)&&(get_battery_temp()<3200))
+
 
 
 #include <linux/delay.h>
@@ -575,7 +578,7 @@ static ddi_bc_Status_t ddi_bc_WaitingToCharge(void)
 		return (DDI_BC_STATUS_SUCCESS);
 	}
 
-    if(get_battery_temp()>=3200) {
+    if(!is_battery_present()) {
         CHLOG("Battery isn't present, so transitioning to broken.\n");
 		ddi_bc_gBrokenReason = DDI_BC_BROKEN_NO_BATTERY_DETECTED;
 		TransitionToBroken();
@@ -741,7 +744,7 @@ static ddi_bc_Status_t ddi_bc_Conditioning(void)
 	// If that is not the case and a battery is connected, check
 	// if the battery voltage indicates it still needs conditioning.
 	//--------------------------------------------------------------------------
-    if((get_battery_temp()>=3200)) {// && (ddi_power_GetBattery()<2000)) {
+    if(!is_battery_present()) {
     //if((ddi_power_GetBattery()<2000)) {
 /*
 	if ((ddi_bc_hwGetBatteryVoltage() >
@@ -1064,7 +1067,7 @@ static ddi_bc_Status_t ddi_bc_Charging(void)
 	}
 
 
-    if((get_battery_temp()>=3200)) {// && (ddi_power_GetBattery()<2000)) {
+    if(!is_battery_present()) {
 		ddi_bc_gBrokenReason = DDI_BC_BROKEN_NO_BATTERY_DETECTED;
         CHLOG("Looks like you don't have a battery connected.\n");
 		ddi_bc_gBrokenReason = DDI_BC_BROKEN_NO_BATTERY_DETECTED;

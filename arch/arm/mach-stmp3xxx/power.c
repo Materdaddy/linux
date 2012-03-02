@@ -26,6 +26,7 @@
 #include <mach/regulator.h>
 #include <mach/regs-power.h>
 #include <mach/stmp3xxx.h>
+#include <mach/cpu.h>
 
 static int get_voltage(struct stmp3xxx_regulator *sreg)
 {

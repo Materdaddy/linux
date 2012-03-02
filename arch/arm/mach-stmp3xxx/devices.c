@@ -643,7 +643,7 @@ static ddi_bc_Cfg_t battery_data = {
     /* FIXME: the current comparator could have h/w bugs in current
      * detection through POWER_STS.CHRGSTS bit */
     .u16ChargingCurrent      = 600,     /* mA 600 */
-    .u16ChargingThresholdCurrent     = 30,      /* mA 30 */
+    .u16ChargingThresholdCurrent     = 60,      /* mA 60 */
     .u32ChargingTimeout      = 20*60*60*400,/* ms (4 hours) */
     .u32TopOffPeriod         = 30*60*1000,  /* ms (30 minutes) */
     .useInternalBias         = 1,       /* internal bias current */

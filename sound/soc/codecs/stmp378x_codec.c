@@ -38,6 +38,8 @@
 #include <mach/regs-audioout.h>
 #include <mach/regs-rtc.h>
 
+#include <mach/cpu.h>
+
 #include "stmp378x_codec.h"
 
 #define BV_AUDIOIN_ADCVOL_SELECT__MIC 0x00	/* missing define */
@@ -197,8 +199,6 @@ static const struct soc_enum stmp378x_codec_enum[] = {
 /* Codec controls */
 static const struct snd_kcontrol_new stmp378x_snd_controls[] = {
 	/* Playback Volume */
-	SOC_DOUBLE_R("DAC Playback Volume",
-			DAC_VOLUME_H, DAC_VOLUME_L, 0, 0xFF, 0),
 	SOC_DOUBLE_R("DAC Playback Switch",
 			DAC_VOLUME_H, DAC_VOLUME_L, 8, 0x01, 1),
 	SOC_DOUBLE("HP Playback Volume", DAC_HPVOL_L, 8, 0, 0x7F, 1),
@@ -216,6 +216,13 @@ static const struct snd_kcontrol_new stmp378x_snd_controls[] = {
 	SOC_ENUM("3D effect", stmp378x_codec_enum[3]),
 };
 
+static const struct snd_kcontrol_new stmp378x_dac_controls[] = {
+	SOC_DOUBLE_R("DAC Playback Volume",
+			DAC_VOLUME_H, DAC_VOLUME_L, 0, 255, 0),
+	SOC_DOUBLE_R("DAC Playback Volume",
+			DAC_VOLUME_H, DAC_VOLUME_L, 0, 244, 0),
+};
+
 /* add non dapm controls */
 static int stmp378x_codec_add_controls(struct snd_soc_codec *codec)
 {
@@ -228,6 +235,22 @@ static int stmp378x_codec_add_controls(struct snd_soc_codec *codec)
 	       if (err < 0)
 		       return err;
 	}
+
+	/* Depending on hardware version, add DAC controls */
+	if(chumby_revision() == 7) {
+		/* HW 10.7 limits the volume to 244 */
+		err = snd_ctl_add(codec->card,
+				  snd_soc_cnew(&stmp378x_dac_controls[1],
+				  codec, NULL));
+	}
+	else {
+		/* Other revisions have unlimited volume */
+		err = snd_ctl_add(codec->card,
+				  snd_soc_cnew(&stmp378x_dac_controls[0],
+				  codec, NULL));
+	}
+	if (err < 0)
+		return err;
 
 	return 0;
 }

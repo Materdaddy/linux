@@ -28,6 +28,7 @@
 #include <mach/regs-pwm.h>
 #include <mach/regs-pxp.h>
 #include <mach/regs-rtc.h>
+#include <mach/cpu.h>
 #include <linux/delay.h>
 #include <linux/freezer.h>
 #include <linux/kthread.h>
@@ -44,7 +45,7 @@
 
 // How many times through the loop should we allow the battery to be under
 // alarm before shutting the system down.
-#define MAX_BATTERY_ALARMS 3
+#define MAX_BATTERY_ALARMS 5
 
 #define CHLOG(format, arg...)            \
         printk("power/linux.c - %s():%d - " format, __func__, __LINE__, ## arg)
@@ -100,6 +101,9 @@ struct stmp3xxx_info {
 
 // Keeps track of how many times the battery has been under alarm.
     int battery_alarm_count;
+
+// Only check for a failed DCDC every so often
+	unsigned int last_dcdc_validate_time;
 };
 
 #define to_stmp3xxx_info(x) container_of((x), struct stmp3xxx_info, bat)
@@ -121,7 +125,7 @@ static inline int get_battery_temp(void) {
     ddi_bc_hwGetBatteryTemp(&battery_temp);
     return battery_temp;
 }
-#define is_battery_present() ((get_battery_temp()<3200))
+#define is_battery_present() ((chumby_revision()!=0)&&(chumby_revision()!=7)&&(get_battery_temp()<3200))
 //#define is_battery_present() ((ddi_power_GetBattery()>=2000))
 /*
 #define is_usb_plugged()(HW_USBPHY_STATUS_RD() & \
@@ -209,17 +213,23 @@ static int stmp3xxx_bat_get_property(struct power_supply *psy,
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
 		state = ddi_bc_GetState();
+
 		switch (state) {
+
 		case DDI_BC_STATE_CONDITIONING:
 		case DDI_BC_STATE_CHARGING:
 		case DDI_BC_STATE_TOPPING_OFF:
 			val->intval = POWER_SUPPLY_STATUS_CHARGING;
 			break;
+
 		case DDI_BC_STATE_DISABLED:
-			val->intval = ddi_power_Get5vPresentFlag() ?
-				POWER_SUPPLY_STATUS_NOT_CHARGING :
-			POWER_SUPPLY_STATUS_DISCHARGING;
+		case DDI_BC_STATE_BROKEN:
+		case DDI_BC_STATE_UNINITIALIZED:
+			val->intval = (ddi_power_Get5vPresentFlag()
+				? POWER_SUPPLY_STATUS_NOT_CHARGING
+				: POWER_SUPPLY_STATUS_DISCHARGING);
 			break;
+
         case DDI_BC_STATE_WAITING_TO_CHARGE:
             // If the voltage is greater-than-or-equal-to 4.1V, say it's
             // full.  Otherwise, we're just not charging for some reason.
@@ -232,6 +242,11 @@ static int stmp3xxx_bat_get_property(struct power_supply *psy,
 			val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
 			break;
 		}
+
+		// Catch-all to report DISCHARGING if we're not plugged in.
+		if(!ddi_power_Get5vPresentFlag())
+			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
+
 		break;
 
 
@@ -448,6 +463,11 @@ void stmp3xxx_power_down(void) {
     printk(">>> If you unplug this device, we'll power off for real.\n");
     printk(">>> But for now, we'll just make the device look like it's off.\n");
 
+    /* Turn the LCD off */
+    HW_PINCTRL_MUXSEL3_SET(0x03000000);
+    HW_PINCTRL_DOUT1_CLR(0x10000000);
+    HW_PINCTRL_DOE1_SET(0x10000000);
+
     /* Disable USB power, and bring USB RESET high. */
     HW_PINCTRL_DOUT0_CLR(0x24000000);
 
@@ -546,6 +566,7 @@ void validate_voltage(struct stmp3xxx_info *info) {
         do_park(1);
 	}
 }
+
 
 
 
@@ -653,6 +674,57 @@ void validate_temperature(struct stmp3xxx_info *info) {
         }
     }
 }
+
+
+
+/*
+ * Validates that the DCDC is up and running.  Sometimes it can die due to
+ * brownout, mostly when moving to AC after being on a low battery.
+ */
+static void validate_dcdc4p2(struct stmp3xxx_info *info) {
+	int state;
+
+	/* Only perform this check if we're not on battery. */
+	if(!is_ac_online())
+		return;
+
+	/*
+	 * Also, if there is no battery, then the reset procedure will fail.
+	 * In fact, we shouldn't even be executing code if the DCDC is off.
+	 */
+	if(!is_battery_present())
+		return;
+
+
+	/* If the battery isn't charging, well, we can't check then. */
+	state = ddi_bc_GetState();
+	if(state != DDI_BC_STATE_CONDITIONING
+	&& state != DDI_BC_STATE_CHARGING
+	&& state != DDI_BC_STATE_TOPPING_OFF)
+		return;
+
+	/* If the voltage is sufficiently high, then the DCDC is probably on. */
+	if(info->voltage>=3300000)
+		return;
+
+	/* Only check once per second. */
+	if(jiffies_to_msecs(jiffies) < info->last_dcdc_validate_time+1000)
+		return;
+	info->last_dcdc_validate_time = jiffies_to_msecs(jiffies);
+
+	/* 
+	 * By this point, it seems as though the DCDC is not running.
+	 * Re-enable the charger and dcdc.  Work around a hardware bug
+	 * by disabling it and then re-enabling it.
+	 */
+	CHLOG("The DCDC appears to be off.  Restarting it...\n");
+	HW_POWER_5VCTRL_SET(BM_POWER_5VCTRL_PWD_CHARGE_4P2);
+	udelay(100);
+	HW_POWER_5VCTRL_CLR(BM_POWER_5VCTRL_PWD_CHARGE_4P2);
+	udelay(100);
+	return;
+}
+
 
 
 /*
@@ -827,6 +899,7 @@ out:
 
 	//validate_temperature(info);
 	validate_voltage(info);
+	validate_dcdc4p2(info);
 
 
     // If the battery has been under alarm for too long, power the system
@@ -1163,6 +1236,9 @@ static int stmp3xxx_bat_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	g_info = info;
 
+	// Disable all brownout detectors while we initialize the power supply
+	HW_POWER_MINPWR_SET(0x00001000);
+
 	info->vdd5v_irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
 	if (info->vdd5v_irq == NULL) {
 		printk(KERN_ERR "%s: failed to get irq resouce\n", __func__);
@@ -1209,6 +1285,15 @@ static int stmp3xxx_bat_probe(struct platform_device *pdev)
 	info->sm_timer.data = (unsigned long)info;
 	info->sm_timer.function = state_machine_timer;
 
+
+	/*
+	 * Enable battery temperature reading on HW 10.8 units.
+	 * There's a switch to go between measuring the temperature and
+	 * measuring the 5V line.
+	 */
+	HW_PINCTRL_MUXSEL1_SET(0x000000ff);
+	HW_PINCTRL_DOUT0_SET(0x00010000);
+	HW_PINCTRL_DOE0_SET(0x00010000);
 
 
 	/* init LRADC channels to measure battery voltage and die temp */
@@ -1288,6 +1373,7 @@ static int stmp3xxx_bat_probe(struct platform_device *pdev)
 	 * This is really super-low, because hopefully we'll be dealing with
 	 * undervoltage in the kernel way before that.
      */
+	mdelay(10);
     HW_POWER_BATTMONITOR_WR(0x00000603);
     HW_POWER_MINPWR_CLR(0x00001000);
 
@@ -1339,6 +1425,10 @@ stop_sm:
 free_info:
 	kfree(info);
 	g_info = NULL;
+
+	// Re-enable brownout detectors
+    HW_POWER_MINPWR_CLR(0x00001000);
+
 	return ret;
 }
 

@@ -27,10 +27,17 @@
 #include <mach/lradc.h>
 #include <mach/hardware.h>
 #include <mach/regs-lradc.h>
+#include <mach/cpu.h>
 
 #define TOUCH_DEBOUNCE_TOLERANCE	100
 
 
+
+// Boards after revision 6 had their Y axis flipped.
+static int should_flip_y_axis(void)
+{
+	return chumby_revision() > 6;
+}
 
 
 static int scaled_touchscreen = 0;
@@ -216,6 +223,8 @@ static void process_lradc(struct stmp3xxx_ts_info *info, u16 x, u16 y,
 		pr_debug("%s: x %d, y %d\n", __func__, info->x, info->y);
 
 
+		if(should_flip_y_axis())
+			info->y = 4096-info->y;
         if(scaled_touchscreen) {
             input_report_abs(info->idev, ABS_X,
                     axis_to_screen(info->x, SCREEN_W, X_MIN, X_MAX));

@@ -37,7 +37,7 @@
 #include "stmp3xxx_pcm.h"
 
 
-#if 0
+#if 1
 #define CHLOG(format, arg...)            \
     printk("stmp3xxx_pcm.c - %s():%d - " format, __func__, __LINE__, ## arg)
 #else
@@ -210,6 +210,7 @@ static int stmp3xxx_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
         else
             HW_AUDIOIN_CTRL_SET(0x001f0000);
 
+		BUG_ON(!prtd);
 		stmp3xxx_dma_go(prtd->dma_ch, prtd->dma_desc_array, 1);
 		break;
 

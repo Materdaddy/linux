@@ -350,7 +350,7 @@ static int ehci_fsl_run (struct usb_hcd *hcd)
 	 * with e.g. the rt73 driver.
 	 * Note this parameter will have to be tuned!
 	 */
-	HW_USBCTRL_TXFILLTUNING_WR(0x00080000);
+	HW_USBCTRL_TXFILLTUNING_WR(0x003f0020);
 
 	return ret;
 }

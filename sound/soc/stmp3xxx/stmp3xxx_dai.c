@@ -20,6 +20,7 @@
 #include <linux/device.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
+#include <linux/irq.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/initval.h>
@@ -29,6 +30,7 @@
 #include <mach/regs-audioin.h>
 #include <mach/regs-audioout.h>
 #include <mach/regs-pinctrl.h>
+#include <mach/pinmux.h>
 #include "stmp3xxx_pcm.h"
 
 #define STMP3XXX_ADC_RATES	SNDRV_PCM_RATE_8000_192000
@@ -41,7 +43,7 @@
 #define CHLOG(format, arg...)
 #endif
 
-extern int stmp3xxx_speaker_muted, stmp3xxx_headphone_muted;
+extern int stmp3xxx_headphone_muted;
 extern int stmp3xxx_playback_streams;
 static int headphones_plugged;
 static int timer_queued;
@@ -63,45 +65,20 @@ struct stmp3xxx_pcm_dma_params stmp3xxx_audio_out = {
 };
 
 static void hpdetect_kick(void) {
-
     // If bit 8 is set, then the headphone has been unplugged.
-    if(HW_PINCTRL_DIN0_RD()&0x00000800) {
-        //CHLOG("You unplugged headphones\n");
-        HW_PINCTRL_IRQPOL0_CLR(0x00000800);
-        headphones_plugged = 0;
-    }
-
-    // Otherwise, the headphones have been plugged in.
-    else {
-        //CHLOG("You plugged headphones in\n");
-        HW_PINCTRL_IRQPOL0_SET(0x00000800);
-        headphones_plugged = 1;
-    }
+    headphones_plugged = !!(HW_PINCTRL_DIN0_RD()&0x00000800);
+	stmp3xxx_configure_irq(PINID_GPMI_D11, headphones_plugged?IRQ_TYPE_EDGE_FALLING:IRQ_TYPE_EDGE_RISING);
+	CHLOG("Headphone detector kicked.  Current headphone state: %d\n", headphones_plugged);
 }
 
 
 static irqreturn_t hpdetect_handler(int irq, void *dev_id) {
     // If the headphone pin is detected as having fired the interrupt, deal
     // with the headphone event.
-    // XXX Note that for some reason, IRQSTAT0 isn't getting set when the
-    // interrupt fires.  Since we currently are only looking for IRQs on
-    // one pin, this isn't a big deal, but if things change in the future
-    // we'll want to revisit this.
-    //if(HW_PINCTRL_IRQSTAT0_RD()&0x00000800) {
-        //CHLOG("Detected headphone event\n");
-
-
-    // Kick the headphone detector.  This will poll the headphones and see
-    // if they're plugged in or not, and will set the global
-    // headphones_plugged value to match the current state of the
-    // headphones.
-    //hpdetect_kick();
 
     // Mute or unmute the speakers, based on the status of headphones_plugged.
+	CHLOG("Going to [un]mute speakers after 2msecs\n");
     stmp3xxx_unmute_after(2);
-
-    // Clear the interrupt, as we've handled it.
-    HW_PINCTRL_IRQSTAT0_CLR(0x00000800);
 
     return IRQ_HANDLED;
 }
@@ -152,17 +129,6 @@ static irqreturn_t stmp3xxx_err_irq(int irq, void *dev_id)
 }
 
 
-static void unmute_squishy_speakers(void) {
-    HW_AUDIOOUT_HPVOL_CLR(BM_AUDIOOUT_HPVOL_MUTE);
-    HW_PINCTRL_DOUT0_CLR(0x00000100);
-}
-
-static void mute_squishy_speakers(void) {
-    HW_PINCTRL_DOUT0_SET(0x00000100);
-    CHLOG("Muting headphones\n");
-    HW_AUDIOOUT_HPVOL_SET(BM_AUDIOOUT_HPVOL_MUTE);
-}
-
 // Unmutes the headphones.  Who would'a thunk?
 // XXX Should we slowly ramp up the volume?  If the speakers still pop,
 // then yes, we should take a look at that.
@@ -195,18 +161,14 @@ static void stmp3xxx_unmute(unsigned long ignored) {
 
     // Unmute only if there are streams playing.
     if(stmp3xxx_playback_streams) {
-        if(!stmp3xxx_speaker_muted && !headphones_plugged) {
+        if(headphones_plugged) {
             CHLOG("Unmuting speakers\n");
             // Unmute the onboard speaker.  Used for hard-case models.
             unmute_hard_speakers();
-
-            // Unmute the speaker amps.  Used for squishy models.
-            unmute_squishy_speakers();
         }
         else {
             CHLOG("Muting speakers\n");
             mute_hard_speakers();
-            mute_squishy_speakers();
         }
 
         if(!stmp3xxx_headphone_muted) {
@@ -238,11 +200,6 @@ static void stmp3xxx_unmute_after(int msecs) {
         CHLOG("Not unmuting speakers, as there was already a request pending\n");
 }
 
-static inline int headphone_present(void) {
-    return HW_PINCTRL_DIN2_RD()&0x00000080;
-}
-
-
 static int stmp3xxx_adc_trigger(struct snd_pcm_substream *substream, int cmd)
 {
 	int playback = substream->stream == SNDRV_PCM_STREAM_PLAYBACK ? 1 : 0;
@@ -266,7 +223,6 @@ static int stmp3xxx_adc_trigger(struct snd_pcm_substream *substream, int cmd)
             // turn it into a snd_codec, I just use an extern variable.  If
             // traversing this structure is easy, please do fix this.
             stmp3xxx_playback_streams++;
-            //if(!stmp3xxx_speaker_muted || !stmp3xxx_headphone_muted)
 
             CHLOG("Opened playback stream.  Will unmute after 2 msecs.\n");
             stmp3xxx_unmute_after(2);
@@ -287,7 +243,6 @@ static int stmp3xxx_adc_trigger(struct snd_pcm_substream *substream, int cmd)
             stmp3xxx_playback_streams--;
             if(stmp3xxx_playback_streams <= 0) {
                 // Mute the speaker amps.
-                mute_squishy_speakers();
                 mute_hard_speakers();
                 mute_headphones();
                 stmp3xxx_playback_streams = 0;
@@ -337,26 +292,12 @@ static int stmp3xxx_adc_startup(struct snd_pcm_substream *substream)
 	int ret;
 
 
-    // Configure the SPEAKER_MUTE pin for GPIO.  This pin will control the
-    // speaker amps on the squishy model.
-    // It lives on Bank 0, Pin 8.
-    HW_PINCTRL_MUXSEL0_SET(0x00030000);
-    HW_PINCTRL_DOE0_SET(0x00000100);
-    mute_squishy_speakers();
-
 	if (playback) {
 		irq = IRQ_DAC_ERROR;
 		cpu_dai->dma_data = &stmp3xxx_audio_out;
 
-        // Register the IRQ for headphone detection.
-        ret = request_irq(IRQ_GPIO0, hpdetect_handler, 0, "Headphone detect", NULL);
         if(ret)
             CHLOG("Unable to initialize IRQ for headphone detection: %d\n", ret);
-        else {
-            HW_PINCTRL_MUXSEL0_SET(0x00c00000);
-            HW_PINCTRL_DOE0_CLR(0x00000800);
-        }
-
 	} else {
 		irq = IRQ_ADC_ERROR;
 		cpu_dai->dma_data = &stmp3xxx_audio_in;
@@ -376,18 +317,10 @@ static int stmp3xxx_adc_startup(struct snd_pcm_substream *substream)
 		HW_AUDIOOUT_CTRL_CLR(BM_AUDIOOUT_CTRL_FIFO_UNDERFLOW_IRQ);
 		HW_AUDIOOUT_CTRL_SET(BM_AUDIOOUT_CTRL_FIFO_ERROR_IRQ_EN);
 
-
-        // Set IRQ to fire on edge detection by disabling level detection.
-        HW_PINCTRL_IRQLEVEL0_CLR(0x00000800);
-
-        // Set the IRQ to fire on rising edge, indicating we need to mute
-        // speakers.
-        HW_PINCTRL_IRQPOL0_SET(0x00000800);
-
-        // Set up the IRQ to fire.
-        HW_PINCTRL_IRQSTAT0_CLR(0x00000800);
-        HW_PINCTRL_PIN2IRQ0_SET(0x00000800);
-        HW_PINCTRL_IRQEN0_SET(0x00000800);
+		/* Grab the pin we'll be using for headphone detect */
+		stmp3xxx_request_pin(PINID_GPMI_D11, PIN_GPIO, "headphone detect");
+		stmp3xxx_configure_irq_handler(PINID_GPMI_D11, hpdetect_handler, NULL);
+		hpdetect_kick();
 	} else {
 		/* Set the audio recorder to use LRADC1, and set to an 8K resistor. */
 		HW_AUDIOIN_MICLINE_SET(0x01300000);
@@ -408,7 +341,8 @@ static void stmp3xxx_adc_shutdown(struct snd_pcm_substream *substream)
 	if (playback) {
 		HW_AUDIOOUT_CTRL_CLR(BM_AUDIOOUT_CTRL_FIFO_ERROR_IRQ_EN);
 		free_irq(IRQ_DAC_ERROR, substream);
-        free_irq(IRQ_GPIO0, NULL);
+		stmp3xxx_configure_irq_handler(PINID_GPMI_D11, NULL, NULL);
+		stmp3xxx_release_pin(PINID_GPMI_D11, "headphone detect");
 	} else {
 		HW_AUDIOIN_CTRL_CLR(BM_AUDIOIN_CTRL_FIFO_ERROR_IRQ_EN);
 		free_irq(IRQ_ADC_ERROR, substream);

@@ -64,9 +64,14 @@ static int stmp3xxx_rtc_settime(struct device *dev, struct rtc_time *rtc_tm)
 		/* The datasheet doesn't say which way round the
 		 * NEW_REGS/STALE_REGS bitfields go. In fact it's 0x1=P0,
 		 * 0x2=P1, .., 0x20=P5, 0x40=ALARM, 0x80=SECONDS,
+		 *
+		 * 15/01/2010 SMC - I suspect this bit won't change if we're using
+		 * the 32.768 kHz crystal here.
 		 */
+		/*
 		while (HW_RTC_STAT_RD() & BF_RTC_STAT_NEW_REGS(0x80))
 			cpu_relax();
+		*/
 	}
 	return rc;
 }
@@ -229,6 +234,14 @@ static int stmp3xxx_rtc_probe(struct platform_device *pdev)
 	HW_RTC_PERSISTENT0_CLR(BM_RTC_PERSISTENT0_ALARM_EN |
 				BM_RTC_PERSISTENT0_ALARM_WAKE_EN |
 				BM_RTC_PERSISTENT0_ALARM_WAKE);
+
+	/* Set HW_RTC_SECONDS to pull from the 32 kHz crystal */
+	HW_RTC_PERSISTENT0_CLR(BM_RTC_PERSISTENT0_XTAL32_FREQ);
+	HW_RTC_PERSISTENT0_SET(BM_RTC_PERSISTENT0_CLOCKSOURCE |
+				BM_RTC_PERSISTENT0_XTAL32KHZ_PWRUP);
+
+	/* Power down the 24 MHz crystal when we're off, since we don't use it */
+	HW_RTC_PERSISTENT0_CLR(BM_RTC_PERSISTENT0_XTAL24MHZ_PWRUP);
 
 	printk(KERN_INFO "STMP3xxx RTC driver v1.0 hardware v%u.%u.%u\n",
 	       (hwversion >> 24),

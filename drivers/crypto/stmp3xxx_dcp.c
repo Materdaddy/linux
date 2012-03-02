@@ -166,6 +166,10 @@ static void dcp_perform_op(struct stmp3xxx_dcp_op *op)
     else
         printk("Using OTP!!!\n");
     */
+	if(!sdcp) {
+		printk(KERN_WARNING "Global sdcp not set up yet!\n");
+		return;
+	}
 
 	pkt1 = BM_DCP_PACKET1_DECR_SEMAPHORE | BM_DCP_PACKET1_INTERRUPT;
 
@@ -1249,32 +1253,6 @@ static int stmp3xxx_dcp_probe(struct platform_device *pdev)
 		init_completion(&sdcp->op_wait[i]);
 	}
 
-	ret = crypto_register_alg(&dcp_aes_alg);
-	if (ret != 0)  {
-		dev_err(&pdev->dev, "Failed to register aes crypto\n");
-		goto err_kfree;
-	}
-
-	ret = crypto_register_alg(&dcp_aes_ecb_alg);
-	if (ret != 0)  {
-		dev_err(&pdev->dev, "Failed to register aes ecb crypto\n");
-		goto err_unregister_aes;
-	}
-
-	ret = crypto_register_alg(&dcp_aes_cbc_alg);
-	if (ret != 0)  {
-		dev_err(&pdev->dev, "Failed to register aes cbc crypto\n");
-		goto err_unregister_aes_ecb;
-	}
-
-#ifndef DISABLE_SHA1
-	ret = crypto_register_alg(&dcp_sha1_alg);
-	if (ret != 0)  {
-		dev_err(&pdev->dev, "Failed to register aes cbc crypto\n");
-		goto err_unregister_aes_cbc;
-	}
-#endif
-
 	platform_set_drvdata(pdev, sdcp);
 
 	/* Soft reset and remove the clock gate */
@@ -1333,6 +1311,32 @@ static int stmp3xxx_dcp_probe(struct platform_device *pdev)
 	}
 
 	global_sdcp = sdcp;
+
+	ret = crypto_register_alg(&dcp_aes_alg);
+	if (ret != 0)  {
+		dev_err(&pdev->dev, "Failed to register aes crypto\n");
+		goto err_kfree;
+	}
+
+	ret = crypto_register_alg(&dcp_aes_ecb_alg);
+	if (ret != 0)  {
+		dev_err(&pdev->dev, "Failed to register aes ecb crypto\n");
+		goto err_unregister_aes;
+	}
+
+	ret = crypto_register_alg(&dcp_aes_cbc_alg);
+	if (ret != 0)  {
+		dev_err(&pdev->dev, "Failed to register aes cbc crypto\n");
+		goto err_unregister_aes_ecb;
+	}
+
+#ifndef DISABLE_SHA1
+	ret = crypto_register_alg(&dcp_sha1_alg);
+	if (ret != 0)  {
+		dev_err(&pdev->dev, "Failed to register aes cbc crypto\n");
+		goto err_unregister_aes_cbc;
+	}
+#endif
 
 	dev_notice(&pdev->dev, "DCP crypto enabled.!\n");
 	return 0;

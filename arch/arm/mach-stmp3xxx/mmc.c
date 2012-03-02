@@ -56,9 +56,6 @@ static struct pin_group mmc_pins = {
 
 static int stmp3xxxmmc_get_wp(void)
 {
-    // CHUMBY_WP_HACK
-    return 0;
-    // !CHUMBY_WP_HACK
 	if (mmc_wp_supported)
 		return gpio_get_value(MMC_WP);
 
@@ -70,7 +67,7 @@ static int stmp3xxxmmc_hw_init_ssp1(void)
 	int ret;
 
 	mmc_drive_power = stmp3xxx_valid_pin(MMC_POWER);
-	mmc_wp_supported = stmp3xxx_valid_pin(MMC_WP);
+	mmc_wp_supported = 0; //stmp3xxx_valid_pin(MMC_WP);
 
 	ret = stmp3xxx_request_pin_group(&mmc_pins, "mmc");
 	if (ret)
