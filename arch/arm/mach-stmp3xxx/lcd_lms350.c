@@ -458,7 +458,7 @@ static int init_bl(struct stmp3xxx_platform_bl_data *data)
 	if (ret)
 		goto out_mux;
 
-	stmp3xxx_pin_voltage(PINID_PWM2, PIN_8MA, "lcd_lms350");
+	stmp3xxx_pin_voltage(PINID_PWM2, PIN_4MA, "lcd_lms350");
 	stmp3xxx_pin_strength(PINID_PWM2, PIN_3_3V, "lcd_lms350");
 
     // The backlight needs to be run from 60Hz to 700Hz, but a good middle
@@ -472,7 +472,7 @@ static int init_bl(struct stmp3xxx_platform_bl_data *data)
 			BF_PWM_PERIODn_CDIV(6) | /* divide by 64 */
 			BF_PWM_PERIODn_INACTIVE_STATE(2) | /* low */
 			BF_PWM_PERIODn_ACTIVE_STATE(3) | /* high */
-			BF_PWM_PERIODn_PERIOD(599));
+			BF_PWM_PERIODn_PERIOD(1337));
 	HW_PWM_CTRL_SET(BM_PWM_CTRL_PWM2_ENABLE);
 
 	printk( "init_bl finished\n" );
@@ -493,10 +493,10 @@ static void free_bl(struct stmp3xxx_platform_bl_data *data)
 		BF_PWM_PERIODn_CDIV(6) | /* divide by 64 */
 		BF_PWM_PERIODn_INACTIVE_STATE(2) | /* low */
 		BF_PWM_PERIODn_ACTIVE_STATE(3) | /* high */
-		BF_PWM_PERIODn_PERIOD(599));
+		BF_PWM_PERIODn_PERIOD(1337));
 	HW_PWM_CTRL_CLR(BM_PWM_CTRL_PWM2_ENABLE);
 	stmp3xxx_pin_voltage(PINID_PWM2, PIN_4MA, "lcd_lms350");
-	stmp3xxx_pin_strength(PINID_PWM2, PIN_1_8V, "lcd_lms350");
+	stmp3xxx_pin_strength(PINID_PWM2, PIN_3_3V, "lcd_lms350");
 
 	stmp3xxx_release_pin(PINID_PWM2, "lcd_lms350");
 	clk_disable(pwm_clk);
@@ -573,9 +573,9 @@ static int set_bl_intensity(struct stmp3xxx_platform_bl_data *data,
 		intensity = (intensity*intensity)/100;
 
 
-    // Since the cycle is 600 units long, scale the intensity so that it's
-    // between 0 and 600.
-    scaled_int = intensity * 6;
+    // This 1337 number is a magic number. This should at least be recoded with a #define
+    scaled_int = intensity * 1337;
+    scaled_int = scaled_int / 100;
 
 	printk( "setting with parameters %d\n", scaled_int );
     // The waveform will begin as being Low, and will bebecome Inactive after
@@ -587,7 +587,7 @@ static int set_bl_intensity(struct stmp3xxx_platform_bl_data *data,
 		BF_PWM_PERIODn_CDIV(6) | /* divide by 64 */
 		BF_PWM_PERIODn_INACTIVE_STATE(2) | /* low */
 		BF_PWM_PERIODn_ACTIVE_STATE(3) | /* high */
-		BF_PWM_PERIODn_PERIOD(599));
+		BF_PWM_PERIODn_PERIOD(1337));
 	printk( "done.\n" );
 	return 0;
 }
