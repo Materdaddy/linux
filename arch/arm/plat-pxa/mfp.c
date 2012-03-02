@@ -206,6 +206,13 @@ void mfp_config(unsigned long *mfp_cfgs, int num)
 			/* bit7 set always */
 			p->mfpr_run |= (1<<7);
 		}
+		printk ("%s: pin = %d, drv = %x, pull = %x raw = %08X c = %08X\n",
+			__func__,
+			pin,
+			drv,
+			pull,
+			p->mfpr_run,
+			c);
 		p->config = c; __mfp_config_run(p);
 	}
 

@@ -1,7 +1,7 @@
 // rmmod silvermoon-ts.ko; rm silvermoon-ts.ko ; wget http://192.168.0.200/silvermoon-ts.ko; insmod silvermoon-ts.ko
 /* linux/drivers/input/touchscreen/silvermoon-ts.c
  *
- * $Id: silvermoon-ts.c 50457 2010-06-10 00:49:28Z henry $
+ * $Id: silvermoon-ts.c 58112 2010-10-21 10:21:28Z scross $
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -108,7 +108,7 @@
 #include <plat/regs-ssp.h>
 #include <plat/ssp.h>
 
-#define TS_DRIVER_VER "1.06-$Rev: 50457 $"
+#define TS_DRIVER_VER "1.06-$Rev: 58112 $"
 
 static struct ssp_dev sspdev;
 
@@ -150,20 +150,20 @@ static struct ssp_dev sspdev;
 
 static char *silvermoon_ts_name = "Silvermoon TouchScreen";
 
-struct my_gpio {
+static struct my_gpio {
   void __iomem  *mmio_base;
   unsigned long phys_base;
   int irq;
   unsigned long size;
 } my_gpio;
 
-struct my_gpioedge {
+static struct my_gpioedge {
   void __iomem  *mmio_base;
   unsigned long phys_base;
   unsigned long size;
 } my_gpioedge;
 
-struct my_mfp {
+static struct my_mfp {
   void __iomem  *mmio_base;
   unsigned long phys_base;
   unsigned long size;

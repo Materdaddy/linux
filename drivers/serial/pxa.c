@@ -1393,7 +1393,7 @@ static int __init
 serial_pxa_console_setup(struct console *co, char *options)
 {
 	struct uart_pxa_port *up;
-	int baud = 9600;
+	int baud = 115200;
 	int bits = 8;
 	int parity = 'n';
 	int flow = 'n';

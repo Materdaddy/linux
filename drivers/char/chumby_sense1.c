@@ -97,6 +97,9 @@ module_param(sense1_nr_devs, int, S_IRUGO);
 
 MODULE_AUTHOR("bunnie@chumby.com");
 MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("chumby sensor suite driver"); 
+MODULE_VERSION(SENSE1_VERSION);
+
 
 #define PHYS_APB1CLOCK_BASE		0xD4015000
 //#define PHYS_APB2CLOCK_BASE		0xD4015800

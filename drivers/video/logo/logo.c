@@ -37,6 +37,8 @@ extern const struct linux_logo logo_superh_clut224;
 extern const struct linux_logo logo_m32r_clut224;
 extern const struct linux_logo logo_silvermoon_normal_clut224;
 extern const struct linux_logo logo_silvermoon_recovery_clut224;
+extern const struct linux_logo logo_silvermoon_chumby_normal_clut224;
+extern const struct linux_logo logo_silvermoon_chumby_recovery_clut224;
 
 static int nologo;
 module_param(nologo, bool, 0);
@@ -133,7 +135,10 @@ const struct linux_logo * __init_refok fb_find_logo(int depth)
 				logo = &logo_silvermoon_normal_clut224;
 		}
 		else {
-			logo = &logo_linux_clut224;
+			if(recovery)
+				logo = &logo_silvermoon_chumby_recovery_clut224;
+			else
+				logo = &logo_silvermoon_chumby_normal_clut224;
 		}
 #endif
 	}

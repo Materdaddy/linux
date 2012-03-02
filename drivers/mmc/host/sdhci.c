@@ -12,7 +12,7 @@
  *
  *     - JMicron (hardware and technical support)
  */
-
+ 
 #include <linux/delay.h>
 #include <linux/highmem.h>
 #include <linux/io.h>
@@ -149,7 +149,7 @@ static void sdhci_reset(struct sdhci_host *host, u8 mask)
 	unsigned long timeout;
 	u32 uninitialized_var(ier);
 
-	if (host->quirks & SDHCI_QUIRK_NO_CARD_NO_RESET) {
+    if (host->quirks & SDHCI_QUIRK_NO_CARD_NO_RESET) {
 		if (!(sdhci_readl(host, SDHCI_PRESENT_STATE) &
 			SDHCI_CARD_PRESENT))
 			return;
@@ -1015,6 +1015,12 @@ static void sdhci_set_clock(struct sdhci_host *host, unsigned int clock)
 			break;
 	}
 	div >>= 1;
+#if 0
+#warning changing the clock	
+	if( 0x80 != div )
+		div++;
+	printk( "%s: div = %x, clock = %d\n", __func__, div, clock );
+#endif
 
 	clk = div << SDHCI_DIVIDER_SHIFT;
 	clk |= SDHCI_CLOCK_INT_EN;

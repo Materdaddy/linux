@@ -38,6 +38,7 @@
 #include <linux/delay.h>
 #include <mach/gpio.h>
 #include <asm/io.h>
+#include <mach/chumby.h>
 #define CHUMBY_HEADPHONE_DETECT
 #define CHLOG(format, arg...)            \
 	printk("wm8961.c - %s():%d - " format, __func__, __LINE__, ## arg)
@@ -653,7 +654,7 @@ static unsigned int boost_tlv[] = {
 };
 static const DECLARE_TLV_DB_SCALE(pga_tlv, -2325, 75, 0);
 
-static const struct snd_kcontrol_new wm8961_snd_controls[] = {
+static const struct snd_kcontrol_new wm8961_snd_controls_infocast[] = {
 SOC_DOUBLE_R_TLV("Headphone Volume", WM8961_LOUT1_VOLUME, WM8961_ROUT1_VOLUME,
 		 0, 121, 0, out_tlv),
 #if defined(CONFIG_MACH_CHUMBY_SILVERMOON)
@@ -662,11 +663,6 @@ SOC_SINGLE_TLV("Headphone Left Volume", WM8961_LOUT1_VOLUME,
 SOC_SINGLE_TLV("Headphone Right Volume", WM8961_ROUT1_VOLUME,
 		 0, 121, 0, out_tlv),
 #endif
-SOC_DOUBLE_TLV("Headphone Secondary Volume", WM8961_ANALOGUE_HP_2,
-	       6, 3, 7, 0, hp_sec_tlv),
-SOC_DOUBLE_R("Headphone ZC Switch", WM8961_LOUT1_VOLUME, WM8961_ROUT1_VOLUME,
-	     7, 1, 0),
-
 SOC_DOUBLE_R_TLV("Speaker Volume", WM8961_LOUT2_VOLUME, WM8961_ROUT2_VOLUME,
 		 0, 119, 0, out_tlv),
 #if defined(CONFIG_MACH_CHUMBY_SILVERMOON)
@@ -676,6 +672,40 @@ SOC_SINGLE_TLV("Speaker Left Volume", WM8961_LOUT2_VOLUME,
 SOC_SINGLE_TLV("Speaker Right Volume", WM8961_ROUT2_VOLUME,
 		 0, 119, 0, out_tlv),
 #endif
+SOC_DOUBLE_R_TLV("Capture Volume",
+		 WM8961_LEFT_ADC_VOLUME, WM8961_RIGHT_ADC_VOLUME,
+		 1, 119, 0, adc_tlv),
+};
+
+static const struct snd_kcontrol_new wm8961_snd_controls_opus[] = {
+SOC_DOUBLE_R_TLV("Headphone Volume", WM8961_LOUT1_VOLUME, WM8961_ROUT1_VOLUME,
+		 0, 127, 0, out_tlv),
+#if defined(CONFIG_MACH_CHUMBY_SILVERMOON)
+SOC_SINGLE_TLV("Headphone Left Volume", WM8961_LOUT1_VOLUME,
+		 0, 127, 0, out_tlv),
+SOC_SINGLE_TLV("Headphone Right Volume", WM8961_ROUT1_VOLUME,
+		 0, 127, 0, out_tlv),
+#endif
+SOC_DOUBLE_R_TLV("Speaker Volume", WM8961_LOUT2_VOLUME, WM8961_ROUT2_VOLUME,
+		 0, 127, 0, out_tlv),
+#if defined(CONFIG_MACH_CHUMBY_SILVERMOON)
+SOC_DOUBLE_TLV("Speaker Switch", WM8961_CLASS_D_CONTROL_1, 6, 7, 1, 0, out_tlv),
+SOC_SINGLE_TLV("Speaker Left Volume", WM8961_LOUT2_VOLUME,
+		 0, 127, 0, out_tlv),
+SOC_SINGLE_TLV("Speaker Right Volume", WM8961_ROUT2_VOLUME,
+		 0, 127, 0, out_tlv),
+#endif
+SOC_DOUBLE_R_TLV("Capture Volume",
+		 WM8961_LEFT_ADC_VOLUME, WM8961_RIGHT_ADC_VOLUME,
+		 1, 127, 0, adc_tlv),
+};
+
+static const struct snd_kcontrol_new wm8961_snd_controls[] = {
+SOC_DOUBLE_TLV("Headphone Secondary Volume", WM8961_ANALOGUE_HP_2,
+	       6, 3, 7, 0, hp_sec_tlv),
+SOC_DOUBLE_R("Headphone ZC Switch", WM8961_LOUT1_VOLUME, WM8961_ROUT1_VOLUME,
+	     7, 1, 0),
+
 SOC_SINGLE("Mic Bias", WM8961_PWR_MGMT_1, 1, 1, 0),
 SOC_DOUBLE_R("Speaker ZC Switch", WM8961_LOUT2_VOLUME, WM8961_ROUT2_VOLUME,
 	   7, 1, 0),
@@ -687,9 +717,6 @@ SOC_ENUM("DAC Deemphasis", dac_deemph),
 SOC_SINGLE("ADC High Pass Filter Switch", WM8961_ADC_DAC_CONTROL_1, 0, 1, 0),
 SOC_ENUM("ADC High Pass Filter Mode", adc_hpf),
 
-SOC_DOUBLE_R_TLV("Capture Volume",
-		 WM8961_LEFT_ADC_VOLUME, WM8961_RIGHT_ADC_VOLUME,
-		 1, 119, 0, adc_tlv),
 SOC_DOUBLE_R_TLV("Capture Boost Volume",
 		 WM8961_ADCL_SIGNAL_PATH, WM8961_ADCR_SIGNAL_PATH,
 		 4, 3, 0, boost_tlv),
@@ -707,6 +734,25 @@ SOC_DOUBLE_R("Capture PGA Switch",
 static int wm8961_add_controls(struct snd_soc_codec *codec)
 {
 	int err, i;
+
+	if(chumby_brand() == 1001) {
+		for (i = 0; i < ARRAY_SIZE(wm8961_snd_controls_infocast); i++) {
+			err = snd_ctl_add(codec->card,
+					snd_soc_cnew(&wm8961_snd_controls_infocast[i],
+							codec, NULL));
+			if (err < 0)
+				return err;
+		}
+	}
+	else {
+		for (i = 0; i < ARRAY_SIZE(wm8961_snd_controls_opus); i++) {
+			err = snd_ctl_add(codec->card,
+					snd_soc_cnew(&wm8961_snd_controls_opus[i],
+							codec, NULL));
+			if (err < 0)
+				return err;
+		}
+	}
 
 	for (i = 0; i < ARRAY_SIZE(wm8961_snd_controls); i++) {
 		err = snd_ctl_add(codec->card,

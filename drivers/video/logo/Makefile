@@ -17,6 +17,8 @@ obj-$(CONFIG_LOGO_SUPERH_CLUT224)	+= logo_superh_clut224.o
 obj-$(CONFIG_LOGO_M32R_CLUT224)		+= logo_m32r_clut224.o
 obj-$(CONFIG_LOGO_SILVERMOON_CLUT224)	+= logo_silvermoon_normal_clut224.o
 obj-$(CONFIG_LOGO_SILVERMOON_CLUT224)	+= logo_silvermoon_recovery_clut224.o
+obj-$(CONFIG_LOGO_SILVERMOON_CLUT224)	+= logo_silvermoon_chumby_normal_clut224.o
+obj-$(CONFIG_LOGO_SILVERMOON_CLUT224)	+= logo_silvermoon_chumby_recovery_clut224.o
 
 obj-$(CONFIG_SPU_BASE)			+= logo_spe_clut224.o
 

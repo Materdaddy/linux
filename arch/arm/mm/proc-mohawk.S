@@ -52,18 +52,23 @@
  */
 #define CACHE_DLINESIZE	32
 
+#if !defined(CONFIG_CPU_PXA168_B0)
 #define BAD_CACHE_LINE_OFFSET	(PAGE_SZ - CACHE_DLINESIZE)
+#endif
+
 /*
  * Run with L2 enabled.
  */
 #undef TTC_Z0_SUPPORT
 /* #define L2_CACHE_PREFETCH_DISABLE */
 
+#define MOHAWK_CPU_CONF	0xd4282c08
 
 	.text
 /*
  * cpu_mohawk_proc_init()
  */
+
 ENTRY(cpu_mohawk_proc_init)
 	mov	pc, lr
 
@@ -98,10 +103,9 @@ ENTRY(cpu_mohawk_reset)
 #ifdef CONFIG_MMU
 	mcr	p15, 0, ip, c8, c7, 0		@ invalidate I & D TLBs
 #endif
-	mrc	p15, 0, ip, c1, c0, 0		@ ctrl register
-	bic	ip, ip, #0x000f			@ ............wcam
-	bic	ip, ip, #0x1100			@ ...i...s........
+	ldr	ip, =0x5087a
 	mcr	p15, 0, ip, c1, c0, 0		@ ctrl register
+	mrc	p15, 0, ip, c1, c0, 0		@ ctrl register
 	mov	pc, r0
 
 /*
@@ -112,16 +116,9 @@ ENTRY(cpu_mohawk_reset)
 	.align	10
 ENTRY(cpu_mohawk_do_idle)
 	mov	r0, #0
-	mrc	p15, 0, r1, c1, c0, 0		@ Read control register
-	mcr	p15, 0, r0, c7, c10, 4		@ Drain write buffer
-	bic	r2, r1, #1 << 12
-	mrs	r3, cpsr			@ Disable FIQs while Icache
-	orr	ip, r3, #PSR_F_BIT		@ is disabled
-	msr	cpsr_c, ip
-	mcr	p15, 0, r2, c1, c0, 0		@ Disable I cache
-	@mcr	p15, 0, r0, c7, c0, 4		@ Wait for interrupt
-	mcr	p15, 0, r1, c1, c0, 0		@ Restore ICache enable
-	msr	cpsr_c, r3			@ Restore FIQ state
+#ifdef CONFIG_ENABLE_COREIDLE
+	mcr	p15, 0, r0, c7, c0, 4		@ Wait for interrupt
+#endif
 	mov	pc, lr
 
 /*
@@ -215,8 +212,10 @@ ENTRY(mohawk_coherent_kern_range)
  */
 ENTRY(mohawk_coherent_user_range)
 	bic	r0, r0, #CACHE_DLINESIZE - 1
+#if !defined(CONFIG_CPU_PXA168_B0)
 #if defined(CONFIG_CPU_L2_CACHE)
 	mov	r2,	r0
+#endif
 #endif
 1:	mcr	p15, 0, r0, c7, c10, 1		@ clean D entry
 	mcr	p15, 0, r0, c7, c5, 1		@ invalidate I entry
@@ -224,6 +223,7 @@ ENTRY(mohawk_coherent_user_range)
 	cmp	r0, r1
 	blo	1b
 	mcr	p15, 0, r0, c7, c10, 4		@ drain WB
+#if !defined(CONFIG_CPU_PXA168_B0)
 #if defined(CONFIG_CPU_L2_CACHE)
 	mov		r0, r2
 	add		r0, #BAD_CACHE_LINE_OFFSET
@@ -235,6 +235,7 @@ ENTRY(mohawk_coherent_user_range)
 2:
 #endif
 	mcr	p15, 0, r0, c7, c10, 4		@ drain WB
+#endif
 	mov	pc, lr
 
 /*
@@ -251,9 +252,11 @@ ENTRY(mohawk_flush_kern_dcache_page)
 	add	r0, r0, #CACHE_DLINESIZE
 	cmp	r0, r1
 	blo	1b
+#if !defined(CONFIG_CPU_PXA168_B0)
 #if defined(CONFIG_CPU_L2_CACHE)
 	sub		r1, r1,	#CACHE_DLINESIZE
 	mcr		p15, 1, r1, c7, c15, 1		@ L2C clean+invalidate entry
+#endif
 #endif
 	mov	r0, #0
 	mcr	p15, 0, r0, c7, c5, 0		@ invalidate I cache
@@ -288,6 +291,11 @@ ENTRY(mohawk_dma_inv_range)
 	add	r0, r0, #CACHE_DLINESIZE
 	cmp	r0, r1
 	blo	1b
+#if defined(CONFIG_CPU_L2_CACHE) && !defined(L2_CACHE_PREFETCH_DISABLE)
+	tst	r0, #CACHE_DLINESIZE		@ odd last cacheline?
+	mcrne	p15, 0, r0, c7, c14, 1		@ clean+invalidate D entry
+	mcrne	p15, 1, r0, c7, c15, 1		@ L2C clean+invalidate entry
+#endif
 	mcr	p15, 0, r0, c7, c10, 4		@ drain WB
 	mov	pc, lr
 
@@ -309,6 +317,11 @@ ENTRY(mohawk_dma_clean_range)
 	add	r0, r0, #CACHE_DLINESIZE
 	cmp	r0, r1
 	blo	1b
+#if defined(CONFIG_CPU_L2_CACHE) && !defined(L2_CACHE_PREFETCH_DISABLE)
+	tst	r0, #CACHE_DLINESIZE		@ odd last cacheline?
+	mcrne	p15, 0, r0, c7, c10, 1		@ clean D entry
+	mcrne	p15, 1, r0, c7, c11, 1		@ L2C clean entry
+#endif
 #endif
 	mcr	p15, 0, r0, c7, c10, 4		@ drain WB
 	mov	pc, lr
@@ -334,6 +347,11 @@ ENTRY(mohawk_dma_flush_range)
 	add	r0, r0, #CACHE_DLINESIZE
 	cmp	r0, r1
 	blo	1b
+#if defined(CONFIG_CPU_L2_CACHE) && !defined(L2_CACHE_PREFETCH_DISABLE)
+	tst	r0, #CACHE_DLINESIZE		@ odd last cacheline?
+	mcrne	p15, 0, r0, c7, c14, 1		@ clean+invalidate D entry
+	mcrne	p15, 1, r0, c7, c15, 1		@ L2C clean+invalidate entry
+#endif
 	mcr	p15, 0, r0, c7, c10, 4		@ drain WB
 	mov	pc, lr
 
@@ -493,6 +511,13 @@ __mohawk_setup:
 	orr	r5, r5, #(1<<29)		@ streaming enable
 	orr     r5, r5, #0x700                  @ 8-wait cycles write coalesce
 	mcr     p15, 1, r5, c15, c1, 0          @ set extra features register
+
+	@ Must disable write buffer merge due to PJ1 bug in afifo_merge logic
+	ldr	r6, =MOHAWK_CPU_CONF
+	ldr	r5, [r6]
+	orr	r5, r5, #(1<<5)			@ disable write buffer merge
+	orr	r5, r5, #(1<<22)		@ cpu power taken
+	str	r5, [r6]
 
 	mov	pc, lr
 	.size	__mohawk_setup, . - __mohawk_setup

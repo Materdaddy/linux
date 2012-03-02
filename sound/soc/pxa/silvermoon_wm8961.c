@@ -43,6 +43,8 @@
 #include "pxa3xx-pcm.h"
 #include "pxa3xx-ssp.h"
 
+#define SILVERMOON_SND_SOC_VERSION "1.0"
+
 #undef SILVERMOON_WM8961_DEBUG
 //#define ZYLONITEII_SSP_SYSFS
 
@@ -246,7 +248,6 @@ static struct platform_device *silvermoon_snd_device;
 static int __init silvermoon_init(void)
 {
 	int ret;
-	int err;
 
 	dbg(KERN_INFO "silvermoon_init");
 	if (!machine_is_silvermoon())
@@ -280,3 +281,5 @@ module_exit(silvermoon_exit);
 /* Module information */
 MODULE_AUTHOR("chumby, www.chumby.com");
 MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("chumby WM8961 audio driver");
+MODULE_VERSION(SILVERMOON_SND_SOC_VERSION);

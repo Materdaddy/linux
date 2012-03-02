@@ -32,10 +32,10 @@
 	(MFP_LPM_FLOAT | MFP_PIN(MFP_PIN_##pin) | MFP_##af | MFP_DRIVE_##drv)
 
 #define MFP_CFG_DRV_PULL(pin, af, drv, pull)	\
-	(MFP_LPM_FLOAT | MFP_PIN(MFP_PIN_##pin) | MFP_##af | MFP_DRIVE_##drv | MFP_LPM_PULL_##pull)
+	(MFP_LPM_FLOAT | MFP_PIN(MFP_PIN_##pin) | MFP_##af | MFP_DRIVE_##drv | MFP_LPM_PULL_##pull  | MFP_PULL_##pull)
 
 #define MFP_CFG_PULL_HIGH(pin, af)	\
-   (MFP_LPM_PULL_HIGH | MFP_PIN(MFP_PIN_##pin) | MFP_##af | MFP_DRIVE_MEDIUM)
+   (MFP_LPM_PULL_HIGH | MFP_PIN(MFP_PIN_##pin) | MFP_##af | MFP_DRIVE_MEDIUM | MFP_PULL_HIGH)
 
 #define MFP_CFG_PULL_LOW(pin, af)	\
    (MFP_LPM_PULL_LOW | MFP_PIN(MFP_PIN_##pin) | MFP_##af | MFP_DRIVE_MEDIUM)

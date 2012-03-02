@@ -40,6 +40,7 @@
 #define MAX_SLOTS	8
 
 #define DEFAULT_NO_DYNAMIC_CLOCKING	0
+//#define NEW_WAY_FOR_CARD_DETECT
 
 struct sdhci_mmc_slot {
 	struct sdhci_mmc_chip	*chip;
@@ -80,15 +81,22 @@ static void inline programFIFO (struct sdhci_host *host)
 	unsigned short tmp;
 
 	tmp = readw(host->ioaddr + SD_FIFO_PARAM);
-	DBG("ENTER %s SD_FIFO_PARAM = %04X\n", mmc_hostname(host->mmc), tmp);
-	
+//	DBG("ENTER %s SD_FIFO_PARAM = %04X\n", mmc_hostname(host->mmc), tmp);
+
+#if 0 // KES
+
 	if (slot->no_dynamic_SD_clocking)
 		tmp |= DIS_PAD_SD_CLK_GATE_BIT;
 	else
 		tmp &= ~DIS_PAD_SD_CLK_GATE_BIT;
 
+#else
+#warning clock gating always off
+	tmp |= DIS_PAD_SD_CLK_GATE_BIT; // KES
+
+#endif
 	writew(tmp, host->ioaddr + SD_FIFO_PARAM);
-	DBG("EXIT: %s SD_FIFO_PARAM = %04X\n", mmc_hostname(host->mmc), tmp);
+//	DBG("EXIT: %s SD_FIFO_PARAM = %04X\n", mmc_hostname(host->mmc), tmp);
 }
 
 static int platform_supports_8_bit(struct sdhci_host *host)
@@ -140,15 +148,22 @@ static int platform_init_after_reset (struct sdhci_host *host)
 			platform_clear_8_bit(host);
 	}
 	
-	
+
 #if defined(CONFIG_MACH_CHUMBY_SILVERMOON)
+
+#if 0
+	// removed to keep default timing registers in private space
+	// may need to revisit if this doesn't work
 	tmp = readw(host->ioaddr + SD_CLOCK_AND_BURST_SIZE_SETUP) &
 		~(SDCLK_SEL_MASK << SDCLK_SEL_SHIFT);
 	writew(tmp, host->ioaddr + SD_CLOCK_AND_BURST_SIZE_SETUP);
+#endif
+
 #define SD_HOST_CTRL		0x0028		/* Host Control */
 	// manipulate the SD_HOST_CTRL reg for MMC3 (see sec A.28.21 in software manual)
 	// The silvermoon unit should *always* have an SD card in for the rootfs.  
 	// OR in the bits for a fake card detect signal always on
+#ifndef NEW_WAY_FOR_CARD_DETECT
 	if (host->mmc->index == 2)
 	{
 		tmp = readw(host->ioaddr + SD_HOST_CTRL);
@@ -156,8 +171,9 @@ static int platform_init_after_reset (struct sdhci_host *host)
 		writew(tmp, host->ioaddr + SD_HOST_CTRL);
 	}
 #endif
+#endif
 
-	DBG ("SD_CLOCK_AND_BURST_SIZE_SETUP to %04X\n", readw(host->ioaddr + SD_CLOCK_AND_BURST_SIZE_SETUP));
+//	DBG ("SD_CLOCK_AND_BURST_SIZE_SETUP to %04X\n", readw(host->ioaddr + SD_CLOCK_AND_BURST_SIZE_SETUP));
 	return 0;
 }
 
@@ -183,8 +199,10 @@ static void platform_specific_sdio (struct sdhci_host *host, int enable)
 {
 	struct sdhci_mmc_slot *slot = sdhci_priv(host);
 	
+#if 0	
 	DBG("ENTER: %s enable = %d, no_dynamic_SD_clocking = %d\n", 
 		mmc_hostname(host->mmc), enable, slot->no_dynamic_SD_clocking);
+#endif
 
 	if (enable) {
 		slot->no_dynamic_SD_clocking = 1;
@@ -195,16 +213,20 @@ static void platform_specific_sdio (struct sdhci_host *host, int enable)
 		slot->no_dynamic_SD_clocking = 0;
 		programFIFO(host);
 	}
+#if 0
 	DBG("EXIT: %s enable = %d, no_dynamic_SD_clocking = %d\n", 
 		mmc_hostname(host->mmc), enable, slot->no_dynamic_SD_clocking);
-
+#endif
 }
 
 static void platform_specific_reset (struct sdhci_host *host, u8 mask)
 {
-	DBG("ENTER: %s mask == SDHCI_RESET_ALL = %d\n", mmc_hostname (host->mmc), mask == SDHCI_RESET_ALL);
-
-	platform_init_after_reset (host);
+    if( mask & SDHCI_RESET_ALL )
+    {
+        DBG("ENTER: %s mask == SDHCI_RESET_ALL = %d\n", mmc_hostname (host->mmc), mask == SDHCI_RESET_ALL);
+    
+        platform_init_after_reset (host);
+    }
 }
 
 static void enable_clock (struct sdhci_host *host)
@@ -368,8 +390,15 @@ static int pxa_sdh_probe(struct platform_device *pdev)
 		goto err;
 	}
 
+#if 0
 	chip->quirks = SDHCI_QUIRK_32BIT_DMA_ADDR | SDHCI_QUIRK_32BIT_DMA_SIZE | 
 		SDHCI_QUIRK_NO_BUSY_IRQ | SDHCI_QUIRK_PLATORM_RESET | SDHCI_QUIRK_USE_SUPPLIED_CLOCKS;
+#else
+	// SDHCI_QUIRK_BROKEN_ADMA required for workaround for bluetooth crash (dma unaligned access error)
+	// removed SDHCI_QUIRK_PLATORM_RESET because it is not used in sdhci.c
+	chip->quirks = SDHCI_QUIRK_BROKEN_ADMA | SDHCI_QUIRK_32BIT_DMA_ADDR | SDHCI_QUIRK_32BIT_DMA_SIZE | 
+		SDHCI_QUIRK_NO_BUSY_IRQ | SDHCI_QUIRK_USE_SUPPLIED_CLOCKS;
+#endif
 
 #if 1
 #warning FORCE HIGHSPEED BIT LOW IN CONTROL REGISTER
@@ -431,6 +460,7 @@ static int pxa_sdh_probe(struct platform_device *pdev)
 		slot->width = 4;
 
 	DBG("slot->width = %d\n", slot->width);
+	printk( "%s%s: irq = %d\n", __func__, mmc_hostname(host->mmc), irq );
 
 	enable_clock(host);
 	
@@ -440,6 +470,12 @@ static int pxa_sdh_probe(struct platform_device *pdev)
 	if (ret)
 		goto out;
 	
+#ifdef NEW_WAY_FOR_CARD_DETECT
+#warning SET SDHCI_QUIRK_BROKEN_CARD_DETECTION
+	if (host->mmc->index == 2)
+	chip->quirks |= SDHCI_QUIRK_BROKEN_CARD_DETECTION;
+#endif
+
 	if(chip->pdata->mfp_config)	
 		chip->pdata->mfp_config();
 

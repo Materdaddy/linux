@@ -1,7 +1,7 @@
 // rmmod silvermoon-ts.ko; rm silvermoon-ts.ko ; wget http://192.168.0.200/silvermoon-ts.ko; insmod silvermoon-ts.ko
 /* linux/drivers/input/touchscreen/silvermoon-ts.c
  *
- * $Id: silvermoon-tsb.c 50458 2010-06-10 01:06:13Z henry $
+ * $Id: silvermoon-tsb.c 64037 2011-01-20 00:08:56Z ken $
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -85,7 +85,7 @@
 #include <plat/regs-ssp.h>
 #include <plat/ssp.h>
 
-#define TS_DRIVER_VER "1.06-$Rev: 50458 $"
+#define TS_DRIVER_VER "1.06-$Rev: 64037 $"
 
 static struct ssp_dev sspdev;
 
@@ -126,20 +126,66 @@ static struct ssp_dev sspdev;
 
 static char *silvermoon_ts_name = "Silvermoon Touchscreen";
 
-struct my_gpio {
+static int scaled_touchscreen = 0;
+static int debug_enabled = 0;
+
+#define X_MIN 440
+#define X_MAX 3650
+#define Y_MIN 350
+#define Y_MAX 3800 
+#define SCREEN_W 800 
+#define SCREEN_H 600
+static inline int axis_to_screen(int raw, int scale, int min, int max) {
+    int flip = 0;
+    if(min > max) {
+        int tmp;
+        tmp  = max;
+        max  = min;
+        min  = tmp;
+        flip = 1;
+    }
+
+    raw -= min;
+    raw = raw / (max / scale);
+
+    if(!flip)
+        raw = scale - raw;
+
+    if( scale == 800 )
+    {
+        if( debug_enabled )
+        {
+            printk( "X: %d\n", raw);
+        }
+    }
+    else
+    {
+        // y is flipped
+        raw = scale - raw;
+        if( debug_enabled )
+        {
+            printk( "Y: %d\n", raw );
+        }
+    }
+
+    return raw;
+}
+
+
+static struct my_gpio {
   void __iomem  *mmio_base;
   unsigned long phys_base;
   int irq;
   unsigned long size;
 } my_gpio;
 
-struct my_gpioedge {
+static struct my_gpioedge {
   void __iomem  *mmio_base;
   unsigned long phys_base;
   unsigned long size;
 } my_gpioedge;
 
-struct my_mfp {
+static struct my_mfp {
   void __iomem  *mmio_base;
   unsigned long phys_base;
   unsigned long size;
@@ -265,6 +311,8 @@ struct silvermoon_ts {
 	int lastStylus;
 
 	long dummy;
+
+	long packet_count;
 };
 
 #define NOISE_THRESH 100
@@ -363,9 +411,22 @@ static inline void spi_process_fifo(int fifosize) {
 				if (x_val >= MIN_RAW_SAMPLE_VALUE
 				 && y_val >= MIN_RAW_SAMPLE_VALUE
 				 && pressure_val > 0
-				 && pressure_val > param_min_raw_pressure) {
-					input_report_abs(ts->dev, ABS_X, TS_X_TRANSFORM(ts));
-					input_report_abs(ts->dev, ABS_Y, TS_Y_TRANSFORM(ts));
+				 && pressure_val > param_min_raw_pressure
+				 && ts->packet_count) {
+        				if(scaled_touchscreen) {
+            					input_report_abs(ts->dev, ABS_X,
+                   					axis_to_screen(ts->yp, SCREEN_W, X_MIN, X_MAX));
+            					input_report_abs(ts->dev, ABS_Y,
+                    					axis_to_screen(ts->xp, SCREEN_H, Y_MIN, Y_MAX));
+        				}
+        				else {
+						input_report_abs(ts->dev, ABS_X, TS_X_TRANSFORM(ts));
+						input_report_abs(ts->dev, ABS_Y, TS_Y_TRANSFORM(ts));
+						if( debug_enabled )
+						{
+							printk( "x: %d, abs_x: %d, y: %d, abs_y: %d\n", ts->xp, ABS_X, ts->yp, ABS_Y );
+						}
+					}
 					input_report_key(ts->dev, BTN_TOUCH, 1);
 					input_report_abs(ts->dev, ABS_PRESSURE, pressure_val);
 					input_sync(ts->dev);
@@ -375,6 +436,7 @@ static inline void spi_process_fifo(int fifosize) {
 				// Specify that the next packet we send should request a
 				// dump of all registers, to re-fetch all values.
 				packet_to_send = SPI_REGADR_DUMP_REQ;
+				ts->packet_count++;
 				break;
 
 			case SPI_OUTPUT_Z1:
@@ -476,7 +538,8 @@ static void timer_fire(unsigned long data) {
 		input_report_key(ts->dev, BTN_TOUCH, 0);
 		input_report_abs(ts->dev, ABS_PRESSURE, 0);
 		input_sync(ts->dev);
-		x_val = y_val = z1_val = z2_val = pressure_val = mouse_down = 0;
+		x_val = y_val = z1_val = z2_val = 0;
+		ts->packet_count = pressure_val = mouse_down = 0;
 	}
 	else  //stylus is down
 		spi_request_ts_data();
@@ -830,8 +893,14 @@ static int __init init_touchscreen(void)
 	ts->dev->evbit[0] = BIT_MASK(EV_KEY) | BIT_MASK(EV_ABS);  // hail mary, i don't know what this does
 	ts->dev->keybit[BIT_WORD(BTN_TOUCH)] = BIT_MASK(BTN_TOUCH);
 
-	input_set_abs_params(ts->dev, ABS_X, 0, 0x3FF, 0, 0);
-	input_set_abs_params(ts->dev, ABS_Y, 0, 0x3FF, 0, 0);
+	if(scaled_touchscreen) {
+		input_set_abs_params(ts->dev, ABS_X, 0, SCREEN_W, 0, 0);
+		input_set_abs_params(ts->dev, ABS_Y, 0, SCREEN_H, 0, 0);
+	}
+	else {
+		input_set_abs_params(ts->dev, ABS_X, 0, 0x3FF, 0, 0);
+		input_set_abs_params(ts->dev, ABS_Y, 0, 0x3FF, 0, 0);
+	}
 	input_set_abs_params(ts->dev, ABS_PRESSURE, 0, 1, 0, 0);
 
 
@@ -956,7 +1025,12 @@ static void __exit silvermoon_ts_exit(void)
 
 module_init(silvermoon_ts_init);
 module_exit(silvermoon_ts_exit);
+module_param(scaled_touchscreen, bool, 0644);
+MODULE_PARM_DESC(scaled_touchscreen, "true if the touchscreen should report pre-scaled values");
+module_param(debug_enabled, bool, 0644);
+MODULE_PARM_DESC(debug_enabled, "true if the touchscreen should print touch screen coords to the console");
 
 MODULE_AUTHOR("Chumby Industries -- Greg Hutchins (ghutchins@gmail.com)");
 MODULE_DESCRIPTION("Silvermoon Touchscreen Driver");
 MODULE_LICENSE("GPL");
+MODULE_VERSION(TS_DRIVER_VER);

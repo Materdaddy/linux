@@ -22,6 +22,8 @@
 #define HW_LEVEL_MAX 0x400
 #define HW_LEVEL_MIN 0x0
 
+#define SILVERMOON_BL_VERSION "1.0"
+
 #define PWM1_BASE (APB_VIRT_BASE + 0x1a400)
 
 /*
@@ -138,4 +140,5 @@ module_exit(silvermoon_exit);
 MODULE_AUTHOR("Sean Cross <sean@chumby.com>");
 MODULE_DESCRIPTION("chumby Silvermoon Backlight Driver");
 MODULE_LICENSE("GPL");
+MODULE_VERSION(SILVERMOON_BL_VERSION);
 MODULE_ALIAS("platform:silvermoon-bl");

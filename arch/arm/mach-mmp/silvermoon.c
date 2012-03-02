@@ -739,8 +739,8 @@ static void __init silvermoon_init(void)
 	printk( "%s() - attempting to add SSP2 for touchscreen\n", __FUNCTION__ );
 	silvermoon_ssp_init();
 #if defined(CONFIG_TOUCHSCREEN_ASPEN)
-	// Register platform device now iff not loading as module
-	silvermoon_touchscreen_init();
+       // Register platform device now iff not loading as module
+        silvermoon_touchscreen_init();
 #endif
 #else
 	printk( "%s() - CONFIG_TOUCHSCREEN_ASPEN not set??\n", __FUNCTION__ );
@@ -810,3 +810,18 @@ MACHINE_START(CHUMBY_SILVERMOON, "PXA168-based Chumby Silvermoon platform")
 	.timer          = &pxa168_timer,
 	.init_machine   = silvermoon_init,
 MACHINE_END
+
+
+static int global_chumbybrand = 1001;
+int chumby_brand(void)
+{
+	return global_chumbybrand;
+}
+EXPORT_SYMBOL(chumby_brand);
+
+static int __init chumbybrand_setup(char *str)
+{
+	global_chumbybrand = simple_strtoul(str, NULL, 0);
+}
+__setup("brandnum=", chumbybrand_setup);
+

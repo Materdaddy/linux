@@ -96,6 +96,8 @@ module_param(timerx_nr_devs, int, S_IRUGO);
 
 MODULE_AUTHOR("bunnie@chumby.com");
 MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("chumby timerx driver");
+MODULE_VERSION(TIMERX_VERSION);
 
 // static data
 static unsigned long timerx_active = 0;	/* bitmapped status byte.	*/
