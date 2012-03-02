@@ -1,7 +1,7 @@
 // rmmod silvermoon-ts.ko; rm silvermoon-ts.ko ; wget http://192.168.0.200/silvermoon-ts.ko; insmod silvermoon-ts.ko
 /* linux/drivers/input/touchscreen/silvermoon-ts.c
  *
- * $Id: silvermoon-tsb.c 51358 2010-06-18 23:41:48Z scross $
+ * $Id: silvermoon-tsb.c 50458 2010-06-10 01:06:13Z henry $
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -85,7 +85,7 @@
 #include <plat/regs-ssp.h>
 #include <plat/ssp.h>
 
-#define TS_DRIVER_VER "1.06-$Rev: 51358 $"
+#define TS_DRIVER_VER "1.06-$Rev: 50458 $"
 
 static struct ssp_dev sspdev;
 
@@ -265,8 +265,6 @@ struct silvermoon_ts {
 	int lastStylus;
 
 	long dummy;
-
-	long packet_count;
 };
 
 #define NOISE_THRESH 100
@@ -365,8 +363,7 @@ static inline void spi_process_fifo(int fifosize) {
 				if (x_val >= MIN_RAW_SAMPLE_VALUE
 				 && y_val >= MIN_RAW_SAMPLE_VALUE
 				 && pressure_val > 0
-				 && pressure_val > param_min_raw_pressure
-				 && ts->packet_count) {
+				 && pressure_val > param_min_raw_pressure) {
 					input_report_abs(ts->dev, ABS_X, TS_X_TRANSFORM(ts));
 					input_report_abs(ts->dev, ABS_Y, TS_Y_TRANSFORM(ts));
 					input_report_key(ts->dev, BTN_TOUCH, 1);
@@ -378,7 +375,6 @@ static inline void spi_process_fifo(int fifosize) {
 				// Specify that the next packet we send should request a
 				// dump of all registers, to re-fetch all values.
 				packet_to_send = SPI_REGADR_DUMP_REQ;
-				ts->packet_count++;
 				break;
 
 			case SPI_OUTPUT_Z1:
@@ -480,8 +476,7 @@ static void timer_fire(unsigned long data) {
 		input_report_key(ts->dev, BTN_TOUCH, 0);
 		input_report_abs(ts->dev, ABS_PRESSURE, 0);
 		input_sync(ts->dev);
-		x_val = y_val = z1_val = z2_val = 0;
-		ts->packet_count = pressure_val = mouse_down = 0;
+		x_val = y_val = z1_val = z2_val = pressure_val = mouse_down = 0;
 	}
 	else  //stylus is down
 		spi_request_ts_data();

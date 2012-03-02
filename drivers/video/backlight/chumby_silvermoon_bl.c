@@ -19,7 +19,7 @@
 #include <mach/mfp-pxa168.h>
 #include <mach/regs-apbc.h>
 
-#define HW_LEVEL_MAX 0x3ff
+#define HW_LEVEL_MAX 0x400
 #define HW_LEVEL_MIN 0x0
 
 #define PWM1_BASE (APB_VIRT_BASE + 0x1a400)
