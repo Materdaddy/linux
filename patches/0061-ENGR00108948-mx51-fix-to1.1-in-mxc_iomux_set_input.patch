@@ -1,0 +1,45 @@
+From bafb354aeda39b078cbad3095dff32941b95f7d3 Mon Sep 17 00:00:00 2001
+From: Alan Tull <r80115@freescale.com>
+Date: Wed, 4 Mar 2009 12:37:10 -0600
+Subject: [PATCH] ENGR00108948 mx51: fix to1.1 in mxc_iomux_set_input
+
+In mxc_iomux_set_input, the value of input is changed and the
+new value never used.  This was breaking the configuration of
+the i2c lines.
+
+Signed-off-by: Alan Tull <r80115@freescale.com>
+---
+ arch/arm/mach-mx51/iomux.c |    7 +++----
+ 1 files changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/mach-mx51/iomux.c b/arch/arm/mach-mx51/iomux.c
+index dc70abd..b1f27f6 100644
+--- a/arch/arm/mach-mx51/iomux.c
++++ b/arch/arm/mach-mx51/iomux.c
+@@ -219,7 +219,7 @@ EXPORT_SYMBOL(mxc_iomux_get_pad);
+  *      */
+ void mxc_iomux_set_input(iomux_input_select_t input, u32 config)
+ {
+-	u32 reg = IOMUXSW_INPUT_CTL + (input << 2);
++	u32 reg;
+ 
+ 	if (cpu_is_mx51_rev(CHIP_REV_2_0) < 0) {
+ 		if (input == MUX_IN_IPU_IPP_DI_0_IND_DISPB_SD_D_SELECT_INPUT)
+@@ -237,12 +237,11 @@ void mxc_iomux_set_input(iomux_input_select_t input, u32 config)
+ 		else if (input >= MUX_IN_CCM_PLL1_BYPASS_CLK_SELECT_INPUT)
+ 			input -= 1;
+ 
+-		reg += INPUT_CTL_START_TO1;
++		reg = IOMUXSW_INPUT_CTL + (input << 2) + INPUT_CTL_START_TO1;
+ 	} else {
+-		reg += INPUT_CTL_START;
++		reg = IOMUXSW_INPUT_CTL + (input << 2) + INPUT_CTL_START;
+ 	}
+ 
+-
+ 	BUG_ON(input >= MUX_INPUT_NUM_MUX);
+ 	__raw_writel(config, reg);
+ }
+-- 
+1.5.4.4
+

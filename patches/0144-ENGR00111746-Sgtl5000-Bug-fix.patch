@@ -1,0 +1,169 @@
+From a3203a5c79e522e7907625b4657799915c1f550c Mon Sep 17 00:00:00 2001
+From: Wallace Wang <r59996@freescale.com>
+Date: Fri, 24 Apr 2009 11:11:54 +0800
+Subject: [PATCH] ENGR00111746 Sgtl5000: Bug fix
+
+1. Remove i2c_unregister_device in sgtl5000
+2. sgtl5000_set_bias_level in sgtl5000_remove failed to operate
+   as imx_3stack_sgtl5000_remove is called before sgtl5000_remove.
+   Add imx_3stack_machine_remove, move power disable from
+   imx_3stack_sgtl5000_remove to this function.
+3. name in imx_ssi_dai is a pointer to a constant string, can't
+   use strcpy, or else the string will be overwritten and memory
+   will be corrupted when the copied string length extend the
+   original string length.
+4. Add imx_ssi_remove to free irq
+
+Signed-off-by: Wallace Wang <r59996@freescale.com
+---
+ sound/soc/codecs/sgtl5000.c         |    2 -
+ sound/soc/imx/imx-3stack-sgtl5000.c |   52 +++++++++++++++++++++-------------
+ sound/soc/imx/imx-ssi.c             |   13 +++++++++
+ 3 files changed, 45 insertions(+), 22 deletions(-)
+
+diff --git a/sound/soc/codecs/sgtl5000.c b/sound/soc/codecs/sgtl5000.c
+index ed39df3..0420868 100644
+--- a/sound/soc/codecs/sgtl5000.c
++++ b/sound/soc/codecs/sgtl5000.c
+@@ -1037,10 +1037,8 @@ static int sgtl5000_remove(struct platform_device *pdev)
+ 
+ 	if (codec->control_data)
+ 		sgtl5000_set_bias_level(codec, SND_SOC_BIAS_OFF);
+-
+ 	snd_soc_free_pcms(socdev);
+ 	snd_soc_dapm_free(socdev);
+-	i2c_unregister_device(codec->control_data);
+ 	i2c_del_driver(&sgtl5000_i2c_driver);
+ 	kfree(codec->private_data);
+ 	kfree(codec);
+diff --git a/sound/soc/imx/imx-3stack-sgtl5000.c b/sound/soc/imx/imx-3stack-sgtl5000.c
+index 74f5e11..2ba9776 100644
+--- a/sound/soc/imx/imx-3stack-sgtl5000.c
++++ b/sound/soc/imx/imx-3stack-sgtl5000.c
+@@ -213,7 +213,6 @@ static void headphone_detect_handler(struct work_struct *work)
+ 	int hp_status;
+ 
+ 	sysfs_notify(&pdev->dev.kobj, NULL, "headphone");
+-
+ 	hp_status = plat->hp_status();
+ 	if (hp_status)
+ 		set_irq_type(plat->hp_irq, IRQ_TYPE_EDGE_FALLING);
+@@ -380,11 +379,37 @@ static struct snd_soc_dai_link imx_3stack_dai = {
+ 	.ops = &imx_3stack_ops,
+ };
+ 
++static int imx_3stack_machine_remove(struct platform_device *pdev)
++{
++	struct imx_3stack_priv *priv = &machine_priv;
++	struct mxc_audio_platform_data *plat;
++	if (priv->reg_vddio)
++		regulator_disable(priv->reg_vddio);
++	if (priv->reg_vddd)
++		regulator_disable(priv->reg_vddd);
++	if (priv->reg_vdda)
++		regulator_disable(priv->reg_vdda);
++	if (priv->reg_vdda)
++		regulator_put(priv->reg_vdda);
++	if (priv->reg_vddio)
++		regulator_put(priv->reg_vddio);
++	if (priv->reg_vddd)
++		regulator_put(priv->reg_vddd);
++	if (priv->pdev) {
++		plat = priv->pdev->dev.platform_data;
++		if (plat->finit)
++			plat->finit();
++	}
++
++	return 0;
++}
++
+ /* imx_3stack audio machine driver */
+ static struct snd_soc_machine snd_soc_machine_imx_3stack = {
+ 	.name = "imx-3stack",
+ 	.dai_link = &imx_3stack_dai,
+ 	.num_links = 1,
++	.remove = imx_3stack_machine_remove,
+ };
+ 
+ static struct snd_soc_device imx_3stack_snd_devdata = {
+@@ -419,9 +444,9 @@ static int __devinit imx_3stack_sgtl5000_probe(struct platform_device *pdev)
+ 	imx_3stack_init_dam(plat->src_port, plat->ext_port);
+ 
+ 	if (plat->src_port == 2)
+-		strcpy(imx_ssi_dai.name, "imx-ssi-3");
++		imx_ssi_dai.name = "imx-ssi-3";
+ 	else
+-		strcpy(imx_ssi_dai.name, "imx-ssi-1");
++		imx_ssi_dai.name = "imx-ssi-1";
+ 
+ 	ret = driver_create_file(pdev->dev.driver, &driver_attr_headphone);
+ 	if (ret < 0) {
+@@ -516,22 +541,9 @@ static int imx_3stack_sgtl5000_remove(struct platform_device *pdev)
+ 
+ 	free_irq(plat->hp_irq, priv);
+ 
+-	if (priv->reg_vddio)
+-		regulator_disable(priv->reg_vddio);
+-	if (priv->reg_vddd)
+-		regulator_disable(priv->reg_vddd);
+-	if (priv->reg_vdda)
+-		regulator_disable(priv->reg_vdda);
+-	if (plat->amp_enable)
+-		plat->amp_enable(0);
+-	if (plat->finit)
+-		plat->finit();
+-	if (priv->reg_vdda)
+-		regulator_put(priv->reg_vdda);
+-	if (priv->reg_vddio)
+-		regulator_put(priv->reg_vddio);
+-	if (priv->reg_vddd)
+-		regulator_put(priv->reg_vddd);
++	driver_remove_file(pdev->dev.driver, &driver_attr_headphone);
++
++	kfree(imx_3stack_snd_devdata.codec_data);
+ 
+ 	return 0;
+ }
+@@ -554,7 +566,7 @@ static int __init imx_3stack_init(void)
+ 	if (ret)
+ 		return -ENOMEM;
+ 
+-	imx_3stack_snd_device = platform_device_alloc("soc-audio", -1);
++	imx_3stack_snd_device = platform_device_alloc("soc-audio", 2);
+ 	if (!imx_3stack_snd_device)
+ 		return -ENOMEM;
+ 
+diff --git a/sound/soc/imx/imx-ssi.c b/sound/soc/imx/imx-ssi.c
+index e16cafe..b0bc51a 100644
+--- a/sound/soc/imx/imx-ssi.c
++++ b/sound/soc/imx/imx-ssi.c
+@@ -714,6 +714,18 @@ static int imx_ssi_probe(struct platform_device *pdev, struct snd_soc_dai *dai)
+ 	return 0;
+ }
+ 
++static void imx_ssi_remove(struct platform_device *pdev,
++			   struct snd_soc_dai *dai)
++{
++	if ((!strcmp(dai->name, "imx-ssi-1")) ||
++	    (!strcmp(dai->name, "imx-ssi-2")))
++		free_irq(MXC_INT_SSI1, dai);
++
++	if ((!strcmp(dai->name, "imx-ssi-3")) ||
++	    (!strcmp(dai->name, "imx-ssi-4")))
++		free_irq(MXC_INT_SSI2, dai);
++}
++
+ #define IMX_SSI_RATES \
+ 	(SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_11025 | \
+ 	SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_22050 | \
+@@ -731,6 +743,7 @@ struct snd_soc_dai imx_ssi_dai = {
+ 	.type = SND_SOC_DAI_PCM,
+ 	.probe = imx_ssi_probe,
+ 	.suspend = imx_ssi_suspend,
++	.remove = imx_ssi_remove,
+ 	.resume = imx_ssi_resume,
+ 	.playback = {
+ 		     .channels_min = 1,
+-- 
+1.5.4.4
+

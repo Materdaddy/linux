@@ -1,0 +1,48 @@
+From 5dcd1e327dc7e878164388becadf9475ebec36ff Mon Sep 17 00:00:00 2001
+From: Lily Zhang <r58066@freescale.com>
+Date: Mon, 13 Apr 2009 17:27:37 +0800
+Subject: [PATCH] ENGR00111294 Not enter suspend state when the keypad is pressed
+
+In the function mxc_kpp_suspend, the poll_timer is deleted and the
+keypad registers are not cleaned up well. So when the keypad is pressed
+and the system enters the suspend state, the keypad driver can not work
+well after resume. One simplest solution is to check poll_timer. If it's
+still pending, don't allow the system to enter suspend.
+
+Signed-off-by: Lily Zhang <r58066@freescale.com>
+---
+ drivers/input/keyboard/mxc_keyb.c |    8 ++++----
+ 1 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/input/keyboard/mxc_keyb.c b/drivers/input/keyboard/mxc_keyb.c
+index 799ab23..248b8e5 100644
+--- a/drivers/input/keyboard/mxc_keyb.c
++++ b/drivers/input/keyboard/mxc_keyb.c
+@@ -669,11 +669,13 @@ static void mxc_kpp_close(struct input_dev *dev)
+  *                to suspend
+  * @param   state the power state the device is entering
+  *
+- * @return  The function always returns 0.
++ * @return  return -1 when the keypad is pressed. Otherwise, return 0
+  */
+ static int mxc_kpp_suspend(struct platform_device *pdev, pm_message_t state)
+ {
+-	del_timer(&kpp_dev.poll_timer);
++	/* When the keypad is still pressed, clean up registers and timers */
++	if (timer_pending(&kpp_dev.poll_timer))
++		return -1;
+ 
+ 	if (device_may_wakeup(&pdev->dev)) {
+ 		enable_irq_wake(keypad->irq);
+@@ -708,8 +710,6 @@ static int mxc_kpp_resume(struct platform_device *pdev)
+ 		enable_irq(keypad->irq);
+ 	}
+ 
+-	init_timer(&kpp_dev.poll_timer);
+-
+ 	return 0;
+ }
+ 
+-- 
+1.5.4.4
+

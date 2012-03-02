@@ -1,0 +1,1616 @@
+From e9df01e96cb63c9c752568a7f984e84afea41ba6 Mon Sep 17 00:00:00 2001
+From: Wallace Wang <r59996@freescale.com>
+Date: Thu, 23 Apr 2009 20:35:23 +0800
+Subject: [PATCH] ENGR00111524 AK4647 driver porting to 2.6.28
+
+Add ak4647 driver into 2.6.28 kernel
+
+Signed-off-by: Wallace Wang <r59996@freescale.com>
+---
+ arch/arm/mach-mx35/devices.c          |   24 -
+ arch/arm/mach-mx35/mx35_3stack.c      |   64 +++-
+ arch/arm/mach-mx35/mx35_3stack_gpio.c |   14 +
+ arch/arm/plat-mxc/include/mach/mxc.h  |    1 +
+ sound/soc/codecs/Kconfig              |    4 +
+ sound/soc/codecs/Makefile             |    2 +
+ sound/soc/codecs/ak4647.c             |  789 +++++++++++++++++++++++++++++++++
+ sound/soc/codecs/ak4647.h             |   92 ++++
+ sound/soc/imx/Kconfig                 |    8 +
+ sound/soc/imx/Makefile                |    2 +
+ sound/soc/imx/imx-3stack-ak4647.c     |  438 ++++++++++++++++++
+ 11 files changed, 1409 insertions(+), 29 deletions(-)
+
+diff --git a/arch/arm/mach-mx35/devices.c b/arch/arm/mach-mx35/devices.c
+index 375732c..5eeeca8 100644
+--- a/arch/arm/mach-mx35/devices.c
++++ b/arch/arm/mach-mx35/devices.c
+@@ -559,29 +559,6 @@ static inline void mxc_init_spdif(void)
+ 	platform_device_register(&mxc_alsa_spdif_device);
+ }
+ 
+-static struct mxc_audio_platform_data mxc_audio_data;
+-
+-static struct platform_device mxc_alsa_device = {
+-	.name = "imx-3stack-ak4647",
+-	.id = 0,
+-	.dev = {
+-		.release = mxc_nop_release,
+-		.platform_data = &mxc_audio_data,
+-		},
+-
+-};
+-
+-static void mxc_init_audio(void)
+-{
+-	if (board_is_mx35(BOARD_REV_2))
+-		return;
+-	mxc_audio_data.ssi_num = 1;
+-	mxc_audio_data.src_port = 1;
+-	mxc_audio_data.ext_port = 4;
+-	mxc_audio_data.intr_id_hp = MXC_PSEUDO_IRQ_HEADPHONE;
+-	platform_device_register(&mxc_alsa_device);
+-}
+-
+ static struct platform_device mxc_alsa_surround_device = {
+ 	.name = "imx-3stack-wm8580",
+ 	.id = 0,
+@@ -780,7 +757,6 @@ int __init mxc_init_devices(void)
+ 	mxc_init_dma();
+ 	mxc_init_bt_audio();
+ 	mxc_init_spdif();
+-	mxc_init_audio();
+ 	mxc_init_surround_audio();
+ 	mxc_init_asrc();
+ 	mxc_init_flexcan();
+diff --git a/arch/arm/mach-mx35/mx35_3stack.c b/arch/arm/mach-mx35/mx35_3stack.c
+index 208ba2b..82dea1d 100644
+--- a/arch/arm/mach-mx35/mx35_3stack.c
++++ b/arch/arm/mach-mx35/mx35_3stack.c
+@@ -807,7 +807,7 @@ static void mxc_init_bluetooth(void)
+ #if defined(CONFIG_SND_SOC_IMX_3STACK_SGTL5000) \
+     || defined(CONFIG_SND_SOC_IMX_3STACK_SGTL5000_MODULE)
+ 
+-unsigned int headphone_det_status(void)
++static int sgtl5000_headphone_det_status(void)
+ {
+ 	int ret = 0;
+ 	if (0 != pmic_gpio_get_designation_bit_val(0, &ret))
+@@ -824,7 +824,7 @@ static struct mxc_audio_platform_data sgtl5000_data = {
+ 	.src_port = 1,
+ 	.ext_port = 4,
+ 	.hp_irq = MXC_PSEUDO_IRQ_HEADPHONE,
+-	.hp_status = headphone_det_status,
++	.hp_status = sgtl5000_headphone_det_status,
+ 	.vddio_reg = NULL,
+ 	.vdda_reg = "VCAM",
+ 	.amp_enable = mxc_sgtl5000_amp_enable,
+@@ -881,7 +881,6 @@ static int mxc_sgtl5000_amp_enable(int enable)
+ 
+ static void mxc_init_sgtl5000(void)
+ {
+-	int err;
+ 	struct clk *cko1, *parent;
+ 	unsigned long rate;
+ 
+@@ -899,7 +898,7 @@ static void mxc_init_sgtl5000(void)
+ 	rate = clk_round_rate(cko1, 12000000);
+ 	if (rate < 8000000 || rate > 27000000) {
+ 		printk(KERN_ERR "Error: SGTL5000 mclk freq %d out of range!\n",
+-		       rate);
++		       (unsigned int)rate);
+ 		clk_put(parent);
+ 		clk_put(cko1);
+ 		return;
+@@ -915,6 +914,60 @@ static void mxc_init_sgtl5000(void)
+ }
+ #endif
+ 
++#if defined(CONFIG_SND_SOC_IMX_3STACK_AK4647) \
++    || defined(CONFIG_SND_SOC_IMX_3STACK_AK4647_MODULE)
++static int mxc_ak4647_amp_enable(int enable)
++{
++	pmic_gpio_set_bit_val(MCU_GPIO_REG_GPIO_CONTROL_1, 0, enable);
++	return 0;
++}
++
++static int mxc_ak4647_plat_init(void)
++{
++	pmic_gpio_set_bit_val(MCU_GPIO_REG_RESET_2, 1, 0);
++	msleep(1);
++	pmic_gpio_set_bit_val(MCU_GPIO_REG_RESET_2, 1, 1);
++	return 0;
++}
++
++static int ak4647_headphone_det_status(void)
++{
++	int ret = 0;
++	if (0 != pmic_gpio_get_designation_bit_val(0, &ret))
++		printk(KERN_ERR "Get headphone status error.");
++	return ret;
++}
++
++static struct mxc_audio_platform_data mxc_ak4647_data = {
++	.ssi_num = 1,
++	.src_port = 1,
++	.ext_port = 4,
++	.amp_enable = mxc_ak4647_amp_enable,
++	.init = mxc_ak4647_plat_init,
++	.hp_status = ak4647_headphone_det_status,
++	.intr_id_hp = MXC_PSEUDO_IRQ_HEADPHONE,
++};
++
++static struct platform_device mxc_alsa_device = {
++	.name = "imx-3stack-ak4647",
++	.id = 0,
++	.dev = {
++		.release = mxc_nop_release,
++		.platform_data = &mxc_ak4647_data,
++		},
++
++};
++
++static void mxc_init_ak4647(void)
++{
++	platform_device_register(&mxc_alsa_device);
++}
++#else
++static void mxc_init_ak4647(void)
++{
++}
++#endif
++
+ #if defined(CONFIG_CAN_FLEXCAN) || defined(CONFIG_CAN_FLEXCAN_MODULE)
+ static void flexcan_xcvr_enable(int id, int en)
+ {
+@@ -1016,6 +1069,7 @@ static void __init mxc_board_init(void)
+ 	mxc_init_fb();
+ 	mxc_init_bl();
+ 	mxc_init_sgtl5000();
++	mxc_init_ak4647();
+ 
+ 	i2c_register_board_info(0, mxc_i2c_board_info,
+ 				ARRAY_SIZE(mxc_i2c_board_info));
+@@ -1145,7 +1199,7 @@ static void __init mx35_3stack_timer_init(void)
+ }
+ 
+ static struct sys_timer mxc_timer = {
+-	.init	= mx35_3stack_timer_init,
++	.init = mx35_3stack_timer_init,
+ };
+ 
+ /*
+diff --git a/arch/arm/mach-mx35/mx35_3stack_gpio.c b/arch/arm/mach-mx35/mx35_3stack_gpio.c
+index ae0f420..58cd68c 100644
+--- a/arch/arm/mach-mx35/mx35_3stack_gpio.c
++++ b/arch/arm/mach-mx35/mx35_3stack_gpio.c
+@@ -919,6 +919,20 @@ void gpio_activate_audio_ports(void)
+ EXPORT_SYMBOL(gpio_activate_audio_ports);
+ 
+ /*!
++ * This function deactivates DAM ports 3 to disable
++ * audio I/O.
++ */
++void gpio_inactivate_audio_ports(void)
++{
++	mxc_free_iomux(MX35_PIN_STXD4, MUX_CONFIG_FUNC);
++	mxc_free_iomux(MX35_PIN_SRXD4, MUX_CONFIG_FUNC);
++	mxc_free_iomux(MX35_PIN_SCK4, MUX_CONFIG_FUNC);
++	mxc_free_iomux(MX35_PIN_STXFS4, MUX_CONFIG_FUNC);
++}
++
++EXPORT_SYMBOL(gpio_inactivate_audio_ports);
++
++/*!
+  * This function activates DAM ports 5 to enable
+  * audio I/O.
+  */
+diff --git a/arch/arm/plat-mxc/include/mach/mxc.h b/arch/arm/plat-mxc/include/mach/mxc.h
+index b8d738e..a40b2d8 100644
+--- a/arch/arm/plat-mxc/include/mach/mxc.h
++++ b/arch/arm/plat-mxc/include/mach/mxc.h
+@@ -402,6 +402,7 @@ enum mxc_cpu_pwr_mode {
+ void mxc_cpu_lp_set(enum mxc_cpu_pwr_mode mode);
+ int tzic_enable_wake(int is_idle);
+ void gpio_activate_audio_ports(void);
++void gpio_inactivate_audio_ports(void);
+ 
+ #endif
+ 
+diff --git a/sound/soc/codecs/Kconfig b/sound/soc/codecs/Kconfig
+index fdbfe37..1dd2bc7 100644
+--- a/sound/soc/codecs/Kconfig
++++ b/sound/soc/codecs/Kconfig
+@@ -114,3 +114,7 @@ config SND_SOC_WM9713
+ config SND_SOC_SGTL5000
+ 	tristate
+ 	depends on I2C
++
++config SND_SOC_AK4647
++        tristate
++        depends on I2C
+diff --git a/sound/soc/codecs/Makefile b/sound/soc/codecs/Makefile
+index ff0dc8a..994a9a7 100644
+--- a/sound/soc/codecs/Makefile
++++ b/sound/soc/codecs/Makefile
+@@ -20,6 +20,7 @@ snd-soc-wm8990-objs := wm8990.o
+ snd-soc-wm9712-objs := wm9712.o
+ snd-soc-wm9713-objs := wm9713.o
+ snd-soc-sgtl5000-objs := sgtl5000.o
++snd-soc-ak4647-objs := ak4647.o
+ 
+ obj-$(CONFIG_SND_SOC_AC97_CODEC)	+= snd-soc-ac97.o
+ obj-$(CONFIG_SND_SOC_AD1980)	+= snd-soc-ad1980.o
+@@ -43,3 +44,4 @@ obj-$(CONFIG_SND_SOC_WM8990)	+= snd-soc-wm8990.o
+ obj-$(CONFIG_SND_SOC_WM9712)	+= snd-soc-wm9712.o
+ obj-$(CONFIG_SND_SOC_WM9713)	+= snd-soc-wm9713.o
+ obj-$(CONFIG_SND_SOC_SGTL5000)	+= snd-soc-sgtl5000.o
++obj-$(CONFIG_SND_SOC_AK4647)    += snd-soc-ak4647.o
+diff --git a/sound/soc/codecs/ak4647.c b/sound/soc/codecs/ak4647.c
+new file mode 100644
+index 0000000..20d74d1
+--- /dev/null
++++ b/sound/soc/codecs/ak4647.c
+@@ -0,0 +1,789 @@
++/*
++ * Copyright 2008-2009 Freescale Semiconductor, Inc. All Rights Reserved.
++ */
++
++/*
++ * The code contained herein is licensed under the GNU General Public
++ * License. You may obtain a copy of the GNU General Public License
++ * Version 2 or later at the following locations:
++ *
++ * http://www.opensource.org/licenses/gpl-license.html
++ * http://www.gnu.org/copyleft/gpl.html
++ */
++
++/*!
++ * @file ak4647.c
++ * @brief Driver for AK4647
++ *
++ * @ingroup Sound
++ */
++
++#include <linux/module.h>
++#include <linux/moduleparam.h>
++#include <linux/init.h>
++#include <linux/delay.h>
++#include <linux/pm.h>
++#include <linux/platform_device.h>
++#include <linux/i2c.h>
++
++#include <sound/core.h>
++#include <sound/pcm.h>
++#include <sound/pcm_params.h>
++#include <sound/soc.h>
++#include <sound/soc-dapm.h>
++#include <sound/initval.h>
++#include <sound/tlv.h>
++
++#include "ak4647.h"
++
++#define SET_BIT_IN_BYTE(byte, pos) (byte |= (0x01 << pos))
++#define CLEAR_BIT_IN_BYTE(byte, pos) (byte &= ~(0x01 << pos))
++
++static struct i2c_client *ak4647_i2c_client;
++
++int ak4647_read_reg(unsigned int reg, u8 *value)
++{
++	s32 retval;
++	retval = i2c_smbus_read_byte_data(ak4647_i2c_client, reg);
++	if (-1 == retval) {
++		pr_err("%s:read reg errorr:reg=%x,val=%x\n",
++		       __func__, reg, *value);
++		return -1;
++	} else {
++		*value = (u8) retval;
++		return 0;
++	}
++}
++
++int ak4647_write_reg(unsigned int reg, u8 value)
++{
++	if (i2c_smbus_write_byte_data(ak4647_i2c_client, reg, value) < 0) {
++		pr_err("%s:write reg errorr:reg=%x,val=%x\n",
++		       __func__, reg, value);
++		return -1;
++	}
++	return 0;
++}
++
++static unsigned int ak4647_codec_read(struct snd_soc_codec *codec,
++				      unsigned int reg)
++{
++	u8 value;
++	ak4647_read_reg(reg, &value);
++	return value;
++}
++
++static int ak4647_codec_write(struct snd_soc_codec *codec, unsigned int reg,
++			      unsigned int value)
++{
++	return ak4647_write_reg(reg, value);
++}
++
++#define DEBUG_AK4647 0
++
++#if DEBUG_AK4647
++
++static char *ak4647_reg_names[] = {
++	"AK4647_PM1",
++	"AK4647_PM2",
++	"AK4647_SIG1",
++	"AK4647_SIG2",
++	"AK4647_MODE1",
++	"AK4647_MODE2",
++	"AK4647_TIMER",
++	"AK4647_ALC1",
++	"AK4647_ALC2",
++	"AK4647_LEFT_INPUT_VOLUME",
++	"AK4647_LEFT_DGT_VOLUME",
++	"AK4647_ALC3",
++	"AK4647_RIGHT_INPUT_VOLUME",
++	"AK4647_RIGHT_DGT_VOLUME",
++	"AK4647_MODE3",
++	"AK4647_MODE4",
++	"AK4647_PM3",
++	"AK4647_DGT_FIL_SEL",
++	"AK4647_FIL3_COEF0",
++	"AK4647_FIL3_COEF1",
++	"AK4647_FIL3_COEF2",
++	"AK4647_FIL3_COEF3",
++	"AK4647_EQ_COEF0",
++	"AK4647_EQ_COEF1",
++	"AK4647_EQ_COEF2",
++	"AK4647_EQ_COEF3",
++	"AK4647_EQ_COEF4",
++	"AK4647_EQ_COEF5",
++	"AK4647_FIL1_COEF0",
++	"AK4647_FIL1_COEF1",
++	"AK4647_FIL1_COEF2",
++	"AK4647_FIL1_COEF3",
++};
++
++static void dump_all_regs(void)
++{
++	int i;
++	u8 value;
++
++	for (i = AK4647_REG_START; i < AK4647_REG_NUMBER; i++) {
++		ak4647_read_reg(i, &value);
++		pr_info("%s = 0x%x\n", ak4647_reg_names[i], value);
++	}
++}
++#endif
++
++static int loopback_xhandle_get(struct snd_kcontrol *kcontrol,
++				struct snd_ctl_elem_value *ucontrol);
++static int loopback_xhandle_put(struct snd_kcontrol *kcontrol,
++				struct snd_ctl_elem_value *ucontrol);
++
++static const char *ak4647_hp_out[] = { "Stereo", "Mono" };
++
++static const char *ak4647_left_in[] = { "LIN1", "LIN2" };
++
++static const char *ak4647_right_in[] = { "RIN1", "RIN2" };
++
++static const char *ak4647_deemp[] = { "44.1kHz", "Off", "48kHz", "32kHz" };
++
++static const struct soc_enum ak4647_enum[] = {
++	SOC_ENUM_SINGLE(AK4647_MODE4, 2, 2, ak4647_hp_out),
++	SOC_ENUM_SINGLE(AK4647_MODE3, 0, 4, ak4647_deemp),
++	SOC_ENUM_SINGLE(AK4647_PM3, 1, 2, ak4647_left_in),
++	SOC_ENUM_SINGLE(AK4647_PM3, 2, 2, ak4647_right_in),
++};
++
++#undef snd_soc_info_bool_ext
++#define snd_soc_info_bool_ext		snd_ctl_boolean_mono_info
++static const struct snd_kcontrol_new ak4647_snd_controls[] = {
++	SOC_ENUM("Headphone Output", ak4647_enum[0]),
++	SOC_ENUM("Playback Deemphasis", ak4647_enum[1]),
++	SOC_ENUM("Left Capture Select", ak4647_enum[2]),
++	SOC_ENUM("Right Capture Select", ak4647_enum[3]),
++	SOC_SINGLE("Bass Volume", AK4647_MODE3, 2, 3, 0),
++	SOC_SINGLE("Mic Boost (+20dB) Switch", AK4647_SIG1, 0, 1, 0),
++	SOC_SINGLE("Mic Bias", AK4647_SIG1, 2, 1, 0),
++	SOC_SINGLE("ALC Switch", AK4647_ALC1, 5, 1, 0),
++	SOC_SINGLE("ALC Recovery Time", AK4647_TIMER, 2, 3, 0),
++	SOC_SINGLE("ALC ZC Time", AK4647_TIMER, 4, 3, 0),
++	SOC_SINGLE("ALC Volume", AK4647_ALC2, 0, 127, 0),
++	SOC_SINGLE("Left Capture Volume", AK4647_LEFT_INPUT_VOLUME, 0, 242, 0),
++	SOC_SINGLE("Right Capture Volume",
++		   AK4647_RIGHT_INPUT_VOLUME, 0, 242, 0),
++	SOC_SINGLE("Left Playback Volume", AK4647_LEFT_DGT_VOLUME, 0, 255, 1),
++	SOC_SINGLE("Right Playback Volume", AK4647_RIGHT_DGT_VOLUME, 0, 255, 1),
++	SOC_SINGLE_BOOL_EXT("Loopback Line-in", 0,
++			    loopback_xhandle_get, loopback_xhandle_put),
++};
++
++/* add non dapm controls */
++static int ak4647_add_controls(struct snd_soc_codec *codec)
++{
++	int err, i;
++
++	for (i = 0; i < ARRAY_SIZE(ak4647_snd_controls); i++) {
++		err = snd_ctl_add(codec->card,
++				  snd_soc_cnew(&ak4647_snd_controls[i],
++					       codec, NULL));
++		if (err < 0)
++			return err;
++	}
++	return 0;
++}
++
++/* Stereo Mixer for HP*/
++static const struct snd_kcontrol_new ak4647_hp_stereo_mixer_controls[] = {
++	SOC_DAPM_SINGLE("Playback Switch", AK4647_MODE4, 0, 1, 0),
++	SOC_DAPM_SINGLE("Mic Sidetone Switch", AK4647_MODE4, 1, 1, 0),
++};
++
++/* Stereo Mixer for Line out*/
++static const struct snd_kcontrol_new ak4647_line_stereo_mixer_controls[] = {
++	SOC_DAPM_SINGLE("Playback Switch", AK4647_SIG1, 4, 1, 0),
++	SOC_DAPM_SINGLE("Mic Sidetone Switch", AK4647_SIG2, 2, 1, 0),
++};
++
++/* ak4647 dapm widgets */
++static const struct snd_soc_dapm_widget ak4647_dapm_widgets[] = {
++	SND_SOC_DAPM_MIXER("Headphone Mixer", SND_SOC_NOPM, 0, 0,
++			   &ak4647_hp_stereo_mixer_controls[0],
++			   ARRAY_SIZE(ak4647_hp_stereo_mixer_controls)),
++	SND_SOC_DAPM_MIXER("Lineout Mixer", SND_SOC_NOPM, 0, 0,
++			   &ak4647_line_stereo_mixer_controls[0],
++			   ARRAY_SIZE(ak4647_line_stereo_mixer_controls)),
++	SND_SOC_DAPM_DAC("DAC", "Playback", AK4647_PM1, 2, 0),
++	SND_SOC_DAPM_OUTPUT("HPL"),
++	SND_SOC_DAPM_OUTPUT("HPR"),
++	SND_SOC_DAPM_OUTPUT("LOUT"),
++
++	SND_SOC_DAPM_ADC("Left ADC", "Capture", AK4647_PM1, 0, 0),
++	SND_SOC_DAPM_ADC("Right ADC", "Capture", AK4647_PM3, 0, 0),
++	SND_SOC_DAPM_PGA("HP R Amp", AK4647_PM2, 4, 0, NULL, 0),
++	SND_SOC_DAPM_PGA("HP L Amp", AK4647_PM2, 5, 0, NULL, 0),
++	SND_SOC_DAPM_PGA("Mic", AK4647_PM1, 5, 0, NULL, 0),
++	SND_SOC_DAPM_PGA("Line Out Amp", AK4647_PM1, 3, 0, NULL, 0),
++
++	SND_SOC_DAPM_MICBIAS("Mic Bias", AK4647_SIG1, 2, 0),
++	SND_SOC_DAPM_INPUT("Left Input"),
++	SND_SOC_DAPM_INPUT("Right Input"),
++};
++
++static const struct snd_soc_dapm_route audio_map[] = {
++	/*headphone stereo mixer */
++	{"Headphone Mixer", "Playback Switch", "DAC"},
++	{"Headphone Mixer", "Mic Sidetone Switch", "Mic"},
++
++	/*lineout stereo mixer */
++	{"Lineout Mixer", "Playback Switch", "DAC"},
++	{"Lineout Mixer", "Mic Sidetone Switch", "Mic"},
++
++	/* headphone amp */
++	{"HP R Amp", NULL, "Headphone Mixer"},
++	{"HP L Amp", NULL, "Headphone Mixer"},
++
++	/* headphone */
++	{"HPR", NULL, "HP R Amp"},
++	{"HPL", NULL, "HP L Amp"},
++
++	/* line out */
++	{"Line Out Amp", NULL, "Lineout Mixer"},
++	{"LOUT", NULL, "Line Out Amp"},
++
++	/* ADC */
++	{"Left ADC", NULL, "Left Input"},
++	{"Right ADC", NULL, "Right Input"},
++
++};
++
++static int ak4647_add_widgets(struct snd_soc_codec *codec)
++{
++	snd_soc_dapm_new_controls(codec, ak4647_dapm_widgets,
++				  ARRAY_SIZE(ak4647_dapm_widgets));
++
++	/* set up audio path audio_mapnects */
++	snd_soc_dapm_add_routes(codec, audio_map, ARRAY_SIZE(audio_map));
++
++	snd_soc_dapm_new_widgets(codec);
++	return 0;
++}
++
++#define AK4647_RATES (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_11025 | \
++		SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_22050 | \
++		SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_32000 | \
++		SNDRV_PCM_RATE_48000)
++
++#define AK4647_FORMATS SNDRV_PCM_FMTBIT_S16_LE
++
++static int ak4647_set_dai_sysclk(struct snd_soc_dai *codec_dai,
++				 int clk_id, unsigned int freq, int dir)
++{
++	u8 value;
++	u8 fs = 0;
++
++	/* FS3 is on D5 */
++	switch (freq) {
++	case 8000:
++		fs = 0x0;
++		break;
++	case 11025:
++		fs = 0x5;
++		break;
++	case 16000:
++		fs = 0x2;
++		break;
++	case 22050:
++		fs = 0x7;
++		break;
++	case 32000:
++		fs = 0x22;
++		break;
++	case 44100:
++		fs = 0x27;
++		break;
++	case 48000:
++		fs = 0x23;
++		break;
++	default:
++		pr_err("unsupported sample rate");
++		return -1;
++	}
++
++	ak4647_read_reg(AK4647_MODE2, &value);
++	value &= 0xC0;
++	value |= fs;
++	ak4647_write_reg(AK4647_MODE2, value);
++	return 0;
++}
++
++static int ak4647_set_dai_fmt(struct snd_soc_dai *codec_dai, unsigned int fmt)
++{
++	u8 reg_mode1, reg_pm2;
++
++	/* get current values */
++	ak4647_read_reg(AK4647_MODE1, &reg_mode1);
++	ak4647_read_reg(AK4647_PM2, &reg_pm2);
++
++	/* set master/slave audio interface */
++	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
++	case SND_SOC_DAIFMT_CBM_CFM:
++		SET_BIT_IN_BYTE(reg_pm2, 3);
++		break;
++	case SND_SOC_DAIFMT_CBS_CFS:
++		CLEAR_BIT_IN_BYTE(reg_pm2, 3);
++		break;
++	default:
++		return -EINVAL;
++	}
++
++	/* interface format */
++	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
++	case SND_SOC_DAIFMT_I2S:
++		SET_BIT_IN_BYTE(reg_mode1, 0);
++		SET_BIT_IN_BYTE(reg_mode1, 1);
++		break;
++	case SND_SOC_DAIFMT_RIGHT_J:
++		SET_BIT_IN_BYTE(reg_mode1, 0);
++		CLEAR_BIT_IN_BYTE(reg_mode1, 1);
++		break;
++	case SND_SOC_DAIFMT_LEFT_J:
++		CLEAR_BIT_IN_BYTE(reg_mode1, 0);
++		SET_BIT_IN_BYTE(reg_mode1, 1);
++		break;
++	case SND_SOC_DAIFMT_DSP_A:
++	case SND_SOC_DAIFMT_DSP_B:
++	default:
++		pr_err("dai format %d not supported", fmt);
++		return -EINVAL;
++	}
++
++	ak4647_write_reg(AK4647_MODE1, reg_mode1);
++	ak4647_write_reg(AK4647_PM2, reg_pm2);
++	return 0;
++}
++
++static int ak4647_set_clkdiv(struct snd_soc_dai *codec_dai, int div_id, int div)
++{
++	int retval = 0;
++	u8 value;
++	if (AK4647_BCLK_CLKDIV == div_id) {
++		ak4647_read_reg(AK4647_MODE1, &value);
++		switch (div) {
++		case AK4647_BCLK_DIV_32:
++			CLEAR_BIT_IN_BYTE(value, 3);
++			ak4647_write_reg(AK4647_MODE1, value);
++			break;
++		case AK4647_BCLK_DIV_64:
++			SET_BIT_IN_BYTE(value, 3);
++			ak4647_write_reg(AK4647_MODE1, value);
++			break;
++		default:
++			retval = -1;
++			pr_err("wrong div value for divid %d", div_id);
++			break;
++		}
++	} else if (AK4647_MCLK_CLKDIV == div_id) {
++		ak4647_read_reg(AK4647_MODE2, &value);
++		switch (div) {
++		case AK4647_MCLK_DIV_32:
++			SET_BIT_IN_BYTE(value, 7);
++			SET_BIT_IN_BYTE(value, 6);
++			ak4647_write_reg(AK4647_MODE2, value);
++			break;
++		case AK4647_MCLK_DIV_64:
++			SET_BIT_IN_BYTE(value, 7);
++			CLEAR_BIT_IN_BYTE(value, 6);
++			ak4647_write_reg(AK4647_MODE2, value);
++			break;
++		case AK4647_MCLK_DIV_128:
++			CLEAR_BIT_IN_BYTE(value, 7);
++			SET_BIT_IN_BYTE(value, 6);
++			ak4647_write_reg(AK4647_MODE2, value);
++			break;
++		case AK4647_MCLK_DIV_256:
++			CLEAR_BIT_IN_BYTE(value, 7);
++			CLEAR_BIT_IN_BYTE(value, 6);
++			ak4647_write_reg(AK4647_MODE2, value);
++			break;
++		default:
++			retval = -1;
++			pr_err("wrong div value for div id %d", div_id);
++			break;
++		}
++	} else {
++		retval = -1;
++		pr_err("wrong div id");
++	}
++
++	return retval;
++}
++
++static int ak4647_digital_mute(struct snd_soc_dai *dai, int mute)
++{
++	u8 value;
++
++	ak4647_read_reg(AK4647_MODE3, &value);
++
++	if (mute)
++		SET_BIT_IN_BYTE(value, 5);
++	else
++		CLEAR_BIT_IN_BYTE(value, 5);
++	ak4647_write_reg(AK4647_MODE3, value);
++	return 0;
++}
++
++struct ak4647_state_data {
++	u8 left_capture_vol;
++	u8 right_capture_vol;
++};
++static struct ak4647_state_data ak4647_state;
++
++static int ak4647_pcm_startup(struct snd_pcm_substream *substream)
++{
++	u8 value;
++	/* for playback, save down capture volume */
++	if (SNDRV_PCM_STREAM_PLAYBACK == substream->stream) {
++		ak4647_read_reg(AK4647_LEFT_INPUT_VOLUME, &value);
++		ak4647_state.left_capture_vol = value;
++		ak4647_read_reg(AK4647_RIGHT_INPUT_VOLUME, &value);
++		ak4647_state.right_capture_vol = value;
++
++		/* when PMADL=PMADR=0 set IVL &IVR to be 0x91 (0db) */
++		ak4647_write_reg(AK4647_LEFT_INPUT_VOLUME, 0x91);
++		ak4647_write_reg(AK4647_RIGHT_INPUT_VOLUME, 0x91);
++	}
++
++	/* output digital volume independent */
++	ak4647_read_reg(AK4647_MODE3, &value);
++	CLEAR_BIT_IN_BYTE(value, 4);
++	ak4647_write_reg(AK4647_MODE3, value);
++	return 0;
++}
++
++static void ak4647_pcm_shutdown(struct snd_pcm_substream *substream)
++{
++	u8 value;
++	ak4647_read_reg(AK4647_PM2, &value);
++	/* mute */
++	CLEAR_BIT_IN_BYTE(value, 6);
++	ak4647_write_reg(AK4647_PM2, value);
++
++	/* after playback, restore capture volume */
++	if (SNDRV_PCM_STREAM_PLAYBACK == substream->stream) {
++		ak4647_write_reg(AK4647_LEFT_INPUT_VOLUME,
++				 ak4647_state.left_capture_vol);
++		ak4647_write_reg(AK4647_RIGHT_INPUT_VOLUME,
++				 ak4647_state.right_capture_vol);
++	}
++}
++
++static int ak4647_pcm_prepare(struct snd_pcm_substream *substream)
++{
++	u8 value;
++
++	/* VCOM power on */
++	ak4647_write_reg(AK4647_PM1, 0x44);
++	msleep(30);
++
++	ak4647_read_reg(AK4647_PM2, &value);
++	/* PLL enabled */
++	SET_BIT_IN_BYTE(value, 0);
++
++	ak4647_write_reg(AK4647_PM2, value);
++	/* wait for PLL locked */
++	msleep(40);
++
++	/* don't mute */
++	SET_BIT_IN_BYTE(value, 6);
++	ak4647_write_reg(AK4647_PM2, value);
++	return 0;
++}
++
++struct snd_soc_dai ak4647_hifi_dai = {
++	.name = "ak4647",
++	.playback = {
++		     .stream_name = "Playback",
++		     .channels_min = 2,
++		     .channels_max = 2,
++		     .rates = AK4647_RATES,
++		     .formats = AK4647_FORMATS,
++		     },
++	.capture = {
++		    .stream_name = "Capture",
++		    .channels_min = 1,
++		    .channels_max = 2,
++		    .rates = AK4647_RATES,
++		    .formats = AK4647_FORMATS,
++		    },
++	.ops = {
++		.startup = ak4647_pcm_startup,
++		.shutdown = ak4647_pcm_shutdown,
++		.prepare = ak4647_pcm_prepare,
++		},
++	.dai_ops = {
++		    .digital_mute = ak4647_digital_mute,
++		    .set_fmt = ak4647_set_dai_fmt,
++		    .set_sysclk = ak4647_set_dai_sysclk,
++		    .set_clkdiv = ak4647_set_clkdiv,
++		    },
++};
++
++EXPORT_SYMBOL_GPL(ak4647_hifi_dai);
++
++static int ak4647_init(struct snd_soc_device *socdev)
++{
++
++	struct snd_soc_codec *codec = socdev->codec;
++	int ret = 0;
++	unsigned char val;
++
++	ret = ak4647_read_reg(AK4647_REG_START, &val);
++	if (ret < 0) {
++		pr_err("Device with ID register %x is not a AK4647\n", val);
++		return -ENODEV;
++	}
++
++	codec->name = "ak4647", codec->owner = THIS_MODULE;
++	codec->read = ak4647_codec_read;
++	codec->write = ak4647_codec_write;
++	codec->dai = &ak4647_hifi_dai;
++	codec->num_dai = 1;
++
++	ret = snd_soc_new_pcms(socdev, SNDRV_DEFAULT_IDX1, SNDRV_DEFAULT_STR1);
++	if (ret < 0) {
++		dev_err(&ak4647_i2c_client->dev, "failed to create pcms\n");
++		return ret;
++	}
++
++	/* setup init value for audio path controls here */
++	/* enable DAC to headphone */
++	ak4647_write_reg(AK4647_MODE4, 0x9);
++	/* capture source to be LIN2 and RIN2 */
++	ak4647_write_reg(AK4647_PM3, 0x6);
++	/* MPWR pin up */
++	ak4647_write_reg(AK4647_SIG1, 0x5);
++
++	ak4647_add_controls(codec);
++	ak4647_add_widgets(codec);
++
++	ret = snd_soc_register_card(socdev);
++
++	if (ret < 0) {
++		pr_err("ak4647: failed to register card\n");
++		snd_soc_free_pcms(socdev);
++		snd_soc_dapm_free(socdev);
++		return ret;
++	}
++
++	/* MCKI = 12M, default audio interface format as "left-justified" */
++	ak4647_write_reg(AK4647_MODE1, 0x62);
++
++	/* ALC disabled */
++	ak4647_write_reg(AK4647_ALC1, 0x0);
++
++	ak4647_state.left_capture_vol = 0x91;
++	ak4647_state.right_capture_vol = 0x91;
++
++	return 0;
++}
++
++static struct snd_soc_device *ak4647_socdev;
++
++static int ak4647_i2c_probe(struct i2c_client *client,
++			    const struct i2c_device_id *id)
++{
++	struct snd_soc_device *socdev = ak4647_socdev;
++	struct snd_soc_codec *codec = socdev->codec;
++	int ret;
++
++	i2c_set_clientdata(client, codec);
++	ak4647_i2c_client = client;
++	codec->control_data = client;
++	ret = ak4647_init(socdev);
++	if (ret < 0)
++		dev_err(&client->dev, "Device initialisation failed\n");
++
++	return ret;
++
++}
++
++static const struct i2c_device_id ak4647_id[] = {
++	{"ak4647-i2c", 0},
++	{},
++};
++
++MODULE_DEVICE_TABLE(i2c, ak4647_id);
++
++static struct i2c_driver ak4647_i2c_driver = {
++	.driver = {.owner = THIS_MODULE,
++		   .name = "ak4647-i2c",
++		   },
++	.probe = ak4647_i2c_probe,
++	.id_table = ak4647_id,
++};
++
++int pmic_audio_fm_output_enable(bool enable)
++{
++	u8 val;
++	if (enable) {
++		ak4647_set_dai_fmt(NULL,
++				   SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
++				   SND_SOC_DAIFMT_CBM_CFM |
++				   SND_SOC_DAIFMT_SYNC);
++		ak4647_set_dai_sysclk(NULL, 0, 44100, 0);
++		ak4647_set_clkdiv(NULL, 0, 0);
++		/* VCOM power on */
++		ak4647_write_reg(AK4647_PM1, 0x44);
++		msleep(30);
++
++		ak4647_read_reg(AK4647_PM2, &val);
++		/* PLL enabled */
++		SET_BIT_IN_BYTE(val, 0);
++
++		ak4647_write_reg(AK4647_PM2, val);
++		/* wait for PLL locked */
++		msleep(40);
++
++		/* don't mute */
++		SET_BIT_IN_BYTE(val, 6);
++		ak4647_write_reg(AK4647_PM2, val);
++
++		/* loopback STDO to DAC */
++		ak4647_read_reg(AK4647_MODE3, &val);
++		SET_BIT_IN_BYTE(val, 6);
++		ak4647_write_reg(AK4647_MODE3, val);
++
++		/* switch to R/L 1 */
++		ak4647_read_reg(AK4647_PM3, &val);
++		CLEAR_BIT_IN_BYTE(val, 1);
++		CLEAR_BIT_IN_BYTE(val, 2);
++		ak4647_write_reg(AK4647_PM3, val);
++
++		/* power up ADC */
++		ak4647_read_reg(AK4647_PM1, &val);
++		SET_BIT_IN_BYTE(val, 0);
++		ak4647_write_reg(AK4647_PM1, val);
++		ak4647_read_reg(AK4647_PM3, &val);
++		SET_BIT_IN_BYTE(val, 0);
++		ak4647_write_reg(AK4647_PM3, val);
++
++		/* power up DAC */
++		ak4647_read_reg(AK4647_PM1, &val);
++		SET_BIT_IN_BYTE(val, 2);
++		ak4647_write_reg(AK4647_PM1, val);
++
++		msleep(30);
++
++		/* headphone output switch on */
++		ak4647_read_reg(AK4647_MODE4, &val);
++		SET_BIT_IN_BYTE(val, 0);
++		ak4647_write_reg(AK4647_MODE4, val);
++
++		/* power on headphone amp */
++		ak4647_read_reg(AK4647_PM2, &val);
++		SET_BIT_IN_BYTE(val, 4);
++		SET_BIT_IN_BYTE(val, 5);
++		ak4647_write_reg(AK4647_PM2, val);
++
++		ak4647_digital_mute(NULL, 0);
++	} else {
++		ak4647_digital_mute(NULL, 1);
++
++		/* disbale loopback */
++		ak4647_read_reg(AK4647_MODE3, &val);
++		CLEAR_BIT_IN_BYTE(val, 6);
++		SET_BIT_IN_BYTE(val, 5);
++		ak4647_write_reg(AK4647_MODE3, val);
++
++		/* switch to R/L 2 */
++		ak4647_read_reg(AK4647_PM3, &val);
++		SET_BIT_IN_BYTE(val, 1);
++		SET_BIT_IN_BYTE(val, 2);
++		ak4647_write_reg(AK4647_PM3, val);
++	}
++	return 0;
++}
++
++static int loopback_xhandle_get(struct snd_kcontrol *kcontrol,
++				struct snd_ctl_elem_value *ucontrol)
++{
++	ucontrol->value.integer.value[0] = kcontrol->private_value;
++	return 0;
++}
++
++static int loopback_xhandle_put(struct snd_kcontrol *kcontrol,
++				struct snd_ctl_elem_value *ucontrol)
++{
++	int changed;
++	long flag = ucontrol->value.integer.value[0];
++	changed =
++	    (ucontrol->value.integer.value[0] ==
++	     kcontrol->private_value) ? 0 : 1;
++	kcontrol->private_value = flag;
++	if (flag)
++		pmic_audio_fm_output_enable(true);
++	else
++		pmic_audio_fm_output_enable(false);
++
++	return changed;
++}
++
++static int ak4647_probe(struct platform_device *pdev)
++{
++	struct snd_soc_device *socdev = platform_get_drvdata(pdev);
++	struct snd_soc_codec *codec = socdev->codec;
++	int ret = 0;
++
++	codec = kzalloc(sizeof(struct snd_soc_codec), GFP_KERNEL);
++	if (codec == NULL)
++		return -ENOMEM;
++
++	socdev->codec = codec;
++	mutex_init(&codec->mutex);
++	INIT_LIST_HEAD(&codec->dapm_widgets);
++	INIT_LIST_HEAD(&codec->dapm_paths);
++	ak4647_socdev = socdev;
++
++	ret = i2c_add_driver(&ak4647_i2c_driver);
++	if (ret != 0) {
++		dev_err(&pdev->dev, "can't add i2c driver\n");
++		kfree(codec);
++	}
++
++	return ret;
++}
++
++/* power down chip */
++static int ak4647_remove(struct platform_device *pdev)
++{
++	struct snd_soc_device *socdev = platform_get_drvdata(pdev);
++	struct snd_soc_codec *codec = socdev->codec;
++
++	snd_soc_free_pcms(socdev);
++	snd_soc_dapm_free(socdev);
++	i2c_del_driver(&ak4647_i2c_driver);
++	kfree(codec);
++
++	return 0;
++}
++
++static int ak4647_suspend(struct platform_device *pdev, pm_message_t state)
++{
++
++	return 0;
++}
++
++static int ak4647_resume(struct platform_device *pdev)
++{
++
++	return 0;
++}
++
++struct snd_soc_codec_device soc_codec_dev_ak4647 = {
++	.probe = ak4647_probe,
++	.remove = ak4647_remove,
++	.suspend = ak4647_suspend,
++	.resume = ak4647_resume,
++};
++
++EXPORT_SYMBOL_GPL(soc_codec_dev_ak4647);
++
++MODULE_DESCRIPTION("ASoC ak4647 driver");
++MODULE_AUTHOR("Freescale Semiconductor, Inc.");
++MODULE_LICENSE("GPL");
+diff --git a/sound/soc/codecs/ak4647.h b/sound/soc/codecs/ak4647.h
+new file mode 100644
+index 0000000..d88832b
+--- /dev/null
++++ b/sound/soc/codecs/ak4647.h
+@@ -0,0 +1,92 @@
++/*
++ * Copyright 2008-2009 Freescale Semiconductor, Inc. All Rights Reserved.
++ */
++
++/*
++ * The code contained herein is licensed under the GNU General Public
++ * License. You may obtain a copy of the GNU General Public License
++ * Version 2 or later at the following locations:
++ *
++ * http://www.opensource.org/licenses/gpl-license.html
++ * http://www.gnu.org/copyleft/gpl.html
++ */
++
++/*!
++ * @file ak4647.h
++ * @brief Driver for AK4647
++ *
++ * @ingroup Sound
++ */
++#ifndef _AK4647_H_
++#define _AK4647_H_
++
++#ifdef __KERNEL__
++
++/*!
++ * AK4647 registers
++ */
++
++#define AK4647_PM1			0x00
++#define AK4647_PM2			0x01
++#define AK4647_SIG1		0x02
++#define AK4647_SIG2		0x03
++#define AK4647_MODE1		0x04
++#define AK4647_MODE2		0x05
++#define AK4647_TIMER		0x06
++#define AK4647_ALC1		0x07
++#define AK4647_ALC2		0x08
++
++#define AK4647_LEFT_INPUT_VOLUME	0x09
++#define AK4647_LEFT_DGT_VOLUME		0x0A
++#define AK4647_ALC3						0x0B
++#define AK4647_RIGHT_INPUT_VOLUME	0x0C
++#define AK4647_RIGHT_DGT_VOLUME		0x0D
++#define AK4647_MODE3						0x0E
++#define AK4647_MODE4						0x0F
++#define AK4647_PM3							0x10
++#define AK4647_DGT_FIL_SEL				0x11
++
++/* filter 3 coeffecient*/
++
++#define AK4647_FIL3_COEF0	0x12
++#define AK4647_FIL3_COEF1	0x13
++#define AK4647_FIL3_COEF2	0x14
++#define AK4647_FIL3_COEF3	0x15
++
++/* eq coeffecient*/
++
++#define AK4647_EQ_COEF0		0x16
++#define AK4647_EQ_COEF1		0x17
++#define AK4647_EQ_COEF2		0x18
++#define AK4647_EQ_COEF3		0x19
++#define AK4647_EQ_COEF4		0x1A
++#define AK4647_EQ_COEF5		0x1B
++
++/* filter 3 coeffecient*/
++
++#define AK4647_FIL1_COEF0	0x1C
++#define AK4647_FIL1_COEF1	0x1D
++#define AK4647_FIL1_COEF2	0x1E
++#define AK4647_FIL1_COEF3	0x1F
++
++#define AK4647_REG_START	0x00
++#define AK4647_REG_END		0x1F
++#define AK4647_REG_NUMBER	0x20
++
++/* clock divider id's */
++#define AK4647_BCLK_CLKDIV		0
++#define AK4647_MCLK_CLKDIV		1
++
++/* bit clock div values (AK4647_BCLK_CLKDIV)*/
++#define AK4647_BCLK_DIV_32		0
++#define AK4647_BCLK_DIV_64		1
++
++/* m clock div values (AK4647_MCLK_CLKDIV)*/
++#define AK4647_MCLK_DIV_32		0
++#define AK4647_MCLK_DIV_64		1
++#define AK4647_MCLK_DIV_128	2
++#define AK4647_MCLK_DIV_256	3
++
++#endif				/* __KERNEL__ */
++
++#endif				/* _AK4647_H_ */
+diff --git a/sound/soc/imx/Kconfig b/sound/soc/imx/Kconfig
+index 4722515..816e003 100644
+--- a/sound/soc/imx/Kconfig
++++ b/sound/soc/imx/Kconfig
+@@ -25,5 +25,13 @@ config SND_SOC_IMX_3STACK_SGTL5000
+    Say Y if you want to add support for SoC audio on IMX 3STACK
+    with the SGTL5000.
+ 
++config SND_SOC_IMX_3STACK_AK4647
++ tristate "SoC Audio support for IMX - AK4647"
++ select SND_MXC_SOC_SSI
++ select SND_SOC_AK4647
++ help
++   Say Y if you want to add support for SoC audio on IMX 3STACK
++   with the AK4647.
++
+ endif
+ 
+diff --git a/sound/soc/imx/Makefile b/sound/soc/imx/Makefile
+index a9d959e..b8662c9 100644
+--- a/sound/soc/imx/Makefile
++++ b/sound/soc/imx/Makefile
+@@ -8,4 +8,6 @@ obj-$(CONFIG_SND_MXC_SOC_SSI) += snd-soc-imx-ssi.o
+ # i.MX Machine Support
+ snd-soc-imx-3stack-sgtl5000-objs := imx-3stack-sgtl5000.o
+ obj-$(CONFIG_SND_SOC_IMX_3STACK_SGTL5000) += snd-soc-imx-3stack-sgtl5000.o
++snd-soc-imx-3stack-ak4647-objs := imx-3stack-ak4647.o
++obj-$(CONFIG_SND_SOC_IMX_3STACK_AK4647) += snd-soc-imx-3stack-ak4647.o
+ 
+diff --git a/sound/soc/imx/imx-3stack-ak4647.c b/sound/soc/imx/imx-3stack-ak4647.c
+new file mode 100644
+index 0000000..4c03263
+--- /dev/null
++++ b/sound/soc/imx/imx-3stack-ak4647.c
+@@ -0,0 +1,438 @@
++/*
++ * imx-3stack-ak4647.c  --  SoC audio for imx_3stack
++ *
++ * Copyright 2008-2009 Freescale  Semiconductor, Inc. All Rights Reserved.
++ */
++
++/*
++ * The code contained herein is licensed under the GNU General Public
++ * License. You may obtain a copy of the GNU General Public License
++ * Version 2 or later at the following locations:
++ *
++ * http://www.opensource.org/licenses/gpl-license.html
++ * http://www.gnu.org/copyleft/gpl.html
++ */
++
++#include <linux/module.h>
++#include <linux/moduleparam.h>
++#include <linux/device.h>
++#include <linux/i2c.h>
++#include <linux/clk.h>
++#include <linux/delay.h>
++#include <linux/io.h>
++#include <sound/core.h>
++#include <sound/pcm.h>
++#include <sound/soc.h>
++#include <sound/soc-dapm.h>
++#include <sound/initval.h>
++#include <mach/clock.h>
++#include <mach/mxc.h>
++#include <linux/regulator/consumer.h>
++
++#include "imx-pcm.h"
++#include "imx-ssi.h"
++
++#define AK4647_SSI_MASTER	1
++
++extern struct snd_soc_dai ak4647_hifi_dai;
++extern struct snd_soc_codec_device soc_codec_dev_ak4647;
++
++static void headphone_detect_handler(struct work_struct *work);
++static DECLARE_WORK(hp_event, headphone_detect_handler);
++static int ak4647_jack_func;
++static int ak4647_spk_func;
++
++struct imx_3stack_priv {
++	struct platform_device *pdev;
++};
++
++static struct imx_3stack_priv machine_priv;
++
++static void imx_3stack_init_dam(int ssi_port, int dai_port)
++{
++	/* AK4647 uses SSI1 or SSI2 via AUDMUX port dai_port for audio */
++	unsigned int ssi_ptcr = 0;
++	unsigned int dai_ptcr = 0;
++	unsigned int ssi_pdcr = 0;
++	unsigned int dai_pdcr = 0;
++
++	/* reset port ssi_port & dai_port */
++	__raw_writel(0, DAM_PTCR(ssi_port));
++	__raw_writel(0, DAM_PTCR(dai_port));
++	__raw_writel(0, DAM_PDCR(ssi_port));
++	__raw_writel(0, DAM_PDCR(dai_port));
++
++	/* set to synchronous */
++	ssi_ptcr |= AUDMUX_PTCR_SYN;
++	dai_ptcr |= AUDMUX_PTCR_SYN;
++
++#if AK4647_SSI_MASTER
++	/* set Rx sources ssi_port <--> dai_port */
++	ssi_pdcr |= AUDMUX_PDCR_RXDSEL(dai_port);
++	dai_pdcr |= AUDMUX_PDCR_RXDSEL(ssi_port);
++
++	/* set Tx frame direction and source  dai_port--> ssi_port output */
++	ssi_ptcr |= AUDMUX_PTCR_TFSDIR;
++	ssi_ptcr |= AUDMUX_PTCR_TFSSEL(AUDMUX_FROM_TXFS, dai_port);
++
++	/* set Tx Clock direction and source dai_port--> ssi_port output */
++	ssi_ptcr |= AUDMUX_PTCR_TCLKDIR;
++	ssi_ptcr |= AUDMUX_PTCR_TCSEL(AUDMUX_FROM_TXFS, dai_port);
++#else
++	/* set Rx sources ssi_port <--> dai_port */
++	ssi_pdcr |= AUDMUX_PDCR_RXDSEL(dai_port);
++	dai_pdcr |= AUDMUX_PDCR_RXDSEL(ssi_port);
++
++	/* set Tx frame direction and source  ssi_port --> dai_port output */
++	dai_ptcr |= AUDMUX_PTCR_TFSDIR;
++	dai_ptcr |= AUDMUX_PTCR_TFSSEL(AUDMUX_FROM_TXFS, ssi_port);
++
++	/* set Tx Clock direction and source ssi_port--> dai_port output */
++	dai_ptcr |= AUDMUX_PTCR_TCLKDIR;
++	dai_ptcr |= AUDMUX_PTCR_TCSEL(AUDMUX_FROM_TXFS, ssi_port);
++#endif
++
++	__raw_writel(ssi_ptcr, DAM_PTCR(ssi_port));
++	__raw_writel(dai_ptcr, DAM_PTCR(dai_port));
++	__raw_writel(ssi_pdcr, DAM_PDCR(ssi_port));
++	__raw_writel(dai_pdcr, DAM_PDCR(dai_port));
++}
++
++static int imx_3stack_hifi_hw_params(struct snd_pcm_substream *substream,
++				     struct snd_pcm_hw_params *params)
++{
++	struct snd_soc_pcm_runtime *rtd = substream->private_data;
++	struct snd_soc_dai_link *pcm_link = rtd->dai;
++	struct snd_soc_dai *cpu_dai = pcm_link->cpu_dai;
++	struct snd_soc_dai *codec_dai = pcm_link->codec_dai;
++	unsigned int channels = params_channels(params);
++	unsigned int rate = params_rate(params);
++	int ret = 0;
++	u32 dai_format;
++
++#if AK4647_SSI_MASTER
++	dai_format = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
++	    SND_SOC_DAIFMT_CBM_CFM | SND_SOC_DAIFMT_SYNC;
++#else
++	dai_format = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
++	    SND_SOC_DAIFMT_CBS_CFS | SND_SOC_DAIFMT_SYNC;
++#endif
++	if (channels == 2)
++		dai_format |= SND_SOC_DAIFMT_TDM;
++
++	/* set codec DAI configuration */
++	ret = snd_soc_dai_set_fmt(codec_dai, dai_format);
++	if (ret < 0)
++		return ret;
++
++	/* set cpu DAI configuration */
++	ret = snd_soc_dai_set_fmt(cpu_dai, dai_format);
++	if (ret < 0)
++		return ret;
++
++	/* set i.MX active slot mask */
++	snd_soc_dai_set_tdm_slot(cpu_dai,
++				 channels == 1 ? 0xfffffffe : 0xfffffffc, 2);
++
++	/* set the SSI system clock as input (unused) */
++	snd_soc_dai_set_sysclk(cpu_dai, IMX_SSP_SYS_CLK, 0, SND_SOC_CLOCK_IN);
++
++	snd_soc_dai_set_sysclk(codec_dai, 0, rate, 0);
++
++	/* set codec BCLK division for sample rate */
++	snd_soc_dai_set_clkdiv(codec_dai, 0, 0);
++
++	return 0;
++}
++
++/*
++ * imx_3stack ak4647 HiFi DAI operations.
++ */
++static struct snd_soc_ops imx_3stack_hifi_ops = {
++	.hw_params = imx_3stack_hifi_hw_params,
++};
++
++static int ak4647_get_jack(struct snd_kcontrol *kcontrol,
++			   struct snd_ctl_elem_value *ucontrol)
++{
++	ucontrol->value.integer.value[0] = ak4647_jack_func;
++	return 0;
++}
++
++static int ak4647_set_jack(struct snd_kcontrol *kcontrol,
++			   struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
++	if (ak4647_jack_func == ucontrol->value.integer.value[0])
++		return 0;
++
++	ak4647_jack_func = ucontrol->value.integer.value[0];
++
++	if (ak4647_jack_func)
++		snd_soc_dapm_enable_pin(codec, "Headphone Jack");
++	else
++		snd_soc_dapm_disable_pin(codec, "Headphone Jack");
++
++	snd_soc_dapm_sync(codec);
++	return 1;
++}
++
++static int ak4647_get_spk(struct snd_kcontrol *kcontrol,
++			  struct snd_ctl_elem_value *ucontrol)
++{
++	ucontrol->value.integer.value[0] = ak4647_spk_func;
++	return 0;
++}
++
++static int ak4647_set_spk(struct snd_kcontrol *kcontrol,
++			  struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
++	if (ak4647_spk_func == ucontrol->value.integer.value[0])
++		return 0;
++
++	ak4647_spk_func = ucontrol->value.integer.value[0];
++	if (ak4647_spk_func)
++		snd_soc_dapm_enable_pin(codec, "Line Out Jack");
++	else
++		snd_soc_dapm_disable_pin(codec, "Line Out Jack");
++
++	snd_soc_dapm_sync(codec);
++	return 1;
++}
++
++static int spk_amp_event(struct snd_soc_dapm_widget *w,
++			 struct snd_kcontrol *kcontrol, int event)
++{
++	struct imx_3stack_priv *priv = &machine_priv;
++	struct platform_device *pdev = priv->pdev;
++	struct mxc_audio_platform_data *plat = pdev->dev.platform_data;
++
++	if (plat->amp_enable == NULL)
++		return 0;
++
++	if (SND_SOC_DAPM_EVENT_ON(event))
++		plat->amp_enable(1);
++	else
++		plat->amp_enable(0);
++	return 0;
++}
++
++/* imx_3stack machine dapm widgets */
++static const struct snd_soc_dapm_widget imx_3stack_dapm_widgets[] = {
++	SND_SOC_DAPM_MIC("Mic1 Jack", NULL),
++	SND_SOC_DAPM_LINE("Line In Jack", NULL),
++	SND_SOC_DAPM_LINE("Line Out Jack", NULL),
++	SND_SOC_DAPM_SPK("Ext Spk", spk_amp_event),
++	SND_SOC_DAPM_HP("Headphone Jack", NULL),
++};
++
++/* example machine audio_mapnections */
++static const struct snd_soc_dapm_route audio_map[] = {
++	/* mic is connected to mic1 - with bias */
++	{"Left Input", NULL, "Mic1 Jack"},
++
++	/* Line in jack */
++	{"Left Input", NULL, "Line In Jack"},
++	{"Right Input", NULL, "Line In Jack"},
++
++	/* Headphone jack */
++	{"Headphone Jack", NULL, "HPL"},
++	{"Headphone Jack", NULL, "HPR"},
++
++	/* Line out jack */
++	{"Line Out Jack", NULL, "LOUT"},
++
++	/* Ext Spk */
++	{"Ext Spk", NULL, "LOUT"},
++
++};
++
++static const char *jack_function[] = { "off", "on" };
++
++static const char *spk_function[] = { "off", "on" };
++
++static const struct soc_enum ak4647_enum[] = {
++	SOC_ENUM_SINGLE_EXT(2, jack_function),
++	SOC_ENUM_SINGLE_EXT(2, spk_function),
++};
++
++static const struct snd_kcontrol_new ak4647_machine_controls[] = {
++	SOC_ENUM_EXT("Jack Function", ak4647_enum[0], ak4647_get_jack,
++		     ak4647_set_jack),
++	SOC_ENUM_EXT("Speaker Function", ak4647_enum[1], ak4647_get_spk,
++		     ak4647_set_spk),
++};
++
++static void headphone_detect_handler(struct work_struct *work)
++{
++	struct imx_3stack_priv *priv = &machine_priv;
++	struct platform_device *pdev = priv->pdev;
++
++	sysfs_notify(&pdev->dev.kobj, NULL, "headphone");
++}
++
++static irqreturn_t imx_headphone_detect_handler(int irq, void *dev_id)
++{
++	schedule_work(&hp_event);
++	return IRQ_HANDLED;
++
++}
++
++static ssize_t show_headphone(struct device_driver *dev, char *buf)
++{
++	struct imx_3stack_priv *priv = &machine_priv;
++	struct platform_device *pdev = priv->pdev;
++	struct mxc_audio_platform_data *plat = pdev->dev.platform_data;
++	unsigned int value;
++
++	value = plat->hp_status();
++
++	if (value == 0)
++		strcpy(buf, "speaker\n");
++	else
++		strcpy(buf, "headphone\n");
++
++	return strlen(buf);
++}
++
++DRIVER_ATTR(headphone, S_IRUGO | S_IWUSR, show_headphone, NULL);
++
++static int imx_3stack_ak4647_init(struct snd_soc_codec *codec)
++{
++	int i, ret;
++	for (i = 0; i < ARRAY_SIZE(ak4647_machine_controls); i++) {
++		ret = snd_ctl_add(codec->card,
++				  snd_soc_cnew(&ak4647_machine_controls[i],
++					       codec, NULL));
++		if (ret < 0)
++			return ret;
++	}
++
++	snd_soc_dapm_new_controls(codec, imx_3stack_dapm_widgets,
++				  ARRAY_SIZE(imx_3stack_dapm_widgets));
++
++	snd_soc_dapm_add_routes(codec, audio_map, ARRAY_SIZE(audio_map));
++
++	snd_soc_dapm_sync(codec);
++
++	return 0;
++}
++
++static struct snd_soc_dai_link imx_3stack_dai = {
++	.name = "ak4647",
++	.stream_name = "ak4647",
++	.cpu_dai = &imx_ssi_dai,
++	.codec_dai = &ak4647_hifi_dai,
++	.init = imx_3stack_ak4647_init,
++	.ops = &imx_3stack_hifi_ops,
++};
++
++static struct snd_soc_machine snd_soc_machine_imx_3stack = {
++	.name = "imx-3stack",
++	.dai_link = &imx_3stack_dai,
++	.num_links = 1,
++};
++
++static struct snd_soc_device imx_3stack_snd_devdata = {
++	.machine = &snd_soc_machine_imx_3stack,
++	.platform = &imx_soc_platform,
++	.codec_dev = &soc_codec_dev_ak4647,
++};
++
++/*
++ * This function will register the snd_soc_pcm_link drivers.
++ * It also registers devices for platform DMA, I2S, SSP and registers an
++ * I2C driver to probe the codec.
++ */
++static int __init imx_3stack_ak4647_probe(struct platform_device *pdev)
++{
++	struct mxc_audio_platform_data *dev_data = pdev->dev.platform_data;
++	struct imx_3stack_priv *priv = &machine_priv;
++	int ret = 0;
++
++	dev_data->init();
++
++	/* imx_3stack ak4647 hifi interface */
++	if (dev_data->src_port == 1)
++		imx_ssi_dai.name = "imx-ssi-1";
++	else
++		imx_ssi_dai.name = "imx-ssi-3";
++
++	/* Configure audio port 3 */
++	gpio_activate_audio_ports();
++	imx_3stack_init_dam(dev_data->src_port, dev_data->ext_port);
++
++	if (request_irq
++	    (dev_data->intr_id_hp, imx_headphone_detect_handler, 0,
++	     "headphone", NULL))
++		goto err;
++
++	ret = driver_create_file(pdev->dev.driver, &driver_attr_headphone);
++	if (ret < 0)
++		goto sysfs_err;
++
++	priv->pdev = pdev;
++	return ret;
++
++sysfs_err:
++	free_irq(dev_data->intr_id_hp, NULL);
++err:
++	return ret;
++}
++
++static int __devexit imx_3stack_ak4647_remove(struct platform_device *pdev)
++{
++	struct mxc_audio_platform_data *dev_data = pdev->dev.platform_data;
++	gpio_inactivate_audio_ports();
++	free_irq(dev_data->intr_id_hp, NULL);
++	driver_remove_file(pdev->dev.driver, &driver_attr_headphone);
++	return 0;
++}
++
++static struct platform_driver imx_3stack_ak4647_driver = {
++	.probe = imx_3stack_ak4647_probe,
++	.remove = __devexit_p(imx_3stack_ak4647_remove),
++	.driver = {
++		   .name = "imx-3stack-ak4647",
++		   .owner = THIS_MODULE,
++		   },
++};
++
++static struct platform_device *imx_3stack_snd_device;
++
++static int __init imx_3stack_asoc_init(void)
++{
++	int ret;
++
++	ret = platform_driver_register(&imx_3stack_ak4647_driver);
++	if (ret < 0)
++		goto exit;
++	imx_3stack_snd_device = platform_device_alloc("soc-audio", 3);
++	if (!imx_3stack_snd_device)
++		goto err_device_alloc;
++	platform_set_drvdata(imx_3stack_snd_device, &imx_3stack_snd_devdata);
++	imx_3stack_snd_devdata.dev = &imx_3stack_snd_device->dev;
++	ret = platform_device_add(imx_3stack_snd_device);
++	if (0 == ret)
++		goto exit;
++
++	platform_device_put(imx_3stack_snd_device);
++err_device_alloc:
++	platform_driver_unregister(&imx_3stack_ak4647_driver);
++exit:
++	return ret;
++}
++
++static void __exit imx_3stack_asoc_exit(void)
++{
++	platform_driver_unregister(&imx_3stack_ak4647_driver);
++	platform_device_unregister(imx_3stack_snd_device);
++}
++
++module_init(imx_3stack_asoc_init);
++module_exit(imx_3stack_asoc_exit);
++
++/* Module information */
++MODULE_DESCRIPTION("ALSA SoC ak4647 imx_3stack");
++MODULE_LICENSE("GPL");
+-- 
+1.5.4.4
+

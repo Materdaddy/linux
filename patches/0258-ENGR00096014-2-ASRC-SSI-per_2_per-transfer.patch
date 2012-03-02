@@ -1,0 +1,644 @@
+From 6988a3a9e0545a7bc5856a6886573915dad85370 Mon Sep 17 00:00:00 2001
+From: Wallace Wang <r59996@freescale.com>
+Date: Fri, 5 Jun 2009 18:13:51 +0800
+Subject: [PATCH] ENGR00096014-2 ASRC-SSI per_2_per transfer
+
+Add ASRC-SSI p2p transfer support
+
+Signed-off-by: Wallace Wang <r59996@freescale.com>
+---
+ arch/arm/mach-mx35/dma.c              |  212 +++++++++++++++++++++++++++++++++
+ arch/arm/plat-mxc/include/mach/dma.h  |    8 ++
+ arch/arm/plat-mxc/include/mach/mx35.h |    8 ++
+ sound/soc/codecs/sgtl5000.c           |   23 +++-
+ sound/soc/codecs/sgtl5000.h           |    3 +
+ sound/soc/imx/imx-3stack-sgtl5000.c   |  153 +++++++++++++++++++++++-
+ sound/soc/imx/imx-pcm.c               |   26 ++++-
+ 7 files changed, 422 insertions(+), 11 deletions(-)
+
+diff --git a/arch/arm/mach-mx35/dma.c b/arch/arm/mach-mx35/dma.c
+index 2a72560..ef7f557 100644
+--- a/arch/arm/mach-mx35/dma.c
++++ b/arch/arm/mach-mx35/dma.c
+@@ -609,6 +609,210 @@ static mxc_sdma_channel_params_t mxc_sdma_asrcc_tx_params = {
+ 	.chnl_priority = MXC_SDMA_DEFAULT_PRIORITY,
+ };
+ 
++static mxc_sdma_channel_ext_params_t mxc_sdma_asrca_ssi1_tx0_params = {
++	.chnl_ext_params = {
++			    .common = {
++				       .watermark_level =
++				       MXC_ASRC_FIFO_WML >> 1,
++				       .per_address =
++				       SSI1_BASE_ADDR + MXC_SSI_TX0_REG,
++				       .peripheral_type = ASRC,
++				       .transfer_type = per_2_per,
++				       .event_id = DMA_REQ_SSI1_TX1,
++				       .event_id2 = DMA_REQ_ASRC_DMA4,
++				       .bd_number = 32,
++				       .word_size = TRANSFER_32BIT,
++				       .ext = 1,
++				       },
++			    .p2p_dir = 0,
++			    .info_bits =
++			    SDMA_ASRC_P2P_INFO_CONT | SDMA_ASRC_P2P_INFO_SP,
++			    .watermark_level2 = MXC_SSI_TXFIFO_WML,
++			    .per_address2 = ASRC_BASE_ADDR + MXC_ASRCA_TX_REG,
++			    },
++	.channel_num = MXC_DMA_CHANNEL_ASRCA_SSI1_TX0,
++	.chnl_priority = MXC_SDMA_DEFAULT_PRIORITY,
++};
++
++static mxc_sdma_channel_ext_params_t mxc_sdma_asrca_ssi1_tx1_params = {
++	.chnl_ext_params = {
++			    .common = {
++				       .watermark_level =
++				       MXC_ASRC_FIFO_WML >> 1,
++				       .per_address =
++				       SSI1_BASE_ADDR + MXC_SSI_TX1_REG,
++				       .peripheral_type = ASRC,
++				       .transfer_type = per_2_per,
++				       .event_id = DMA_REQ_SSI1_TX2,
++				       .event_id2 = DMA_REQ_ASRC_DMA4,
++				       .bd_number = 32,
++				       .word_size = TRANSFER_32BIT,
++				       .ext = 1,
++				       },
++			    .p2p_dir = 0,
++			    .info_bits =
++			    SDMA_ASRC_P2P_INFO_CONT | SDMA_ASRC_P2P_INFO_SP,
++			    .watermark_level2 = MXC_SSI_TXFIFO_WML,
++			    .per_address2 = ASRC_BASE_ADDR + MXC_ASRCA_TX_REG,
++			    },
++	.channel_num = MXC_DMA_CHANNEL_ASRCA_SSI1_TX1,
++	.chnl_priority = MXC_SDMA_DEFAULT_PRIORITY,
++};
++
++static mxc_sdma_channel_ext_params_t mxc_sdma_asrca_ssi2_tx0_params = {
++	.chnl_ext_params = {
++			    .common = {
++				       .watermark_level =
++				       MXC_ASRC_FIFO_WML >> 1,
++				       .per_address =
++				       SSI2_BASE_ADDR + MXC_SSI_TX0_REG,
++				       .peripheral_type = ASRC,
++				       .transfer_type = per_2_per,
++				       .event_id = DMA_REQ_SSI2_TX1,
++				       .event_id2 = DMA_REQ_ASRC_DMA4,
++				       .bd_number = 32,
++				       .word_size = TRANSFER_32BIT,
++				       .ext = 1,
++				       },
++			    .p2p_dir = 0,
++			    .info_bits =
++			    SDMA_ASRC_P2P_INFO_CONT | SDMA_ASRC_P2P_INFO_SP |
++			    SDMA_ASRC_P2P_INFO_DP,
++			    .watermark_level2 = MXC_SSI_TXFIFO_WML,
++			    .per_address2 = ASRC_BASE_ADDR + MXC_ASRCA_TX_REG,
++			    },
++	.channel_num = MXC_DMA_CHANNEL_ASRCA_SSI2_TX0,
++	.chnl_priority = MXC_SDMA_DEFAULT_PRIORITY,
++};
++
++static mxc_sdma_channel_ext_params_t mxc_sdma_asrca_ssi2_tx1_params = {
++	.chnl_ext_params = {
++			    .common = {
++				       .watermark_level =
++				       MXC_ASRC_FIFO_WML >> 1,
++				       .per_address =
++				       SSI2_BASE_ADDR + MXC_SSI_TX1_REG,
++				       .peripheral_type = ASRC,
++				       .transfer_type = per_2_per,
++				       .event_id = DMA_REQ_SSI2_TX2,
++				       .event_id2 = DMA_REQ_ASRC_DMA4,
++				       .bd_number = 32,
++				       .word_size = TRANSFER_32BIT,
++				       .ext = 1,
++				       },
++			    .p2p_dir = 0,
++			    .info_bits =
++			    SDMA_ASRC_P2P_INFO_CONT | SDMA_ASRC_P2P_INFO_SP |
++			    SDMA_ASRC_P2P_INFO_DP,
++			    .watermark_level2 = MXC_SSI_TXFIFO_WML,
++			    .per_address2 = ASRC_BASE_ADDR + MXC_ASRCA_TX_REG,
++			    },
++	.channel_num = MXC_DMA_CHANNEL_ASRCA_SSI2_TX1,
++	.chnl_priority = MXC_SDMA_DEFAULT_PRIORITY,
++};
++
++static mxc_sdma_channel_ext_params_t mxc_sdma_asrcb_ssi1_tx0_params = {
++	.chnl_ext_params = {
++			    .common = {
++				       .watermark_level =
++				       MXC_ASRC_FIFO_WML >> 1,
++				       .per_address =
++				       SSI1_BASE_ADDR + MXC_SSI_TX0_REG,
++				       .peripheral_type = ASRC,
++				       .transfer_type = per_2_per,
++				       .event_id = DMA_REQ_SSI1_TX1,
++				       .event_id2 = DMA_REQ_ASRC_DMA5,
++				       .bd_number = 32,
++				       .word_size = TRANSFER_32BIT,
++				       .ext = 1,
++				       },
++			    .p2p_dir = 0,
++			    .info_bits =
++			    SDMA_ASRC_P2P_INFO_CONT | SDMA_ASRC_P2P_INFO_SP,
++			    .watermark_level2 = MXC_SSI_TXFIFO_WML,
++			    .per_address2 = ASRC_BASE_ADDR + MXC_ASRCB_TX_REG,
++			    },
++	.channel_num = MXC_DMA_CHANNEL_ASRCB_SSI1_TX0,
++	.chnl_priority = MXC_SDMA_DEFAULT_PRIORITY,
++};
++
++static mxc_sdma_channel_ext_params_t mxc_sdma_asrcb_ssi1_tx1_params = {
++	.chnl_ext_params = {
++			    .common = {
++				       .watermark_level =
++				       MXC_ASRC_FIFO_WML >> 1,
++				       .per_address =
++				       SSI1_BASE_ADDR + MXC_SSI_TX1_REG,
++				       .peripheral_type = ASRC,
++				       .transfer_type = per_2_per,
++				       .event_id = DMA_REQ_SSI1_TX2,
++				       .event_id2 = DMA_REQ_ASRC_DMA5,
++				       .bd_number = 32,
++				       .word_size = TRANSFER_32BIT,
++				       .ext = 1,
++				       },
++			    .p2p_dir = 0,
++			    .info_bits =
++			    SDMA_ASRC_P2P_INFO_CONT | SDMA_ASRC_P2P_INFO_SP,
++			    .watermark_level2 = MXC_SSI_TXFIFO_WML,
++			    .per_address2 = ASRC_BASE_ADDR + MXC_ASRCB_TX_REG,
++			    },
++	.channel_num = MXC_DMA_CHANNEL_ASRCB_SSI1_TX1,
++	.chnl_priority = MXC_SDMA_DEFAULT_PRIORITY,
++};
++
++static mxc_sdma_channel_ext_params_t mxc_sdma_asrcb_ssi2_tx0_params = {
++	.chnl_ext_params = {
++			    .common = {
++				       .watermark_level =
++				       MXC_ASRC_FIFO_WML >> 1,
++				       .per_address =
++				       SSI2_BASE_ADDR + MXC_SSI_TX0_REG,
++				       .peripheral_type = ASRC,
++				       .transfer_type = per_2_per,
++				       .event_id = DMA_REQ_SSI2_TX1,
++				       .event_id2 = DMA_REQ_ASRC_DMA5,
++				       .bd_number = 32,
++				       .word_size = TRANSFER_32BIT,
++				       .ext = 1,
++				       },
++			    .p2p_dir = 0,
++			    .info_bits =
++			    SDMA_ASRC_P2P_INFO_CONT | SDMA_ASRC_P2P_INFO_SP |
++			    SDMA_ASRC_P2P_INFO_DP,
++			    .watermark_level2 = MXC_SSI_TXFIFO_WML,
++			    .per_address2 = ASRC_BASE_ADDR + MXC_ASRCB_TX_REG,
++			    },
++	.channel_num = MXC_DMA_CHANNEL_ASRCB_SSI2_TX0,
++	.chnl_priority = MXC_SDMA_DEFAULT_PRIORITY,
++};
++
++static mxc_sdma_channel_ext_params_t mxc_sdma_asrcb_ssi2_tx1_params = {
++	.chnl_ext_params = {
++			    .common = {
++				       .watermark_level =
++				       MXC_ASRC_FIFO_WML >> 1,
++				       .per_address =
++				       SSI2_BASE_ADDR + MXC_SSI_TX1_REG,
++				       .peripheral_type = ASRC,
++				       .transfer_type = per_2_per,
++				       .event_id = DMA_REQ_SSI2_TX2,
++				       .event_id2 = DMA_REQ_ASRC_DMA5,
++				       .bd_number = 32,
++				       .word_size = TRANSFER_32BIT,
++				       .ext = 1,
++				       },
++			    .p2p_dir = 0,
++			    .info_bits =
++			    SDMA_ASRC_P2P_INFO_CONT | SDMA_ASRC_P2P_INFO_SP |
++			    SDMA_ASRC_P2P_INFO_DP,
++			    .watermark_level2 = MXC_SSI_TXFIFO_WML,
++			    .per_address2 = ASRC_BASE_ADDR + MXC_ASRCB_TX_REG,
++			    },
++	.channel_num = MXC_DMA_CHANNEL_ASRCB_SSI2_TX1,
++	.chnl_priority = MXC_SDMA_DEFAULT_PRIORITY,
++};
++
+ static mxc_sdma_channel_ext_params_t mxc_sdma_asrca_esai_params = {
+ 	.chnl_ext_params = {
+ 			    .common = {
+@@ -783,6 +987,14 @@ static struct mxc_sdma_info_entry_s mxc_sdma_active_dma_info[] = {
+ 	{MXC_DMA_ASRC_B_TX, &mxc_sdma_asrcb_tx_params},
+ 	{MXC_DMA_ASRC_C_RX, &mxc_sdma_asrcc_rx_params},
+ 	{MXC_DMA_ASRC_C_TX, &mxc_sdma_asrcc_tx_params},
++	{MXC_DMA_ASRCA_SSI1_TX0, &mxc_sdma_asrca_ssi1_tx0_params},
++	{MXC_DMA_ASRCA_SSI1_TX1, &mxc_sdma_asrca_ssi1_tx1_params},
++	{MXC_DMA_ASRCA_SSI2_TX0, &mxc_sdma_asrca_ssi2_tx0_params},
++	{MXC_DMA_ASRCA_SSI2_TX1, &mxc_sdma_asrca_ssi2_tx1_params},
++	{MXC_DMA_ASRCB_SSI1_TX0, &mxc_sdma_asrcb_ssi1_tx0_params},
++	{MXC_DMA_ASRCB_SSI1_TX1, &mxc_sdma_asrcb_ssi1_tx1_params},
++	{MXC_DMA_ASRCB_SSI2_TX0, &mxc_sdma_asrcb_ssi2_tx0_params},
++	{MXC_DMA_ASRCB_SSI2_TX1, &mxc_sdma_asrcb_ssi2_tx1_params},
+ 	{MXC_DMA_ASRCA_ESAI, &mxc_sdma_asrca_esai_params},
+ 	{MXC_DMA_ASRCB_ESAI, &mxc_sdma_asrcb_esai_params},
+ 	{MXC_DMA_ASRCC_ESAI, &mxc_sdma_asrcc_esai_params},
+diff --git a/arch/arm/plat-mxc/include/mach/dma.h b/arch/arm/plat-mxc/include/mach/dma.h
+index 68150ee..d6ba0e8 100644
+--- a/arch/arm/plat-mxc/include/mach/dma.h
++++ b/arch/arm/plat-mxc/include/mach/dma.h
+@@ -93,6 +93,14 @@ typedef enum mxc_dma_device {
+ 	MXC_DMA_ASRCA_ESAI,
+ 	MXC_DMA_ASRCB_ESAI,
+ 	MXC_DMA_ASRCC_ESAI,
++	MXC_DMA_ASRCA_SSI1_TX0,
++	MXC_DMA_ASRCA_SSI1_TX1,
++	MXC_DMA_ASRCA_SSI2_TX0,
++	MXC_DMA_ASRCA_SSI2_TX1,
++	MXC_DMA_ASRCB_SSI1_TX0,
++	MXC_DMA_ASRCB_SSI1_TX1,
++	MXC_DMA_ASRCB_SSI2_TX0,
++	MXC_DMA_ASRCB_SSI2_TX1,
+ 	MXC_DMA_ESAI_16BIT_RX,
+ 	MXC_DMA_ESAI_16BIT_TX,
+ 	MXC_DMA_ESAI_24BIT_RX,
+diff --git a/arch/arm/plat-mxc/include/mach/mx35.h b/arch/arm/plat-mxc/include/mach/mx35.h
+index 82befbf..37805bf 100644
+--- a/arch/arm/plat-mxc/include/mach/mx35.h
++++ b/arch/arm/plat-mxc/include/mach/mx35.h
+@@ -186,6 +186,14 @@
+ #define MXC_DMA_CHANNEL_ASRCA_ESAI MXC_DMA_DYNAMIC_CHANNEL
+ #define MXC_DMA_CHANNEL_ASRCB_ESAI MXC_DMA_DYNAMIC_CHANNEL
+ #define MXC_DMA_CHANNEL_ASRCC_ESAI MXC_DMA_DYNAMIC_CHANNEL
++#define MXC_DMA_CHANNEL_ASRCA_SSI1_TX0 MXC_DMA_DYNAMIC_CHANNEL
++#define MXC_DMA_CHANNEL_ASRCA_SSI1_TX1 MXC_DMA_DYNAMIC_CHANNEL
++#define MXC_DMA_CHANNEL_ASRCA_SSI2_TX0 MXC_DMA_DYNAMIC_CHANNEL
++#define MXC_DMA_CHANNEL_ASRCA_SSI2_TX1 MXC_DMA_DYNAMIC_CHANNEL
++#define MXC_DMA_CHANNEL_ASRCB_SSI1_TX0 MXC_DMA_DYNAMIC_CHANNEL
++#define MXC_DMA_CHANNEL_ASRCB_SSI1_TX1 MXC_DMA_DYNAMIC_CHANNEL
++#define MXC_DMA_CHANNEL_ASRCB_SSI2_TX0 MXC_DMA_DYNAMIC_CHANNEL
++#define MXC_DMA_CHANNEL_ASRCB_SSI2_TX1 MXC_DMA_DYNAMIC_CHANNEL
+ 
+ /*
+  * AIPS 2
+diff --git a/sound/soc/codecs/sgtl5000.c b/sound/soc/codecs/sgtl5000.c
+index 2618ae5..94bcaa7 100644
+--- a/sound/soc/codecs/sgtl5000.c
++++ b/sound/soc/codecs/sgtl5000.c
+@@ -29,6 +29,7 @@ struct sgtl5000_priv {
+ 	int master;
+ 	int fmt;
+ 	int rev;
++	int lrclk;
+ };
+ 
+ static int sgtl5000_set_bias_level(struct snd_soc_codec *codec,
+@@ -482,8 +483,16 @@ static int sgtl5000_set_dai_sysclk(struct snd_soc_dai *codec_dai,
+ 	struct snd_soc_codec *codec = codec_dai->codec;
+ 	struct sgtl5000_priv *sgtl5000 = codec->private_data;
+ 
+-	sgtl5000->sysclk = freq;
+-
++	switch (clk_id) {
++	case SGTL5000_SYSCLK:
++		sgtl5000->sysclk = freq;
++		break;
++	case SGTL5000_LRCLK:
++		sgtl5000->lrclk = freq;
++		break;
++	default:
++		return -EINVAL;
++	}
+ 	return 0;
+ }
+ 
+@@ -514,7 +523,6 @@ static int sgtl5000_pcm_hw_params(struct snd_pcm_substream *substream,
+ 	struct snd_soc_device *socdev = rtd->socdev;
+ 	struct snd_soc_codec *codec = socdev->codec;
+ 	struct sgtl5000_priv *sgtl5000 = codec->private_data;
+-	int fs = params_rate(params);
+ 	int channels = params_channels(params);
+ 	int clk_ctl = 0;
+ 	int pll_ctl = 0;
+@@ -537,7 +545,7 @@ static int sgtl5000_pcm_hw_params(struct snd_pcm_substream *substream,
+ 		sgtl5000_write(codec, SGTL5000_CHIP_ANA_TEST2, reg);
+ 	}
+ 
+-	switch (fs) {
++	switch (sgtl5000->lrclk) {
+ 	case 32000:
+ 		clk_ctl |= SGTL5000_SYS_FS_32k << SGTL5000_SYS_FS_SHIFT;
+ 		break;
+@@ -551,7 +559,8 @@ static int sgtl5000_pcm_hw_params(struct snd_pcm_substream *substream,
+ 		clk_ctl |= SGTL5000_SYS_FS_96k << SGTL5000_SYS_FS_SHIFT;
+ 		break;
+ 	default:
+-		pr_err("%s: sample rate %d not supported\n", __func__, fs);
++		pr_err("%s: sample rate %d not supported\n", __func__,
++		       sgtl5000->lrclk);
+ 		return -EFAULT;
+ 	}
+ 
+@@ -583,7 +592,7 @@ static int sgtl5000_pcm_hw_params(struct snd_pcm_substream *substream,
+ 			div2 = 0;
+ 			in = sgtl5000->sysclk;
+ 		}
+-		if (fs == 44100)
++		if (sgtl5000->lrclk == 44100)
+ 			out = 180633600;
+ 		else
+ 			out = 196608000;
+@@ -627,7 +636,7 @@ static int sgtl5000_pcm_hw_params(struct snd_pcm_substream *substream,
+ 	}
+ 
+ 	pr_debug("fs=%d,clk_ctl=%d,pll_ctl=%d,i2s_ctl=%d,div2=%d\n",
+-		 fs, clk_ctl, pll_ctl, i2s_ctl, div2);
++		 sgtl5000->lrclk, clk_ctl, pll_ctl, i2s_ctl, div2);
+ 
+ 	if ((clk_ctl & SGTL5000_MCLK_FREQ_MASK) == SGTL5000_MCLK_FREQ_PLL) {
+ 		sgtl5000_write(codec, SGTL5000_CHIP_PLL_CTRL, pll_ctl);
+diff --git a/sound/soc/codecs/sgtl5000.h b/sound/soc/codecs/sgtl5000.h
+index 6921474..d70552f 100644
+--- a/sound/soc/codecs/sgtl5000.h
++++ b/sound/soc/codecs/sgtl5000.h
+@@ -393,6 +393,9 @@ extern struct snd_soc_codec_device soc_codec_dev_sgtl5000;
+ #define SGTL5000_DAP_MIX_EN			0x0010
+ #define SGTL5000_DAP_EN				0x0001
+ 
++#define SGTL5000_SYSCLK		0x00
++#define SGTL5000_LRCLK		0x01
++
+ struct sgtl5000_platform_data {
+ 	int vddio;		/* voltage of VDDIO (mv) */
+ 	int vdda;		/* voltage of vdda (mv) */
+diff --git a/sound/soc/imx/imx-3stack-sgtl5000.c b/sound/soc/imx/imx-3stack-sgtl5000.c
+index 0d22b30..d38c0b2 100644
+--- a/sound/soc/imx/imx-3stack-sgtl5000.c
++++ b/sound/soc/imx/imx-3stack-sgtl5000.c
+@@ -41,6 +41,27 @@
+ #include "imx-ssi.h"
+ #include "imx-pcm.h"
+ 
++#if defined(CONFIG_MXC_ASRC) || defined(CONFIG_MXC_ASRC_MODULE)
++#include <linux/mxc_asrc.h>
++
++static unsigned int sgtl5000_rates[] = {
++	0,
++	32000,
++	44100,
++	48000,
++	96000,
++};
++
++struct asrc_esai {
++	unsigned int cpu_dai_rates;
++	unsigned int codec_dai_rates;
++	enum asrc_pair_index asrc_index;
++	unsigned int output_sample_rate;
++};
++
++static struct asrc_esai asrc_ssi_data;
++#endif
++
+ /* SSI BCLK and LRC master */
+ #define SGTL5000_SSI_MASTER	1
+ 
+@@ -63,6 +84,7 @@ static int imx_3stack_audio_hw_params(struct snd_pcm_substream *substream,
+ 	struct snd_soc_dai *cpu_dai = machine->cpu_dai;
+ 	struct snd_soc_dai *codec_dai = machine->codec_dai;
+ 	struct imx_3stack_priv *priv = &machine_priv;
++	unsigned int rate = params_rate(params);
+ 	int ret = 0;
+ 
+ 	unsigned int channels = params_channels(params);
+@@ -73,7 +95,47 @@ static int imx_3stack_audio_hw_params(struct snd_pcm_substream *substream,
+ 		return 0;
+ 	priv->hw = 1;
+ 
+-	snd_soc_dai_set_sysclk(codec_dai, 0, priv->sysclk, 0);
++#if defined(CONFIG_MXC_ASRC) || defined(CONFIG_MXC_ASRC_MODULE)
++	if ((asrc_ssi_data.output_sample_rate != 0)
++	    && (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)) {
++		unsigned int asrc_input_rate = rate;
++		unsigned int channel = params_channels(params);
++		struct mxc_runtime_data *pcm_data =
++		    substream->runtime->private_data;
++		struct asrc_config config;
++		struct mxc_audio_platform_data *plat;
++		struct imx_3stack_priv *priv = &machine_priv;
++		int retVal = 0;
++		retVal = asrc_req_pair(channel, &asrc_ssi_data.asrc_index);
++		if (retVal < 0) {
++			pr_err("asrc_req_pair fail\n");
++			return -1;
++		}
++		config.pair = asrc_ssi_data.asrc_index;
++		config.channel_num = channel;
++		config.input_sample_rate = asrc_input_rate;
++		config.output_sample_rate = asrc_ssi_data.output_sample_rate;
++		config.inclk = INCLK_NONE;
++		config.word_width = 32;
++		plat = priv->pdev->dev.platform_data;
++		if (plat->src_port == 1)
++			config.outclk = OUTCLK_SSI1_TX;
++		else
++			config.outclk = OUTCLK_SSI2_TX;
++		retVal = asrc_config_pair(&config);
++		if (retVal < 0) {
++			pr_err("Fail to config asrc\n");
++			asrc_release_pair(asrc_ssi_data.asrc_index);
++			return retVal;
++		}
++		rate = asrc_ssi_data.output_sample_rate;
++		pcm_data->asrc_index = asrc_ssi_data.asrc_index;
++		pcm_data->asrc_enable = 1;
++	}
++#endif
++
++	snd_soc_dai_set_sysclk(codec_dai, SGTL5000_SYSCLK, priv->sysclk, 0);
++	snd_soc_dai_set_sysclk(codec_dai, SGTL5000_LRCLK, rate, 0);
+ 
+ #if SGTL5000_SSI_MASTER
+ 	dai_format = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
+@@ -109,8 +171,7 @@ static int imx_3stack_audio_hw_params(struct snd_pcm_substream *substream,
+ 
+ 	/* set i.MX active slot mask */
+ 	snd_soc_dai_set_tdm_slot(cpu_dai,
+-				 channels == 1 ? 0xfffffffe : 0xfffffffc,
+-				 2);
++				 channels == 1 ? 0xfffffffe : 0xfffffffc, 2);
+ 
+ 	/* set the SSI system clock as input (unused) */
+ 	snd_soc_dai_set_sysclk(cpu_dai, IMX_SSP_SYS_CLK, 0, SND_SOC_CLOCK_IN);
+@@ -118,10 +179,49 @@ static int imx_3stack_audio_hw_params(struct snd_pcm_substream *substream,
+ 	return 0;
+ }
+ 
++static int imx_3stack_startup(struct snd_pcm_substream *substream)
++{
++#if defined(CONFIG_MXC_ASRC) || defined(CONFIG_MXC_ASRC_MODULE)
++	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
++		if (asrc_ssi_data.output_sample_rate != 0) {
++			struct snd_soc_pcm_runtime *rtd =
++			    substream->private_data;
++			struct snd_soc_dai_link *pcm_link = rtd->dai;
++			struct snd_soc_dai *cpu_dai = pcm_link->cpu_dai;
++			struct snd_soc_dai *codec_dai = pcm_link->codec_dai;
++			asrc_ssi_data.cpu_dai_rates = cpu_dai->playback.rates;
++			asrc_ssi_data.codec_dai_rates =
++			    codec_dai->playback.rates;
++			cpu_dai->playback.rates =
++			    SNDRV_PCM_RATE_8000_192000 | SNDRV_PCM_RATE_KNOT;
++			codec_dai->playback.rates =
++			    SNDRV_PCM_RATE_8000_192000 | SNDRV_PCM_RATE_KNOT;
++		}
++	}
++#endif
++	return 0;
++}
++
+ static void imx_3stack_shutdown(struct snd_pcm_substream *substream)
+ {
+ 	struct imx_3stack_priv *priv = &machine_priv;
+ 
++#if defined(CONFIG_MXC_ASRC) || defined(CONFIG_MXC_ASRC_MODULE)
++	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
++		if (asrc_ssi_data.output_sample_rate != 0) {
++			struct snd_soc_pcm_runtime *rtd =
++			    substream->private_data;
++			struct snd_soc_dai_link *pcm_link = rtd->dai;
++			struct snd_soc_dai *cpu_dai = pcm_link->cpu_dai;
++			struct snd_soc_dai *codec_dai = pcm_link->codec_dai;
++			codec_dai->playback.rates =
++			    asrc_ssi_data.codec_dai_rates;
++			cpu_dai->playback.rates = asrc_ssi_data.cpu_dai_rates;
++			asrc_release_pair(asrc_ssi_data.asrc_index);
++		}
++	}
++#endif
++
+ 	priv->hw = 0;
+ }
+ 
+@@ -129,6 +229,7 @@ static void imx_3stack_shutdown(struct snd_pcm_substream *substream)
+  * imx_3stack SGTL5000 audio DAI opserations.
+  */
+ static struct snd_soc_ops imx_3stack_ops = {
++	.startup = imx_3stack_startup,
+ 	.shutdown = imx_3stack_shutdown,
+ 	.hw_params = imx_3stack_audio_hw_params,
+ };
+@@ -341,10 +442,56 @@ static const struct snd_kcontrol_new sgtl5000_machine_controls[] = {
+ 		     sgtl5000_set_spk),
+ };
+ 
++#if defined(CONFIG_MXC_ASRC) || defined(CONFIG_MXC_ASRC_MODULE)
++static int asrc_func;
++
++static const char *asrc_function[] =
++    { "disable", "32KHz", "44.1KHz", "48KHz", "96KHz" };
++
++static const struct soc_enum asrc_enum[] = {
++	SOC_ENUM_SINGLE_EXT(5, asrc_function),
++};
++
++static int asrc_get_rate(struct snd_kcontrol *kcontrol,
++			 struct snd_ctl_elem_value *ucontrol)
++{
++	ucontrol->value.enumerated.item[0] = asrc_func;
++	return 0;
++}
++
++static int asrc_set_rate(struct snd_kcontrol *kcontrol,
++			 struct snd_ctl_elem_value *ucontrol)
++{
++	if (asrc_func == ucontrol->value.enumerated.item[0])
++		return 0;
++
++	asrc_func = ucontrol->value.enumerated.item[0];
++	asrc_ssi_data.output_sample_rate = sgtl5000_rates[asrc_func];
++
++	return 1;
++}
++
++static const struct snd_kcontrol_new asrc_controls[] = {
++	SOC_ENUM_EXT("ASRC", asrc_enum[0], asrc_get_rate,
++		     asrc_set_rate),
++};
++#endif
++
+ static int imx_3stack_sgtl5000_init(struct snd_soc_codec *codec)
+ {
+ 	int i, ret;
+ 
++#if defined(CONFIG_MXC_ASRC) || defined(CONFIG_MXC_ASRC_MODULE)
++	for (i = 0; i < ARRAY_SIZE(asrc_controls); i++) {
++		ret = snd_ctl_add(codec->card,
++				  snd_soc_cnew(&asrc_controls[i], codec, NULL));
++		if (ret < 0)
++			return ret;
++	}
++	asrc_ssi_data.output_sample_rate = sgtl5000_rates[asrc_func];
++
++#endif
++
+ 	/* Add imx_3stack specific controls */
+ 	for (i = 0; i < ARRAY_SIZE(sgtl5000_machine_controls); i++) {
+ 		ret = snd_ctl_add(codec->card,
+diff --git a/sound/soc/imx/imx-pcm.c b/sound/soc/imx/imx-pcm.c
+index 8f98b5a..9b7fed4 100644
+--- a/sound/soc/imx/imx-pcm.c
++++ b/sound/soc/imx/imx-pcm.c
+@@ -35,6 +35,7 @@
+ #include "imx-esai.h"
+ 
+ #if defined(CONFIG_MXC_ASRC) || defined(CONFIG_MXC_ASRC_MODULE)
++#include <linux/delay.h>
+ #include <linux/mxc_asrc.h>
+ #endif
+ 
+@@ -150,7 +151,27 @@ static int imx_get_sdma_transfer(int format, int dai_port,
+ 	struct snd_pcm_runtime *runtime = substream->runtime;
+ 	struct mxc_runtime_data *prtd = runtime->private_data;
+ 	if (prtd->asrc_enable == 1) {
+-		if (dai_port & IMX_DAI_ESAI_TX) {
++		if (dai_port == IMX_DAI_SSI0) {
++			if (prtd->asrc_index == 0)
++				transfer = MXC_DMA_ASRCA_SSI1_TX0;
++			else if (prtd->asrc_index == 1)
++				transfer = MXC_DMA_ASRCB_SSI1_TX0;
++		} else if (dai_port == IMX_DAI_SSI1) {
++			if (prtd->asrc_index == 0)
++				transfer = MXC_DMA_ASRCA_SSI1_TX1;
++			else if (prtd->asrc_index == 1)
++				transfer = MXC_DMA_ASRCB_SSI1_TX1;
++		} else if (dai_port == IMX_DAI_SSI2) {
++			if (prtd->asrc_index == 0)
++				transfer = MXC_DMA_ASRCA_SSI2_TX0;
++			else if (prtd->asrc_index == 1)
++				transfer = MXC_DMA_ASRCB_SSI2_TX0;
++		} else if (dai_port == IMX_DAI_SSI3) {
++			if (prtd->asrc_index == 0)
++				transfer = MXC_DMA_ASRCA_SSI2_TX1;
++			else if (prtd->asrc_index == 1)
++				transfer = MXC_DMA_ASRCB_SSI2_TX1;
++		} else if (dai_port & IMX_DAI_ESAI_TX) {
+ 			if (prtd->asrc_index == 0)
+ 				transfer = MXC_DMA_ASRCA_ESAI;
+ 			else if (prtd->asrc_index == 1)
+@@ -443,6 +464,9 @@ static int imx_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
+ 		if (prtd->asrc_enable == 1) {
+ 			ret = mxc_dma_enable(prtd->dma_asrc);
+ 			asrc_start_conv(prtd->asrc_index);
++			/* There is underrun, if immediately enable SSI after
++			   start ASRC */
++			mdelay(1);
+ 		}
+ #endif
+ 		break;
+-- 
+1.5.4.4
+

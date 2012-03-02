@@ -1,0 +1,40 @@
+From 3543031d1cafc660d0d445131729c599da7b4cb9 Mon Sep 17 00:00:00 2001
+From: Liu Ying <b17645@freescale.com>
+Date: Tue, 5 May 2009 12:57:01 +0800
+Subject: [PATCH] ENGR00112184 IPUv3:Correct resersed input/output IRT EOF bits
+
+The input and output EOF interrupt bits of IC IRT channels
+are reversed. This patch fix this problem.
+
+Signed-off-by: Liu Ying <b17645@freescale.com>
+(cherry picked from commit 306f77291e37057b05572ad5c226b64ffc73e218)
+---
+ include/linux/ipu.h |   12 ++++++------
+ 1 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/include/linux/ipu.h b/include/linux/ipu.h
+index d76602a..f671e6d 100644
+--- a/include/linux/ipu.h
++++ b/include/linux/ipu.h
+@@ -601,12 +601,12 @@ enum ipu_irq_line {
+ 	IPU_IRQ_DC_CMD1_EOF = 42,
+ 	IPU_IRQ_DC_CMD2_EOF = 43,
+ 	IPU_IRQ_DC_MASK_EOF = 44,
+-	IPU_IRQ_PRP_ENC_ROT_OUT_EOF = 45,
+-	IPU_IRQ_PRP_VF_ROT_OUT_EOF = 46,
+-	IPU_IRQ_PP_ROT_OUT_EOF = 47,
+-	IPU_IRQ_PRP_ENC_ROT_IN_EOF = 48,
+-	IPU_IRQ_PRP_VF_ROT_IN_EOF = 49,
+-	IPU_IRQ_PP_ROT_IN_EOF = 50,
++	IPU_IRQ_PRP_ENC_ROT_IN_EOF = 45,
++	IPU_IRQ_PRP_VF_ROT_IN_EOF = 46,
++	IPU_IRQ_PP_ROT_IN_EOF = 47,
++	IPU_IRQ_PRP_ENC_ROT_OUT_EOF = 48,
++	IPU_IRQ_PRP_VF_ROT_OUT_EOF = 49,
++	IPU_IRQ_PP_ROT_OUT_EOF = 50,
+ 	IPU_IRQ_BG_ALPHA_SYNC_EOF = 51,
+ 	IPU_IRQ_BG_ALPHA_ASYNC_EOF = 52,
+ 
+-- 
+1.5.4.4
+

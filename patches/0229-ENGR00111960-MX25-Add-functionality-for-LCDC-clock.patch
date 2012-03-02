@@ -1,0 +1,55 @@
+From c47a8239ca42567d4c56d12b7d09e13e9321e33f Mon Sep 17 00:00:00 2001
+From: Xiexiaobo <X.Xie@freescale.com>
+Date: Fri, 5 Jun 2009 11:40:28 +0800
+Subject: [PATCH] ENGR00111960 MX25: Add functionality for LCDC clock
+
+When setting the MX25 LCD Controller, always had the warning message:
+ "mx2fb: Unable to set clock to 0"
+This patch fixed it.
+
+Signed-off-by: Xie Xiaobo <X.Xie@freescale.com>
+(cherry picked from commit 2271c11672d3638be9b55bdae7142edac1712a75)
+---
+ arch/arm/mach-mx25/clock.c |   19 ++++++++++++++++++-
+ 1 files changed, 18 insertions(+), 1 deletions(-)
+
+diff --git a/arch/arm/mach-mx25/clock.c b/arch/arm/mach-mx25/clock.c
+index f244595..ebd4456 100644
+--- a/arch/arm/mach-mx25/clock.c
++++ b/arch/arm/mach-mx25/clock.c
+@@ -339,6 +339,21 @@ static void _clk_ipg_recalc(struct clk *clk)
+ 	clk->rate = clk->parent->rate / 2;	/* Always AHB / 2 */
+ }
+ 
++static unsigned long _clk_parent_round_rate(struct clk *clk, unsigned long rate)
++{
++	return clk->parent->round_rate(clk->parent, rate);
++}
++
++static int _clk_parent_set_rate(struct clk *clk, unsigned long rate)
++{
++	int ret;
++
++	ret = clk->parent->set_rate(clk->parent, rate);
++	if (ret == 0)
++		clk->rate = rate;
++	return ret;
++}
++
+ /* Top-level clocks */
+ 
+ static struct clk osc24m_clk = {
+@@ -1026,7 +1041,9 @@ struct clk lcdc_clk[] = {
+ 	 .name = "lcdc_clk",
+ 	 .id = 0,
+ 	 .parent = &per_clk[7],
+-	 .secondary = &lcdc_clk[1],},
++	 .secondary = &lcdc_clk[1],
++	 .round_rate = _clk_parent_round_rate,
++	 .set_rate = _clk_parent_set_rate,},
+ 	{
+ 	 .name = "lcdc_ipg_clk",
+ 	 .id = 0,
+-- 
+1.5.4.4
+

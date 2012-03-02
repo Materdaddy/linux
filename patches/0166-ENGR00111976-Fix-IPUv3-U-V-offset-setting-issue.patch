@@ -1,0 +1,37 @@
+From c159336a57b8e2c356af062a3269c03a19eca4e4 Mon Sep 17 00:00:00 2001
+From: Ding Qiang <B02550@freescale.com>
+Date: Thu, 30 Apr 2009 13:16:46 +0800
+Subject: [PATCH] ENGR00111976 Fix IPUv3 U/V offset setting issue
+
+Fix IPUv3 U/V offset setting issue for FMT_YUV420P
+
+Signed-off-by: Ding Qiang <B02550@freescale.com>
+---
+ drivers/mxc/ipu3/ipu_param_mem.h |    6 +++---
+ 1 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/mxc/ipu3/ipu_param_mem.h b/drivers/mxc/ipu3/ipu_param_mem.h
+index 76febf4..535f66a 100644
+--- a/drivers/mxc/ipu3/ipu_param_mem.h
++++ b/drivers/mxc/ipu3/ipu_param_mem.h
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright 2005-2008 Freescale Semiconductor, Inc. All Rights Reserved.
++ * Copyright 2005-2009 Freescale Semiconductor, Inc. All Rights Reserved.
+  */
+ 
+ /*
+@@ -225,8 +225,8 @@ static inline void _ipu_ch_param_init(int ch,
+ 		if (uv_stride < stride / 2)
+ 			uv_stride = stride / 2;
+ 
+-		u_offset = stride * height;
+-		v_offset = u_offset + (uv_stride * height / 2);
++		u_offset = (u == 0) ? stride * height : u;
++		v_offset = (v == 0) ? u_offset + (uv_stride * height / 2) : v;
+ 		break;
+ 	case IPU_PIX_FMT_YVU422P:
+ 		/* BPP & pixel format */
+-- 
+1.5.4.4
+

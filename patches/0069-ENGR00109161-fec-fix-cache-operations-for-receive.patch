@@ -1,0 +1,38 @@
+From e10eb45d290c472ccb07e8cded9153519e2e2245 Mon Sep 17 00:00:00 2001
+From: Sam Yang <r52096@freescale.com>
+Date: Tue, 17 Mar 2009 10:24:59 +0800
+Subject: [PATCH] ENGR00109161 fec: fix cache operations for receive
+
+dma_map_single was doing a clean+invalidate instead of invalidate.
+This causes receive checksum errors in the IP stack.
+
+Signed-off-by: Rob Herring <r.herring@freescale.com>
+---
+ drivers/net/fec.c |    4 ++--
+ 1 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/fec.c b/drivers/net/fec.c
+index ea80b54..9c257fb 100644
+--- a/drivers/net/fec.c
++++ b/drivers/net/fec.c
+@@ -2209,7 +2209,7 @@ static void __inline__ fec_localhw_setup(struct net_device *dev)
+  */
+ static void __inline__ fec_dcache_inv_range(void * start, void * end)
+ {
+-	dma_sync_single(NULL, (unsigned long)__pa(start), (unsigned long) (end-start), DMA_FROM_DEVICE);
++	dmac_inv_range(start, end);
+ 	return ;
+ }
+ 
+@@ -2218,7 +2218,7 @@ static void __inline__ fec_dcache_inv_range(void * start, void * end)
+  */
+ static void __inline__ fec_dcache_flush_range(void * start, void * end)
+ {
+-	dma_sync_single(NULL, (unsigned long)__pa(start), (unsigned long) (end-start), DMA_BIDIRECTIONAL);
++	dmac_flush_range(start, end);
+ 	return ;
+ }
+ 
+-- 
+1.5.4.4
+

@@ -1,0 +1,54 @@
+From 757f6279d523575b9b9944756e70816093e3a857 Mon Sep 17 00:00:00 2001
+From: Wu Guoxing <b02248@freescale.com>
+Date: Thu, 7 May 2009 09:48:06 +0800
+Subject: [PATCH] ENGR00112238-2 mx51: change CONFIG_FORCE_MAX_ZONEORDER
+
+Change CONFIG_FORCE_MAX_ZONEORDER to be 13 as defult.
+
+Signed-off-by: Wu Guoxing <b02248@freescale.com>
+---
+ arch/arm/configs/imx51_3stack_defconfig |    1 +
+ arch/arm/configs/imx51_defconfig        |    1 +
+ arch/arm/mach-mx51/Kconfig              |    2 +-
+ 3 files changed, 3 insertions(+), 1 deletions(-)
+
+diff --git a/arch/arm/configs/imx51_3stack_defconfig b/arch/arm/configs/imx51_3stack_defconfig
+index f7daeba..a9aa7ee 100644
+--- a/arch/arm/configs/imx51_3stack_defconfig
++++ b/arch/arm/configs/imx51_3stack_defconfig
+@@ -181,6 +181,7 @@ CONFIG_MXC_SDMA_API=y
+ # CONFIG_I2C_MXC_SELECT3 is not set
+ CONFIG_SDMA_IRAM=y
+ CONFIG_SDMA_IRAM_SIZE=0x1000
++CONFIG_FORCE_MAX_ZONEORDER=13
+ CONFIG_ARCH_MXC_HAS_NFC_V3=y
+ 
+ #
+diff --git a/arch/arm/configs/imx51_defconfig b/arch/arm/configs/imx51_defconfig
+index 4332ed7..ab85b1f 100644
+--- a/arch/arm/configs/imx51_defconfig
++++ b/arch/arm/configs/imx51_defconfig
+@@ -184,6 +184,7 @@ CONFIG_MXC_SDMA_API=y
+ # CONFIG_I2C_MXC_SELECT3 is not set
+ CONFIG_SDMA_IRAM=y
+ CONFIG_SDMA_IRAM_SIZE=0x1000
++CONFIG_FORCE_MAX_ZONEORDER=13
+ CONFIG_ARCH_MXC_HAS_NFC_V3=y
+ 
+ #
+diff --git a/arch/arm/mach-mx51/Kconfig b/arch/arm/mach-mx51/Kconfig
+index c032eb0..b727d6f 100644
+--- a/arch/arm/mach-mx51/Kconfig
++++ b/arch/arm/mach-mx51/Kconfig
+@@ -3,7 +3,7 @@ menu "MX51 Options"
+ 
+ config FORCE_MAX_ZONEORDER
+     int "MAX_ORDER"
+-    default "11"
++    default "13"
+ 
+ config MX51_OPTIONS
+ 	bool
+-- 
+1.5.4.4
+

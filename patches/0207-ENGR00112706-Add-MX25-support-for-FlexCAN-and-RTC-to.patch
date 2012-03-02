@@ -1,0 +1,42 @@
+From a21a49d6415526505626d7e7c5745df21b10cea3 Mon Sep 17 00:00:00 2001
+From: Xiexiaobo <X.Xie@freescale.com>
+Date: Fri, 22 May 2009 16:23:40 +0800
+Subject: [PATCH] ENGR00112706 Add MX25 support for FlexCAN and RTC to 2.6.28
+
+Add support for MX25-3DS FlexCAN to Kconfig file.
+Inlcude head file <linux/io.h> for DryICE RTC driver.
+
+Signed-off-by: Xie Xiaobo <X.Xie@freescale.com>
+---
+ drivers/net/can/Kconfig |    2 +-
+ drivers/rtc/rtc-imxdi.c |    1 +
+ 2 files changed, 2 insertions(+), 1 deletions(-)
+
+diff --git a/drivers/net/can/Kconfig b/drivers/net/can/Kconfig
+index 8df6200..17e1142 100644
+--- a/drivers/net/can/Kconfig
++++ b/drivers/net/can/Kconfig
+@@ -24,7 +24,7 @@ config CAN_DEBUG_DEVICES
+ 
+ config CAN_FLEXCAN
+         tristate "Freescale FlexCAN"
+-        depends on CAN && ARCH_MX35
++        depends on CAN && (ARCH_MX25 || ARCH_MX35)
+         default m
+         ---help---
+           This select the support of Freescale CAN(FlexCAN).
+diff --git a/drivers/rtc/rtc-imxdi.c b/drivers/rtc/rtc-imxdi.c
+index 135702d..0639637 100644
+--- a/drivers/rtc/rtc-imxdi.c
++++ b/drivers/rtc/rtc-imxdi.c
+@@ -31,6 +31,7 @@
+ /* #define DEBUG */
+ /* #define DI_DEBUG_REGIO */
+ 
++#include <linux/io.h>
+ #include <linux/clk.h>
+ #include <linux/delay.h>
+ #include <linux/module.h>
+-- 
+1.5.4.4
+

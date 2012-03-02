@@ -1,0 +1,91 @@
+From d0c85eb8fee4bea75c0bef604f8adabe21b5aa9b Mon Sep 17 00:00:00 2001
+From: Nancy Chen <Nancy.Chen@freescale.com>
+Date: Mon, 18 May 2009 16:38:35 -0500
+Subject: [PATCH] ENGR00112279 DVFS CORE: Frequency and voltage keep changing up and down
+
+DVFS CORE: GP frequency and voltage keep changing up and down
+           with UBUNTU system if DVFS core is enabled.
+
+Signed-off-by: Nancy Chen <Nancy.Chen@freescale.com>
+---
+ arch/arm/mach-mx51/devices.c  |    6 +++---
+ arch/arm/plat-mxc/dvfs_core.c |   15 +++++++++------
+ 2 files changed, 12 insertions(+), 9 deletions(-)
+
+diff --git a/arch/arm/mach-mx51/devices.c b/arch/arm/mach-mx51/devices.c
+index 915a4f6..5b9aa9a 100644
+--- a/arch/arm/mach-mx51/devices.c
++++ b/arch/arm/mach-mx51/devices.c
+@@ -780,12 +780,12 @@ struct mxc_dvfs_platform_data dvfs_core_data = {
+ 	.div3ck_mask = 0xE0000000,
+ 	.div3ck_offset = 29,
+ 	.div3ck_val = 2,
+-	.emac_val = 0x10,
++	.emac_val = 0x08,
+ 	.upthr_val = 25,
+ 	.dnthr_val = 9,
+ 	.pncthr_val = 33,
+-	.upcnt_val = 3,
+-	.dncnt_val = 3,
++	.upcnt_val = 10,
++	.dncnt_val = 10,
+ 	.delay_time = 30,
+ 	.num_wp = 2,
+ };
+diff --git a/arch/arm/plat-mxc/dvfs_core.c b/arch/arm/plat-mxc/dvfs_core.c
+index 52b5db6..d34ce60 100644
+--- a/arch/arm/plat-mxc/dvfs_core.c
++++ b/arch/arm/plat-mxc/dvfs_core.c
+@@ -215,9 +215,7 @@ static int set_cpu_freq(int wp)
+ 	reg &=
+ 	    ~(MXC_GPCVCR_VINC_MASK | MXC_GPCVCR_VCNTU_MASK |
+ 	      MXC_GPCVCR_VCNT_MASK);
+-	reg |=
+-	    (1 << MXC_GPCVCR_VCNTU_OFFSET) |
+-	    (100 << MXC_GPCVCR_VCNT_OFFSET);
++	reg |= (1 << MXC_GPCVCR_VCNTU_OFFSET) | (100 << MXC_GPCVCR_VCNT_OFFSET);
+ 	__raw_writel(reg, dvfs_data->gpc_vcr_reg_addr);
+ 
+ 	if (rate < org_cpu_rate) {
+@@ -301,7 +299,7 @@ static int init_dvfs_controller(void)
+ 
+ 	/* Set EMAC value */
+ 	__raw_writel((dvfs_data->emac_val << MXC_DVFSEMAC_EMAC_OFFSET),
+-				 dvfs_data->dvfs_emac_reg_addr);
++		     dvfs_data->dvfs_emac_reg_addr);
+ 
+ 	return 0;
+ }
+@@ -390,7 +388,7 @@ static void dvfs_core_workqueue_handler(struct work_struct *work)
+ 			if (ret == 0)
+ 				set_high_bus_freq();
+ 		}
+-			}
++	}
+ 
+ #if defined(CONFIG_CPU_FREQ)
+ 	if (cpufreq_trig_needed == 1) {
+@@ -443,6 +441,12 @@ static void stop_dvfs(void)
+ 				set_high_bus_freq();
+ 
+ 			set_cpu_freq(curr_wp);
++#if defined(CONFIG_CPU_FREQ)
++			if (cpufreq_trig_needed == 1) {
++				cpufreq_trig_needed = 0;
++				cpufreq_update_policy(0);
++			}
++#endif
+ 		}
+ 
+ 		clk_disable(dvfs_clk);
+@@ -460,7 +464,6 @@ static ssize_t dvfs_enable_show(struct device *dev,
+ 		return sprintf(buf, "DVFS is disabled\n");
+ }
+ 
+-
+ static ssize_t dvfs_enable_store(struct device *dev,
+ 				 struct device_attribute *attr,
+ 				 const char *buf, size_t size)
+-- 
+1.5.4.4
+

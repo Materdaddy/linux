@@ -1,0 +1,45 @@
+From 65c11ea403b3e337bf85f110587c7548d505af12 Mon Sep 17 00:00:00 2001
+From: Ann Thornton <Ann.Thornton@freescale.com>
+Date: Tue, 17 Feb 2009 13:45:13 -0600
+Subject: [PATCH] ENGR00107844-3: mx25: mainline regulator updates
+
+Regulator updates for mx25
+
+Signed-off-by: Ann Thornton <Ann.Thornton@freescale.com>
+---
+ arch/arm/mach-mx25/usb_h2.c |    8 ++++----
+ 1 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/mach-mx25/usb_h2.c b/arch/arm/mach-mx25/usb_h2.c
+index b1b30ce..9afbfef 100644
+--- a/arch/arm/mach-mx25/usb_h2.c
++++ b/arch/arm/mach-mx25/usb_h2.c
+@@ -16,8 +16,8 @@
+ #include <linux/platform_device.h>
+ #include <linux/fsl_devices.h>
+ #include <linux/usb/fsl_xcvr.h>
+-#include <linux/regulator/regulator.h>
+-#include <asm/arch/arc_otg.h>
++#include <linux/regulator/consumer.h>
++#include <mach/arc_otg.h>
+ #include "usb.h"
+ 
+ static struct fsl_usb2_platform_data usbh2_config = {
+@@ -67,12 +67,12 @@ void usbh2_put_xcvr_power(struct device *dev)
+ 	usbh2_regux = ((struct fsl_usb2_platform_data *)dev->
+ 		       platform_data)->xcvr_pwr->regu2;
+ 	regulator_disable(usbh2_regux);
+-	regulator_put(usbh2_regux, dev);
++	regulator_put(usbh2_regux);
+ 
+ 	usbh2_regux = ((struct fsl_usb2_platform_data *)dev->
+ 		       platform_data)->xcvr_pwr->regu1;
+ 	regulator_disable(usbh2_regux);
+-	regulator_put(usbh2_regux, dev);
++	regulator_put(usbh2_regux);
+ }
+ EXPORT_SYMBOL(usbh2_put_xcvr_power);
+ 
+-- 
+1.5.4.4
+

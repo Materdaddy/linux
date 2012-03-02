@@ -1,0 +1,293 @@
+From 5b7dceb6d55aff3cdb53382303c3957dd3eb72e5 Mon Sep 17 00:00:00 2001
+From: Richard Zhao <b20223@freescale.com>
+Date: Wed, 27 May 2009 16:43:34 +0800
+Subject: [PATCH] ENGR00112840 make imx 31/35/37 3stack board unifi V6 work
+
+1. Remove CONFIG_NET_SCHED. Because unifiV6's using old QoS interface.
+2. imx31: set gpo1 boot on.
+3. fs_lx.c: always set 1.5v regulators. Because they need to be strictly 1.5v.
+4. mx_sdhci.c: fix sdio block write lock up issue on imx37.
+
+Signed-off-by: Richard Zhao <b20223@freescale.com>
+---
+ arch/arm/configs/imx31_3stack_defconfig     |   35 +---------------------
+ arch/arm/configs/imx35_3stack_defconfig     |   35 +---------------------
+ arch/arm/configs/imx37_3stack_defconfig     |   41 ++++++---------------------
+ arch/arm/mach-mx3/mx3_3stack_pmic_mc13783.c |    1 +
+ drivers/mmc/card/unifi_fs/fs_lx.c           |   14 +++------
+ drivers/mmc/host/mx_sdhci.c                 |    4 +-
+ 6 files changed, 21 insertions(+), 109 deletions(-)
+
+diff --git a/arch/arm/configs/imx31_3stack_defconfig b/arch/arm/configs/imx31_3stack_defconfig
+index 551d39a..d54abf1 100644
+--- a/arch/arm/configs/imx31_3stack_defconfig
++++ b/arch/arm/configs/imx31_3stack_defconfig
+@@ -1,7 +1,7 @@
+ #
+ # Automatically generated make config: don't edit
+ # Linux kernel version: 2.6.28
+-# Mon Jun  1 14:58:02 2009
++# Wed May 27 16:47:24 2009
+ #
+ CONFIG_ARM=y
+ CONFIG_SYS_SUPPORTS_APM_EMULATION=y
+@@ -388,38 +388,7 @@ CONFIG_DEFAULT_TCP_CONG="cubic"
+ # CONFIG_LAPB is not set
+ # CONFIG_ECONET is not set
+ # CONFIG_WAN_ROUTER is not set
+-CONFIG_NET_SCHED=y
+-
+-#
+-# Queueing/Scheduling
+-#
+-# CONFIG_NET_SCH_CBQ is not set
+-# CONFIG_NET_SCH_HTB is not set
+-# CONFIG_NET_SCH_HFSC is not set
+-# CONFIG_NET_SCH_PRIO is not set
+-# CONFIG_NET_SCH_MULTIQ is not set
+-# CONFIG_NET_SCH_RED is not set
+-# CONFIG_NET_SCH_SFQ is not set
+-# CONFIG_NET_SCH_TEQL is not set
+-# CONFIG_NET_SCH_TBF is not set
+-# CONFIG_NET_SCH_GRED is not set
+-# CONFIG_NET_SCH_DSMARK is not set
+-# CONFIG_NET_SCH_NETEM is not set
+-
+-#
+-# Classification
+-#
+-# CONFIG_NET_CLS_BASIC is not set
+-# CONFIG_NET_CLS_TCINDEX is not set
+-# CONFIG_NET_CLS_ROUTE4 is not set
+-# CONFIG_NET_CLS_FW is not set
+-# CONFIG_NET_CLS_U32 is not set
+-# CONFIG_NET_CLS_RSVP is not set
+-# CONFIG_NET_CLS_RSVP6 is not set
+-# CONFIG_NET_CLS_FLOW is not set
+-# CONFIG_NET_EMATCH is not set
+-# CONFIG_NET_CLS_ACT is not set
+-CONFIG_NET_SCH_FIFO=y
++# CONFIG_NET_SCHED is not set
+ 
+ #
+ # Network testing
+diff --git a/arch/arm/configs/imx35_3stack_defconfig b/arch/arm/configs/imx35_3stack_defconfig
+index 61b3007..5932202 100644
+--- a/arch/arm/configs/imx35_3stack_defconfig
++++ b/arch/arm/configs/imx35_3stack_defconfig
+@@ -1,7 +1,7 @@
+ #
+ # Automatically generated make config: don't edit
+ # Linux kernel version: 2.6.28
+-# Mon May 25 17:36:42 2009
++# Wed May 27 17:22:03 2009
+ #
+ CONFIG_ARM=y
+ CONFIG_SYS_SUPPORTS_APM_EMULATION=y
+@@ -388,38 +388,7 @@ CONFIG_DEFAULT_TCP_CONG="cubic"
+ # CONFIG_LAPB is not set
+ # CONFIG_ECONET is not set
+ # CONFIG_WAN_ROUTER is not set
+-CONFIG_NET_SCHED=y
+-
+-#
+-# Queueing/Scheduling
+-#
+-# CONFIG_NET_SCH_CBQ is not set
+-# CONFIG_NET_SCH_HTB is not set
+-# CONFIG_NET_SCH_HFSC is not set
+-# CONFIG_NET_SCH_PRIO is not set
+-# CONFIG_NET_SCH_MULTIQ is not set
+-# CONFIG_NET_SCH_RED is not set
+-# CONFIG_NET_SCH_SFQ is not set
+-# CONFIG_NET_SCH_TEQL is not set
+-# CONFIG_NET_SCH_TBF is not set
+-# CONFIG_NET_SCH_GRED is not set
+-# CONFIG_NET_SCH_DSMARK is not set
+-# CONFIG_NET_SCH_NETEM is not set
+-
+-#
+-# Classification
+-#
+-# CONFIG_NET_CLS_BASIC is not set
+-# CONFIG_NET_CLS_TCINDEX is not set
+-# CONFIG_NET_CLS_ROUTE4 is not set
+-# CONFIG_NET_CLS_FW is not set
+-# CONFIG_NET_CLS_U32 is not set
+-# CONFIG_NET_CLS_RSVP is not set
+-# CONFIG_NET_CLS_RSVP6 is not set
+-# CONFIG_NET_CLS_FLOW is not set
+-# CONFIG_NET_EMATCH is not set
+-# CONFIG_NET_CLS_ACT is not set
+-CONFIG_NET_SCH_FIFO=y
++# CONFIG_NET_SCHED is not set
+ 
+ #
+ # Network testing
+diff --git a/arch/arm/configs/imx37_3stack_defconfig b/arch/arm/configs/imx37_3stack_defconfig
+index 966bb7a..b0ea799 100644
+--- a/arch/arm/configs/imx37_3stack_defconfig
++++ b/arch/arm/configs/imx37_3stack_defconfig
+@@ -1,6 +1,7 @@
+ #
+ # Automatically generated make config: don't edit
+ # Linux kernel version: 2.6.28
++# Wed May 27 17:22:50 2009
+ #
+ CONFIG_ARM=y
+ CONFIG_SYS_SUPPORTS_APM_EMULATION=y
+@@ -159,6 +160,7 @@ CONFIG_ARCH_MXC=y
+ # CONFIG_ARCH_DAVINCI is not set
+ # CONFIG_ARCH_OMAP is not set
+ # CONFIG_ARCH_MSM is not set
++# CONFIG_ARCH_STMP3XXX is not set
+ 
+ #
+ # Boot options
+@@ -396,38 +398,7 @@ CONFIG_DEFAULT_TCP_CONG="cubic"
+ # CONFIG_LAPB is not set
+ # CONFIG_ECONET is not set
+ # CONFIG_WAN_ROUTER is not set
+-CONFIG_NET_SCHED=y
+-
+-#
+-# Queueing/Scheduling
+-#
+-# CONFIG_NET_SCH_CBQ is not set
+-# CONFIG_NET_SCH_HTB is not set
+-# CONFIG_NET_SCH_HFSC is not set
+-# CONFIG_NET_SCH_PRIO is not set
+-# CONFIG_NET_SCH_MULTIQ is not set
+-# CONFIG_NET_SCH_RED is not set
+-# CONFIG_NET_SCH_SFQ is not set
+-# CONFIG_NET_SCH_TEQL is not set
+-# CONFIG_NET_SCH_TBF is not set
+-# CONFIG_NET_SCH_GRED is not set
+-# CONFIG_NET_SCH_DSMARK is not set
+-# CONFIG_NET_SCH_NETEM is not set
+-
+-#
+-# Classification
+-#
+-# CONFIG_NET_CLS_BASIC is not set
+-# CONFIG_NET_CLS_TCINDEX is not set
+-# CONFIG_NET_CLS_ROUTE4 is not set
+-# CONFIG_NET_CLS_FW is not set
+-# CONFIG_NET_CLS_U32 is not set
+-# CONFIG_NET_CLS_RSVP is not set
+-# CONFIG_NET_CLS_RSVP6 is not set
+-# CONFIG_NET_CLS_FLOW is not set
+-# CONFIG_NET_EMATCH is not set
+-# CONFIG_NET_CLS_ACT is not set
+-CONFIG_NET_SCH_FIFO=y
++# CONFIG_NET_SCHED is not set
+ 
+ #
+ # Network testing
+@@ -1193,6 +1164,9 @@ CONFIG_SND_MXC_SOC_SSI=y
+ # CONFIG_SND_MXC_SOC_IRAM is not set
+ CONFIG_SND_SOC_IMX_3STACK_WM8350=y
+ # CONFIG_SND_SOC_IMX_3STACK_SGTL5000 is not set
++# CONFIG_SND_SOC_IMX_3STACK_AK4647 is not set
++# CONFIG_SND_SOC_IMX_3STACK_WM8580 is not set
++# CONFIG_SND_SOC_IMX_3STACK_BLUETOOTH is not set
+ # CONFIG_SND_SOC_ALL_CODECS is not set
+ CONFIG_SND_SOC_WM8350=y
+ # CONFIG_SOUND_PRIME is not set
+@@ -1476,6 +1450,7 @@ CONFIG_RTC_INTF_DEV_UIE_EMUL=y
+ #
+ # CONFIG_RTC_MXC is not set
+ CONFIG_RTC_DRV_MXC_V2=y
++# CONFIG_RTC_DRV_IMXDI is not set
+ # CONFIG_DMADEVICES is not set
+ CONFIG_REGULATOR=y
+ # CONFIG_REGULATOR_DEBUG is not set
+@@ -1509,6 +1484,7 @@ CONFIG_MXC_IPU_V3D=y
+ # CONFIG_MXC_PMIC_MC13892 is not set
+ # CONFIG_MXC_PMIC_MC34704 is not set
+ # CONFIG_MXC_PMIC_MC9SDZ60 is not set
++# CONFIG_MXC_PMIC_MC9S08DZ60 is not set
+ 
+ #
+ # MXC Security Drivers
+@@ -1759,6 +1735,7 @@ CONFIG_CRYPTO=y
+ # CONFIG_CRYPTO_CRYPTD is not set
+ # CONFIG_CRYPTO_AUTHENC is not set
+ # CONFIG_CRYPTO_TEST is not set
++# CONFIG_CRYPTO_CRYPTODEV is not set
+ 
+ #
+ # Authenticated Encryption with Associated Data
+diff --git a/arch/arm/mach-mx3/mx3_3stack_pmic_mc13783.c b/arch/arm/mach-mx3/mx3_3stack_pmic_mc13783.c
+index 1d3d569..9e17989 100644
+--- a/arch/arm/mach-mx3/mx3_3stack_pmic_mc13783.c
++++ b/arch/arm/mach-mx3/mx3_3stack_pmic_mc13783.c
+@@ -200,6 +200,7 @@ static struct regulator_init_data vrfbg_init = {
+ 
+ static struct regulator_init_data gpo1_init = {
+ 	.constraints = {
++		.boot_on = 1,
+ 	}
+ };
+ 
+diff --git a/drivers/mmc/card/unifi_fs/fs_lx.c b/drivers/mmc/card/unifi_fs/fs_lx.c
+index 4dc252e..fd56572 100644
+--- a/drivers/mmc/card/unifi_fs/fs_lx.c
++++ b/drivers/mmc/card/unifi_fs/fs_lx.c
+@@ -273,15 +273,13 @@ static void fs_unifi_power_on(void)
+ 		plat_data->enable(1);
+ 
+ 	if (reg_unifi->reg_1v5_ana_bb) {
+-		tmp = regulator_get_voltage(reg_unifi->reg_1v5_ana_bb);
+-		if (tmp < 1500000)
+-			regulator_set_voltage(reg_unifi->reg_1v5_ana_bb,
+-					     1500000, 1500000);
++		regulator_set_voltage(reg_unifi->reg_1v5_ana_bb,
++					1500000, 1500000);
+ 		regulator_enable(reg_unifi->reg_1v5_ana_bb);
+ 	}
+ 	if (reg_unifi->reg_vdd_vpa) {
+ 		tmp = regulator_get_voltage(reg_unifi->reg_vdd_vpa);
+-		if (tmp < 3000000)
++		if (tmp < 3000000 || tmp > 3600000)
+ 			regulator_set_voltage(reg_unifi->reg_vdd_vpa,
+ 					      3000000, 3000000);
+ 		regulator_enable(reg_unifi->reg_vdd_vpa);
+@@ -289,10 +287,8 @@ static void fs_unifi_power_on(void)
+ 	/* WL_1V5DD should come on last, 10ms after other supplies */
+ 	msleep(10);
+ 	if (reg_unifi->reg_1v5_dd) {
+-		tmp = regulator_get_voltage(reg_unifi->reg_1v5_dd);
+-		if (tmp < 1500000)
+-			regulator_set_voltage(reg_unifi->reg_1v5_dd,
+-					      1500000, 1500000);
++		regulator_set_voltage(reg_unifi->reg_1v5_dd,
++					1500000, 1500000);
+ 		regulator_enable(reg_unifi->reg_1v5_dd);
+ 	}
+ 	msleep(10);
+diff --git a/drivers/mmc/host/mx_sdhci.c b/drivers/mmc/host/mx_sdhci.c
+index e156ae9..25cc3f8 100644
+--- a/drivers/mmc/host/mx_sdhci.c
++++ b/drivers/mmc/host/mx_sdhci.c
+@@ -901,6 +901,8 @@ static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
+ 			}
+ 		}
+ 	}
++	spin_unlock_irqrestore(&host->lock, flags);
++
+ 	host->mrq = mrq;
+ 	if (!(host->flags & SDHCI_CD_PRESENT)) {
+ 		host->mrq->cmd->error = -ENOMEDIUM;
+@@ -908,8 +910,6 @@ static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
+ 	} else
+ 		sdhci_send_command(host, mrq->cmd);
+ 
+-	spin_unlock_irqrestore(&host->lock, flags);
+-
+ 	mmiowb();
+ }
+ 
+-- 
+1.5.4.4
+

@@ -1,0 +1,453 @@
+From 6ca46af2c670ba4b70dba7851fd1e9f5e7cca4fe Mon Sep 17 00:00:00 2001
+From: Wallace Wang <r59996@freescale.com>
+Date: Mon, 15 Jun 2009 14:52:19 +0800
+Subject: [PATCH] ENGR00093265 Add ASRC script and ASRC p2p script support in SDMA driver
+
+1. SSI15 has dividual entry for ASRC
+2. SSI15 sdma scripts have supported p2p feature
+3. SDMA driver needs changes to support p2p feature.
+4. Enhance the mxc_dma_request interface to transfer parameter to dma driver.
+   It is just for ASRC to set data channle number now. The enhanced interface
+   named mxc_dma_request_ext.
+
+Signed-off-by: Fred Fan <r01011@freescale.com>
+---
+ arch/arm/mach-mx35/dma.c                         |    2 +-
+ arch/arm/plat-mxc/dma_mx2.c                      |    5 +-
+ arch/arm/plat-mxc/include/mach/dma.h             |   23 +++++-
+ arch/arm/plat-mxc/include/mach/sdma.h            |   57 +++++++++++++-
+ arch/arm/plat-mxc/sdma/dma_sdma.c                |   19 ++++-
+ arch/arm/plat-mxc/sdma/iapi/include/sdmaStruct.h |    3 +-
+ arch/arm/plat-mxc/sdma/iapi/src/iapiLowMcu.c     |    4 +-
+ arch/arm/plat-mxc/sdma/sdma.c                    |   94 ++++++++++++++++++++-
+ 8 files changed, 190 insertions(+), 17 deletions(-)
+
+diff --git a/arch/arm/mach-mx35/dma.c b/arch/arm/mach-mx35/dma.c
+index 790181e..6c746e2 100644
+--- a/arch/arm/mach-mx35/dma.c
++++ b/arch/arm/mach-mx35/dma.c
+@@ -49,7 +49,7 @@
+ 
+ struct mxc_sdma_info_entry_s {
+ 	mxc_dma_device_t device;
+-	mxc_sdma_channel_params_t *chnl_info;
++	void *chnl_info;
+ };
+ 
+ static mxc_sdma_channel_params_t mxc_sdma_uart1_rx_params = {
+diff --git a/arch/arm/plat-mxc/dma_mx2.c b/arch/arm/plat-mxc/dma_mx2.c
+index c8753b1..bca527b 100644
+--- a/arch/arm/plat-mxc/dma_mx2.c
++++ b/arch/arm/plat-mxc/dma_mx2.c
+@@ -771,7 +771,8 @@ static inline int consume_dma_bd(mxc_dma_channel_t * dma, int error)
+  * @return returns a negative number on error if request for a DMA channel did not
+  *         succeed, returns the channel number to be used on success.
+  */
+-int mxc_dma_request(mxc_dma_device_t channel_id, char *dev_name)
++int mxc_dma_request_ext(mxc_dma_device_t channel_id, char *dev_name,
++			unsigned long data)
+ {
+ 	mxc_dma_channel_t *dma;
+ 	mx2_dma_priv_t *dma_private = NULL;
+@@ -1305,7 +1306,7 @@ int __init mxc_dma_init(void)
+ 
+ arch_initcall(mxc_dma_init);
+ 
+-EXPORT_SYMBOL(mxc_dma_request);
++EXPORT_SYMBOL(mxc_dma_request_ext);
+ EXPORT_SYMBOL(mxc_dma_free);
+ EXPORT_SYMBOL(mxc_dma_callback_set);
+ EXPORT_SYMBOL(mxc_dma_enable);
+diff --git a/arch/arm/plat-mxc/include/mach/dma.h b/arch/arm/plat-mxc/include/mach/dma.h
+index b52b2fc..46128d2 100644
+--- a/arch/arm/plat-mxc/include/mach/dma.h
++++ b/arch/arm/plat-mxc/include/mach/dma.h
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright 2004-2008 Freescale Semiconductor, Inc. All Rights Reserved.
++ * Copyright 2004-2009 Freescale Semiconductor, Inc. All Rights Reserved.
+  */
+ 
+ /*
+@@ -133,6 +133,16 @@ typedef struct mxc_dma_requestbuf {
+ 	int num_of_bytes;	/*!< the length of this transfer : bytes */
+ } mxc_dma_requestbuf_t;
+ 
++/*! This struct contains the information for asrc special*/
++struct dma_channel_asrc_info {
++	u32 channs;		/*!< data channels in asrc */
++};
++
++/*! This struct contains  the information for device special*/
++struct dma_channel_info {
++	struct dma_channel_asrc_info asrc;	/*!< asrc special information */
++};
++
+ #if defined(CONFIG_ARCH_MX27) || defined(CONFIG_ARCH_MX21)
+ #include <mach/mx2_dma.h>
+ #else
+@@ -152,10 +162,17 @@ typedef struct mxc_dma_requestbuf {
+  *                     The DMA driver could use static or dynamic DMA channel
+  *                     allocation.
+  * @param dev_name     module name or device name
++ * @param data         the customized parameter for special channel.
+  * @return returns a negative number on error if request for a DMA channel did not
+  *         succeed, returns the channel number to be used on success.
+  */
+-extern int mxc_dma_request(mxc_dma_device_t channel_id, char *dev_name);
++extern int mxc_dma_request_ext(mxc_dma_device_t channel_id, char *dev_name,
++			       struct dma_channel_info *info);
++
++static inline int mxc_dma_request(mxc_dma_device_t channel_id, char *dev_name)
++{
++	return mxc_dma_request_ext(channel_id, dev_name, NULL);
++}
+ 
+ /*!
+  * This function is generally called by the driver at close time. The DMA
+@@ -185,7 +202,7 @@ extern int mxc_dma_free(int channel_num);
+  * @return This function returns a negative number on error if buffer could not be
+  *         added with DMA for transfer. On Success, it returns 0
+  */
+-extern int mxc_dma_config(int channel_num, mxc_dma_requestbuf_t * dma_buf,
++extern int mxc_dma_config(int channel_num, mxc_dma_requestbuf_t *dma_buf,
+ 			  int num_buf, mxc_dma_mode_t mode);
+ 
+ /*!
+diff --git a/arch/arm/plat-mxc/include/mach/sdma.h b/arch/arm/plat-mxc/include/mach/sdma.h
+index 453cf65..1b145e8 100644
+--- a/arch/arm/plat-mxc/include/mach/sdma.h
++++ b/arch/arm/plat-mxc/include/mach/sdma.h
+@@ -55,6 +55,28 @@
+ 
+ #define MXC_FIFO_MEM_DEST_FIXED   0x1
+ #define MXC_FIFO_MEM_SRC_FIXED    0x2
++
++#define SDMA_ASRC_INFO_WML_OFF	0
++#define SDMA_ASRC_INFO_WML_MASK ((1 << 10) - 1)
++#define SDMA_ASRC_INFO_PS	(1 << 10)
++#define SDMA_ASRC_INFO_PA	(1 << 11)
++#define SDMA_ASRC_INFO_TXFR_DIR	(1 << 14)
++#define SDMA_ASRC_INFO_N_OFF	(24)
++#define SDMA_ASRC_INFO_N_MASK	((1 << 4) - 1)
++
++#define SDMA_ASRC_P2P_INFO_LWML_OFF 0
++#define SDMA_ASRC_P2P_INFO_LWML_MASK ((1 << 8) - 1)
++#define SDMA_ASRC_P2P_INFO_PS	(1 << 8)
++#define SDMA_ASRC_P2P_INFO_PA	(1 << 9)
++#define SDMA_ASRC_P2P_INFO_SPDIF (1 << 10)
++#define SDMA_ASRC_P2P_INFO_SP (1 << 11)
++#define SDMA_ASRC_P2P_INFO_DP (1 << 12)
++#define SDMA_ASRC_P2P_INFO_HWML_OFF 14
++#define SDMA_ASRC_P2P_INFO_HWML_MASK ((1 << 10) - 1)
++#define SDMA_ASRC_P2P_INFO_LWE (1 << 28)
++#define SDMA_ASRC_P2P_INFO_HWE (1 << 29)
++#define SDMA_ASRC_P2P_INFO_CONT (1 << 31)
++
+ /*!
+  * This enumerates  transfer types
+  */
+@@ -136,9 +158,11 @@ typedef void (*dma_callback_t) (void *arg);
+ typedef struct {
+ 	__u32 watermark_level;	/*!< Lower/upper threshold that
+ 				 *   triggers SDMA event
++				 *   for p2p, this is event1 watermark level
+ 				 */
+ 	__u32 per_address;	/*!< Peripheral source/destination
+ 				 *   physical address
++				 *   for p2p, this is destination address
+ 				 */
+ 	sdma_periphT peripheral_type;	/*!< Peripheral type */
+ 	sdma_transferT transfer_type;	/*!< Transfer type   */
+@@ -159,8 +183,29 @@ typedef struct {
+ 	dma_callback_t callback;	/*!   callback function            */
+ 	void *arg;		/*!   callback argument            */
+ 	unsigned long word_size:8;	/*!< SDMA data access word size    */
++	unsigned long ext:1;	/*!< 1: extend parameter structure */
+ } dma_channel_params;
+ 
++typedef struct {
++	dma_channel_params common;
++	unsigned long p2p_dir:1;	/*!< 0: per2 to per.
++					 * the device of peripheral_type is per.
++					 * 1: per to per2
++					 * the device of peripheral_type is per2
++					 */
++	unsigned long info_bits;	/*!< info field in context */
++	unsigned long info_mask;	/*!< info field mask in context */
++	__u32 watermark_level2;	/*!< event2 threshold that
++				 *   triggers SDMA event
++				 *   just valid for p2p.
++				 */
++	__u32 per_address2;	/*!< Peripheral source
++				 *   physical address.
++				 *   just valid for p2p.
++				 */
++	struct dma_channel_info info;	/*!< the channel special parameter */
++} dma_channel_ext_params;
++
+ /*!
+  * Structure containing sdma request  parameters.
+  */
+@@ -285,13 +330,23 @@ typedef struct {
+ 
+ /*! Structure to store the initialized dma_channel parameters */
+ typedef struct mxc_sdma_channel_params {
++	/*! Channel type (static channel number or dynamic channel) */
++	unsigned int channel_num;
++	/*! Channel priority [0x1(lowest) - 0x7(highest)] */
++	unsigned int chnl_priority;
+ 	/*! Channel params */
+ 	dma_channel_params chnl_params;
++} mxc_sdma_channel_params_t;
++
++/*! Structure to store the initialized dma_channel extend parameters */
++typedef struct mxc_sdma_channel_ext_params {
+ 	/*! Channel type (static channel number or dynamic channel) */
+ 	unsigned int channel_num;
+ 	/*! Channel priority [0x1(lowest) - 0x7(highest)] */
+ 	unsigned int chnl_priority;
+-} mxc_sdma_channel_params_t;
++	/*! Channel extend params */
++	dma_channel_ext_params chnl_ext_params;
++} mxc_sdma_channel_ext_params_t;
+ 
+ /*! Private SDMA data structure */
+ typedef struct mxc_dma_channel_private {
+diff --git a/arch/arm/plat-mxc/sdma/dma_sdma.c b/arch/arm/plat-mxc/sdma/dma_sdma.c
+index a05016d..5ca75d0 100644
+--- a/arch/arm/plat-mxc/sdma/dma_sdma.c
++++ b/arch/arm/plat-mxc/sdma/dma_sdma.c
+@@ -93,17 +93,27 @@ static void mxc_sdma_channeltasklet(unsigned long arg)
+  * @return returns a negative number on error if request for a DMA channel did not
+  *         succeed, returns the channel number to be used on success.
+  */
+-int mxc_dma_request(mxc_dma_device_t channel_id, char *dev_name)
++int mxc_dma_request_ext(mxc_dma_device_t channel_id, char *dev_name,
++			struct dma_channel_info *info)
+ {
+ 	mxc_sdma_channel_params_t *chnl;
+ 	mxc_dma_channel_private_t *data_priv;
+ 	int ret = 0, i = 0, channel_num = 0;
++	mxc_sdma_channel_ext_params_t *p;
+ 
+ 	chnl = mxc_sdma_get_channel_params(channel_id);
+ 	if (chnl == NULL) {
+ 		return -EINVAL;
+ 	}
+ 
++	if (info) {
++		if (!chnl->chnl_params.ext)
++			return -EINVAL;
++		p = (mxc_sdma_channel_ext_params_t *)chnl;
++		memcpy(&p->chnl_ext_params.info, info, sizeof(info));
++	}
++
++
+ 	/* Enable the SDMA clock */
+ 	clk_enable(mxc_sdma_ahb_clk);
+ 	clk_enable(mxc_sdma_ipg_clk);
+@@ -333,7 +343,10 @@ int mxc_dma_config(int channel_num, mxc_dma_requestbuf_t * dma_buf,
+ 		}
+ 		request_t.destAddr = (__u8 *) dma_buf->dst_addr;
+ 		request_t.sourceAddr = (__u8 *) dma_buf->src_addr;
+-		request_t.count = dma_buf->num_of_bytes;
++		if (chnl_param.peripheral_type == ASRC)
++			request_t.count = dma_buf->num_of_bytes / 4;
++		else
++			request_t.count = dma_buf->num_of_bytes;
+ 		request_t.bd_cont = 1;
+ 		ret = mxc_dma_set_config(channel_num, &request_t,
+ 					 chnl_info->curr_buf);
+@@ -671,7 +684,7 @@ EXPORT_SYMBOL(sdma_virt_to_phys);
+ 
+ #endif
+ 
+-EXPORT_SYMBOL(mxc_dma_request);
++EXPORT_SYMBOL(mxc_dma_request_ext);
+ EXPORT_SYMBOL(mxc_dma_free);
+ EXPORT_SYMBOL(mxc_dma_config);
+ EXPORT_SYMBOL(mxc_dma_sg_config);
+diff --git a/arch/arm/plat-mxc/sdma/iapi/include/sdmaStruct.h b/arch/arm/plat-mxc/sdma/iapi/include/sdmaStruct.h
+index 995d215..bc42dab 100644
+--- a/arch/arm/plat-mxc/sdma/iapi/include/sdmaStruct.h
++++ b/arch/arm/plat-mxc/sdma/iapi/include/sdmaStruct.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+  *
+- * Copyright 2007-2008 Freescale Semiconductor, Inc. All Rights Reserved.
++ * Copyright 2007-2009 Freescale Semiconductor, Inc. All Rights Reserved.
+  *
+  *
+  * The code contained herein is licensed under the GNU General Public
+@@ -408,6 +408,7 @@ typedef struct iapi_script_data {
+   unsigned short load_address;/**<start address of the script*/
+   unsigned long  wml;		   /**<parameters for the channel descriptor*/
+   unsigned long  shp_addr;    /**<shared peripheral base address*/
++  unsigned long  per_addr;    /**<peripheral base address for p2p source*/
+   unsigned long  event_mask1; /**<First Event mask */
+   unsigned long  event_mask2; /**<Second Event mask */
+ } script_data;
+diff --git a/arch/arm/plat-mxc/sdma/iapi/src/iapiLowMcu.c b/arch/arm/plat-mxc/sdma/iapi/src/iapiLowMcu.c
+index 1d79511..886c70c 100644
+--- a/arch/arm/plat-mxc/sdma/iapi/src/iapiLowMcu.c
++++ b/arch/arm/plat-mxc/sdma/iapi/src/iapiLowMcu.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+  *
+- * Copyright 2007-2008 Freescale Semiconductor, Inc. All Rights Reserved.
++ * Copyright 2007-2009 Freescale Semiconductor, Inc. All Rights Reserved.
+  *
+  *
+  * The code contained herein is licensed under the GNU General Public
+@@ -455,6 +455,8 @@ iapi_lowAssignScript(channelDescriptor * cd_p, script_data * data_p)
+    chContext->gReg[1] = data_p->event_mask1;
+    chContext->gReg[6] = data_p->shp_addr;
+    chContext->gReg[7] = data_p->wml;
++   if (data_p->per_addr)
++	chContext->gReg[2] = data_p->per_addr;
+ 
+    /* Set transmited data to the CD*/
+    cd_p->watermarkLevel = data_p->wml;
+diff --git a/arch/arm/plat-mxc/sdma/sdma.c b/arch/arm/plat-mxc/sdma/sdma.c
+index 1ec54a1..5428605 100644
+--- a/arch/arm/plat-mxc/sdma/sdma.c
++++ b/arch/arm/plat-mxc/sdma/sdma.c
+@@ -342,10 +342,10 @@ static unsigned short sdma_get_pc(sdma_periphT peripheral_type,
+ 	} else if (peripheral_type == ASRC) {
+ 		switch (transfer_type) {
+ 		case per_2_emi:
+-			res = sdma_script_addrs.mxc_sdma_shp_2_mcu_addr;
++			res = sdma_script_addrs.mxc_sdma_asrc_2_mcu_addr;
+ 			break;
+ 		case emi_2_per:
+-			res = sdma_script_addrs.mxc_sdma_mcu_2_shp_addr;
++			res = sdma_script_addrs.mxc_sdma_asrc_2_mcu_addr;
+ 			break;
+ 		case per_2_per:
+ 			res = sdma_script_addrs.mxc_sdma_per_2_per_addr;
+@@ -401,6 +401,77 @@ static unsigned short sdma_get_pc(sdma_periphT peripheral_type,
+ 
+ }
+ 
++static inline int sdma_asrc_set_info(dma_channel_params *p,
++				     script_data *pcontext, int eflags)
++{
++	dma_channel_ext_params *ep = (dma_channel_ext_params *) p;
++	unsigned int wml, tmp, wml1, wml2;
++	struct dma_channel_asrc_info *info = &(ep->info.asrc);
++	wml = 0;
++	if (p->transfer_type == per_2_per) {
++		if (!p->ext)
++			return wml;
++		wml1 = p->watermark_level;
++		wml2 = ep->watermark_level2;
++		if (info->channs) {
++			wml |= (info->channs & SDMA_ASRC_INFO_N_MASK) <<
++			    SDMA_ASRC_INFO_N_OFF;
++			if (ep->p2p_dir)
++				wml2 *= info->channs & SDMA_ASRC_INFO_N_MASK;
++			else
++				wml1 *= info->channs & SDMA_ASRC_INFO_N_MASK;
++		}
++		if (info->channs & 1) {
++			if (ep->p2p_dir)
++				wml |= SDMA_ASRC_P2P_INFO_PS;
++			else
++				wml |= SDMA_ASRC_P2P_INFO_PA;
++		}
++		if (wml1 > wml2) {
++			tmp = wml2 & SDMA_ASRC_P2P_INFO_LWML_MASK;
++			wml |= tmp << SDMA_ASRC_P2P_INFO_LWML_OFF;
++			tmp = wml1 & SDMA_ASRC_P2P_INFO_HWML_MASK;
++			wml |= tmp << SDMA_ASRC_P2P_INFO_HWML_OFF;
++			if (eflags & (1 << 31))
++				wml |= SDMA_ASRC_P2P_INFO_LWE;
++			if (eflags & (1 << 30))
++				wml |= SDMA_ASRC_P2P_INFO_HWE;
++		} else {
++			tmp = wml1 & SDMA_ASRC_P2P_INFO_LWML_MASK;
++			wml |= tmp << SDMA_ASRC_P2P_INFO_LWML_OFF;
++			tmp = wml2 & SDMA_ASRC_P2P_INFO_HWML_MASK;
++			wml |= tmp << SDMA_ASRC_P2P_INFO_HWML_OFF;
++			wml |= eflags >> 2;
++			tmp = pcontext->event_mask2;
++			pcontext->event_mask2 = pcontext->event_mask1;
++			pcontext->event_mask1 = tmp;
++		}
++	} else {
++		if (p->ext && info->channs) {
++			wml |= (info->channs & SDMA_ASRC_INFO_N_MASK) <<
++			    SDMA_ASRC_INFO_N_OFF;
++			tmp = (info->channs * p->watermark_level) &
++			    SDMA_ASRC_INFO_WML_MASK;
++			wml |= tmp << SDMA_ASRC_INFO_WML_OFF;
++		} else {
++			tmp = (p->watermark_level & SDMA_ASRC_INFO_WML_MASK);
++			wml |= tmp << SDMA_ASRC_INFO_WML_OFF;
++		}
++
++		if (p->transfer_type == per_2_emi)
++			wml |= SDMA_ASRC_INFO_TXFR_DIR;
++
++		if (p->ext && (info->channs & 1)) {
++			if (p->transfer_type == per_2_emi)
++				wml |= SDMA_ASRC_INFO_PS;
++			else
++				wml |= SDMA_ASRC_INFO_PA;
++		}
++		wml |= eflags;
++	}
++	return wml;
++}
++
+ /*!
+  * Downloads channel context according to channel parameters
+  *
+@@ -413,6 +484,7 @@ static int sdma_load_context(int channel, dma_channel_params * p)
+ 	int res;
+ 	int event1_greater_than_32;
+ 	int event2_greater_than_32;
++	dma_channel_ext_params *ep = (dma_channel_ext_params *) p;
+ 
+ 	res = 0;
+ 
+@@ -456,13 +528,24 @@ static int sdma_load_context(int channel, dma_channel_params * p)
+ 					    0x1 << (p->event_id - 32);
+ 				}
+ 			}
++
++			if (p->ext)
++				context.wml = ep->info_bits;
+ 			/* Watermark Level */
+-			context.wml =
+-			    event2_greater_than_32 | event1_greater_than_32 |
+-			    p->watermark_level;
++			if (p->peripheral_type == ASRC) {
++				context.wml |= sdma_asrc_set_info(p,
++								  &context,
++								  event2_greater_than_32
++								  |
++								  event1_greater_than_32);
++			} else
++				context.wml |= event2_greater_than_32 |
++				    event1_greater_than_32 | p->watermark_level;
+ 
+ 			/* Address */
+ 			context.shp_addr = (unsigned long)(p->per_address);
++			if (p->ext)
++				context.per_addr = ep->per_address2;
+ 			iapi_IoCtl(sdma_data[channel].cd,
+ 				   IAPI_CHANGE_PERIPHADDR, p->per_address);
+ 		} else {
+@@ -529,6 +612,7 @@ descriptors (0x%x)\n", err);
+ 		case int_2_per:
+ 		case per_2_int:
+ 		case per_2_emi:
++		case per_2_per:
+ 			/*
+ 			 * Peripheral <------> Memory
+ 			 * evtOvr = 0 dspOvr = 1
+-- 
+1.5.4.4
+

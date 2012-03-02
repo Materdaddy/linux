@@ -1,0 +1,28 @@
+From c2bcfd53f09fb8ea2968c36f386e1ef8a72afc9b Mon Sep 17 00:00:00 2001
+From: Katherine Lu <katherine.lu@freescale.com>
+Date: Wed, 27 May 2009 10:00:28 +0800
+Subject: [PATCH] ENGR00108078 SPI: fail when spi IRQ number is zero
+
+It should get error only when platform_get_irq returns negative.
+
+Signed-off-by: Katherine Lu <katherine.lu@freescale.com>
+---
+ drivers/spi/mxc_spi.c |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/drivers/spi/mxc_spi.c b/drivers/spi/mxc_spi.c
+index 3cafd98..8db014d 100644
+--- a/drivers/spi/mxc_spi.c
++++ b/drivers/spi/mxc_spi.c
+@@ -982,7 +982,7 @@ static int mxc_spi_probe(struct platform_device *pdev)
+ 	}
+ 
+ 	master_drv_data->irq = platform_get_irq(pdev, 0);
+-	if (!master_drv_data->irq) {
++	if (master_drv_data->irq < 0) {
+ 		dev_err(&pdev->dev, "can't get IRQ for CSPI%d\n",
+ 			master->bus_num);
+ 		ret = -EINVAL;
+-- 
+1.5.4.4
+

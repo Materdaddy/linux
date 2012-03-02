@@ -1,0 +1,72 @@
+From 12605cd379fb641efd44d7afaa1bac5d0becd015 Mon Sep 17 00:00:00 2001
+From: Richard Zhu <r65037@freescale.com>
+Date: Fri, 5 Jun 2009 10:58:43 +0800
+Subject: [PATCH] ENGR00112121 eSDHC driver enhancementes
+
+Eanble the MMC HIGHSPEED, make a double check to
+enter the data_irq server, add multi-process data
+protection when issue one cmd with internal DMA is used.
+
+Signed-off-by: Richard Zhu <r65037@freescale.com>
+---
+ drivers/mmc/host/mx_sdhci.c |   17 ++++++++++++-----
+ 1 files changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/mmc/host/mx_sdhci.c b/drivers/mmc/host/mx_sdhci.c
+index 25cc3f8..fda0984 100644
+--- a/drivers/mmc/host/mx_sdhci.c
++++ b/drivers/mmc/host/mx_sdhci.c
+@@ -508,15 +508,17 @@ static void sdhci_prepare_data(struct sdhci_host *host, struct mmc_data *data)
+ 		int i;
+ 		struct scatterlist *tsg;
+ 
+-		DBG("Configure the sg DMA, %s, len is 0x%x\n",
+-		    (data->flags & MMC_DATA_READ)
+-		    ? "DMA_FROM_DEIVCE" : "DMA_TO_DEVICE", data->sg_len);
++		host->dma_size = data->blocks * data->blksz;
+ 		count =
+ 		    dma_map_sg(mmc_dev(host->mmc), data->sg, data->sg_len,
+ 			       (data->
+ 				flags & MMC_DATA_READ) ? DMA_FROM_DEVICE :
+ 			       DMA_TO_DEVICE);
+ 		BUG_ON(count != data->sg_len);
++		DBG("Configure the sg DMA, %s, len is 0x%x, count is %d\n",
++		    (data->flags & MMC_DATA_READ)
++		    ? "DMA_FROM_DEIVCE" : "DMA_TO_DEVICE", host->dma_size,
++		    count);
+ 
+ 		/* Make sure the ADMA mode is selected. */
+ 		i = readl(host->ioaddr + SDHCI_HOST_CONTROL);
+@@ -901,7 +903,9 @@ static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
+ 			}
+ 		}
+ 	}
+-	spin_unlock_irqrestore(&host->lock, flags);
++
++	if (host->flags & SDHCI_USE_EXTERNAL_DMA)
++		spin_unlock_irqrestore(&host->lock, flags);
+ 
+ 	host->mrq = mrq;
+ 	if (!(host->flags & SDHCI_CD_PRESENT)) {
+@@ -910,6 +914,9 @@ static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
+ 	} else
+ 		sdhci_send_command(host, mrq->cmd);
+ 
++	if (!(host->flags & SDHCI_USE_EXTERNAL_DMA))
++		spin_unlock_irqrestore(&host->lock, flags);
++
+ 	mmiowb();
+ }
+ 
+@@ -1773,7 +1780,7 @@ static int __devinit sdhci_probe_slot(struct platform_device
+ 	mmc->caps |= mmc_plat->caps;
+ 
+ 	if (caps & SDHCI_CAN_DO_HISPD)
+-		mmc->caps |= MMC_CAP_SD_HIGHSPEED;
++		mmc->caps |= MMC_CAP_SD_HIGHSPEED | MMC_CAP_MMC_HIGHSPEED;
+ 
+ 	mmc->ocr_avail = mmc_plat->ocr_mask;
+ 	if (caps & SDHCI_CAN_VDD_330)
+-- 
+1.5.4.4
+

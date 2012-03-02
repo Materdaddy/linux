@@ -1,0 +1,28 @@
+From 8b26a32a37b6c90063276307ad418cf7a030ddeb Mon Sep 17 00:00:00 2001
+From: Sam Yang <r52096@freescale.com>
+Date: Mon, 4 May 2009 16:08:50 +0800
+Subject: [PATCH] ENGR00111733 Onewire: Kernel dump when inserted mxc_w1 module
+
+paramter changed from 26 to 28 kernel migration.
+
+Signed-off-by: Sam Yang <r52096@freescale.com>
+---
+ drivers/w1/masters/mxc_w1.c |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/drivers/w1/masters/mxc_w1.c b/drivers/w1/masters/mxc_w1.c
+index c4f2af5..cb25377 100644
+--- a/drivers/w1/masters/mxc_w1.c
++++ b/drivers/w1/masters/mxc_w1.c
+@@ -297,7 +297,7 @@ void search_ROM_accelerator(void *data, struct w1_master *master, u8 search_type
+ 			last_rn[0] = temp1;
+ 		}
+ 		last_disc = disc;
+-		cb(data, rom_id);
++		cb(master, rom_id);
+ 	}
+ }
+ 
+-- 
+1.5.4.4
+

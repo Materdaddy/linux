@@ -1,0 +1,28 @@
+From 3b82afa2bf8c776936cfa7262ad3df06583b8482 Mon Sep 17 00:00:00 2001
+From: Ann Thornton <Ann.Thornton@freescale.com>
+Date: Wed, 11 Mar 2009 14:13:31 -0500
+Subject: [PATCH] ENGR00109244-2 Add GPO* regulators.
+
+Fix factor-of-1000 issue where mV were reported as uV for the SW regulators.
+
+Signed-off-by: Ann Thornton <Ann.Thornton@freescale.com>
+---
+ drivers/regulator/reg-mc13892.c |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/drivers/regulator/reg-mc13892.c b/drivers/regulator/reg-mc13892.c
+index f60b6c0..743994c 100644
+--- a/drivers/regulator/reg-mc13892.c
++++ b/drivers/regulator/reg-mc13892.c
+@@ -402,7 +402,7 @@ static int mc13892_sw_get_voltage(struct regulator_dev *reg)
+ 	hi = mc13892_get_sw_hi_bit(sw);
+ 	mV = mc13892_get_voltage_mV(hi, voltage);
+ 
+-	return mV;
++	return mV * 1000;
+ }
+ 
+ static int mc13892_sw_stby_enable(struct regulator_dev *reg)
+-- 
+1.5.4.4
+

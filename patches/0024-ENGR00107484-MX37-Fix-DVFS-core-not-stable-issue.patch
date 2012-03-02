@@ -1,0 +1,28 @@
+From 16cff137daf8fd442e6881d94ab112a602ff81b0 Mon Sep 17 00:00:00 2001
+From: Nancy Chen <Nancy.Chen@freescale.com>
+Date: Mon, 16 Feb 2009 12:12:50 -0600
+Subject: [PATCH] ENGR00107484 MX37: Fix DVFS core not stable issue
+
+MX37: Fix DVFS core not stable issue.
+
+Signed-off-by: Nancy Chen <Nancy.Chen@freescale.com>
+---
+ arch/arm/mach-mx37/devices.c |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/arch/arm/mach-mx37/devices.c b/arch/arm/mach-mx37/devices.c
+index 83846d7..ef0e199 100644
+--- a/arch/arm/mach-mx37/devices.c
++++ b/arch/arm/mach-mx37/devices.c
+@@ -613,7 +613,7 @@ struct mxc_dvfs_platform_data dvfs_core_data = {
+ 	.div3ck_mask = 0x00000006,
+ 	.div3ck_offset = 1,
+ 	.div3ck_val = 3,
+-	.emac_val = 0x20,
++	.emac_val = 0x10,
+ 	.upthr_val = 28,
+ 	.dnthr_val = 10,
+ 	.pncthr_val = 33,
+-- 
+1.5.4.4
+

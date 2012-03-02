@@ -1,0 +1,162 @@
+From 0ab014e1e9da058203c46c78dfca7eadab1a758d Mon Sep 17 00:00:00 2001
+From: Richard Zhu <r65037@freescale.com>
+Date: Fri, 12 Jun 2009 11:22:45 +0800
+Subject: [PATCH] ENGR00113061 [MX51] Enable the eSDHC slot2 on 2.6.28
+
+Enable the eSDHC slot2 on 2.6.28 + BB20/25 platforms.
+
+Signed-off-by: Richard Zhu <r65037@freescale.com>
+---
+ arch/arm/mach-mx51/mx51_babbage.c         |   22 +++++++++++--
+ arch/arm/mach-mx51/mx51_babbage_gpio.c    |   48 +++++++++++++++++++++++++++++
+ arch/arm/plat-mxc/include/mach/hardware.h |    7 +++-
+ 3 files changed, 73 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/mach-mx51/mx51_babbage.c b/arch/arm/mach-mx51/mx51_babbage.c
+index 2ef209e..42473ee 100644
+--- a/arch/arm/mach-mx51/mx51_babbage.c
++++ b/arch/arm/mach-mx51/mx51_babbage.c
+@@ -358,6 +358,8 @@ static int sdhc_write_protect(struct device *dev)
+ 
+ 	if (to_platform_device(dev)->id == 0)
+ 		rc = mxc_get_gpio_datain(MX51_PIN_GPIO1_1);
++	else
++		rc = mxc_get_gpio_datain(MX51_PIN_GPIO1_5);
+ 
+ 	return rc;
+ }
+@@ -370,7 +372,13 @@ static unsigned int sdhc_get_card_det_status(struct device *dev)
+ 		ret = mxc_get_gpio_datain(MX51_PIN_GPIO1_0);
+ 		return ret;
+ 	} else {		/* config the det pin for SDHC2 */
+-		return 0;
++		if (board_is_babbage_2_5() == 1)
++			/* BB2.5 */
++			ret = mxc_get_gpio_datain(MX51_PIN_GPIO1_6);
++		else
++			/* BB2.0 */
++			ret = mxc_get_gpio_datain(MX51_PIN_GPIO1_4);
++		return ret;
+ 	}
+ }
+ 
+@@ -422,8 +430,8 @@ static struct resource mxcsdhc2_resources[] = {
+ 	       .flags = IORESOURCE_IRQ,
+ 	       },
+ 	[2] = {
+-	       .start = 0,
+-	       .end = 0,
++	       .start = IOMUX_TO_IRQ(MX51_PIN_GPIO1_4),
++	       .end = IOMUX_TO_IRQ(MX51_PIN_GPIO1_4),
+ 	       .flags = IORESOURCE_IRQ,
+ 	       },
+ };
+@@ -454,6 +462,14 @@ static struct platform_device mxcsdhc2_device = {
+ 
+ static inline void mxc_init_mmc(void)
+ {
++	if (board_is_babbage_2_5() == 1) {
++		/* BB2.5 */
++		mxcsdhc2_resources[2].start =
++			IOMUX_TO_IRQ(MX51_PIN_GPIO1_6);	/* SD2 CD */
++		mxcsdhc2_resources[2].end =
++			IOMUX_TO_IRQ(MX51_PIN_GPIO1_6);	/* SD2 CD */
++	}
++
+ 	(void)platform_device_register(&mxcsdhc1_device);
+ 	(void)platform_device_register(&mxcsdhc2_device);
+ }
+diff --git a/arch/arm/mach-mx51/mx51_babbage_gpio.c b/arch/arm/mach-mx51/mx51_babbage_gpio.c
+index d971ba5..1f9e492 100644
+--- a/arch/arm/mach-mx51/mx51_babbage_gpio.c
++++ b/arch/arm/mach-mx51/mx51_babbage_gpio.c
+@@ -350,6 +350,47 @@ static struct mxc_iomux_pin_cfg __initdata mxc_iomux_pins[] = {
+ 	 (PAD_CTL_HYS_ENABLE | PAD_CTL_100K_PU),
+ 	 },
+ 	{
++	 MX51_PIN_SD2_CMD, IOMUX_CONFIG_ALT0 | IOMUX_CONFIG_SION,
++	 (PAD_CTL_DRV_MAX | PAD_CTL_22K_PU | PAD_CTL_SRE_FAST),
++	 },
++	{
++	 MX51_PIN_SD2_CLK, IOMUX_CONFIG_ALT0 | IOMUX_CONFIG_SION,
++	 (PAD_CTL_DRV_MAX | PAD_CTL_22K_PU | PAD_CTL_SRE_FAST),
++	 },
++	{
++	 MX51_PIN_SD2_DATA0, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_DRV_MAX | PAD_CTL_22K_PU | PAD_CTL_SRE_FAST),
++	 },
++	{
++	 MX51_PIN_SD2_DATA1, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_DRV_MAX | PAD_CTL_22K_PU | PAD_CTL_SRE_FAST),
++	 },
++	{
++	 MX51_PIN_SD2_DATA2, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_DRV_MAX | PAD_CTL_22K_PU | PAD_CTL_SRE_FAST),
++	 },
++	{
++	 MX51_PIN_SD2_DATA3, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_DRV_MAX | PAD_CTL_22K_PU | PAD_CTL_SRE_FAST),
++	 },
++	{
++	 MX51_PIN_GPIO1_4, IOMUX_CONFIG_GPIO | IOMUX_CONFIG_SION,
++	 (PAD_CTL_HYS_ENABLE | PAD_CTL_100K_PU),
++	 },
++	{
++	 MX51_PIN_GPIO1_5, IOMUX_CONFIG_GPIO | IOMUX_CONFIG_SION,
++	 (PAD_CTL_HYS_ENABLE | PAD_CTL_100K_PU),
++	 },
++	{
++	 MX51_PIN_GPIO1_6, IOMUX_CONFIG_GPIO | IOMUX_CONFIG_SION,
++	 (PAD_CTL_HYS_ENABLE | PAD_CTL_100K_PU),
++	 },
++	{			/* Detect pin GPIO BB2.0 and BB2.5 */
++	 MX51_PIN_UART3_RXD, IOMUX_CONFIG_ALT3,
++	 (PAD_CTL_HYS_NONE | PAD_CTL_PKE_ENABLE | PAD_CTL_PUE_KEEPER |
++	  PAD_CTL_DRV_HIGH | PAD_CTL_SRE_FAST),
++	 },
++	{
+ 	 MX51_PIN_UART1_RXD, IOMUX_CONFIG_ALT0,
+ 	 (PAD_CTL_HYS_ENABLE | PAD_CTL_PKE_ENABLE | PAD_CTL_PUE_PULL |
+ 	  PAD_CTL_DRV_HIGH | PAD_CTL_SRE_FAST),
+@@ -450,6 +491,13 @@ void __init mx51_babbage_io_init(void)
+ 	mxc_set_gpio_direction(MX51_PIN_GPIO1_8, 1);
+ 	mxc_set_gpio_direction(MX51_PIN_GPIO1_0, 1);	/* SD1 CD */
+ 	mxc_set_gpio_direction(MX51_PIN_GPIO1_1, 1);	/* SD1 WP */
++	if (board_is_babbage_2_5() == 1)
++		/* BB2.5 */
++		mxc_set_gpio_direction(MX51_PIN_GPIO1_6, 1);	/* SD2 CD */
++	else
++		/* BB2.0 */
++		mxc_set_gpio_direction(MX51_PIN_GPIO1_4, 1);	/* SD2 CD */
++	mxc_set_gpio_direction(MX51_PIN_GPIO1_5, 1);	/* SD2 WP */
+ 
+ 	/* reset FEC PHY */
+ 	mxc_set_gpio_direction(MX51_PIN_EIM_A20, 0);
+diff --git a/arch/arm/plat-mxc/include/mach/hardware.h b/arch/arm/plat-mxc/include/mach/hardware.h
+index 469b7fc..61bea0e 100644
+--- a/arch/arm/plat-mxc/include/mach/hardware.h
++++ b/arch/arm/plat-mxc/include/mach/hardware.h
+@@ -1,5 +1,5 @@
+ /*
+- *  Copyright 2004-2008 Freescale Semiconductor, Inc. All Rights Reserved.
++ *  Copyright 2004-2009 Freescale Semiconductor, Inc. All Rights Reserved.
+  */
+ 
+ /*
+@@ -82,8 +82,13 @@ static inline int type## _rev (int rev)		\
+ #ifdef CONFIG_ARCH_MX51
+ #include <mach/mx51.h>
+ #define cpu_is_mx51()   (1)
++#define board_is_mx51(rev)   ((system_rev & rev) ? 1 : 0)
++/* BB25:Bit8 is set to 1, BB20: Bit8 is set to 0 */
++#define board_is_babbage_2_5()   ((system_rev & 0x1FF) >> 8)
+ #else
+ #define cpu_is_mx51()   (0)
++#define board_is_mx51(rev)   (0)
++#define board_is_babbage_2_5()   (0)
+ #endif
+ 
+ #ifdef CONFIG_ARCH_MX21
+-- 
+1.5.4.4
+

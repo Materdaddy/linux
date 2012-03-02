@@ -1,0 +1,28 @@
+From c4c99e83f0c152b477c16de2ee71ba393efd268c Mon Sep 17 00:00:00 2001
+From: Lily Zhang <r58066@freescale.com>
+Date: Mon, 13 Apr 2009 15:19:28 +0800
+Subject: [PATCH] ENGR00111305 Enable CONFIG_INPUT_EVDEV in MX51 defconfig
+
+Enable CONFIG_INPUT_EVDEV to run FSL GUI
+
+Signed-off-by: Lily Zhang <r58066@freescale.com>
+---
+ arch/arm/configs/imx51_defconfig |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/arch/arm/configs/imx51_defconfig b/arch/arm/configs/imx51_defconfig
+index 8adcf72..158b5fc 100644
+--- a/arch/arm/configs/imx51_defconfig
++++ b/arch/arm/configs/imx51_defconfig
+@@ -679,7 +679,7 @@ CONFIG_INPUT_MOUSEDEV_PSAUX=y
+ CONFIG_INPUT_MOUSEDEV_SCREEN_X=1024
+ CONFIG_INPUT_MOUSEDEV_SCREEN_Y=768
+ # CONFIG_INPUT_JOYDEV is not set
+-# CONFIG_INPUT_EVDEV is not set
++CONFIG_INPUT_EVDEV=y
+ # CONFIG_INPUT_EVBUG is not set
+ 
+ 
+-- 
+1.5.4.4
+

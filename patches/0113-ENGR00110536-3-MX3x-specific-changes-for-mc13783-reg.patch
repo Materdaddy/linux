@@ -1,0 +1,445 @@
+From 9689b5919b0f8cac66088133dab0854153a6fff6 Mon Sep 17 00:00:00 2001
+From: Ann Thornton <Ann.Thornton@freescale.com>
+Date: Wed, 8 Apr 2009 12:40:44 -0500
+Subject: [PATCH] ENGR00110536-3 MX3x specific changes for mc13783 regulator to work.
+
+SW1A_NORMAL and SW1B_NORMAL were renamed to SW1A or SW1B.
+SW1A_STBY was renamed to SW1A (since standby now functions differently).
+mxc_board init now calls the mc13783 initialization function.
+Cleaned up compiler warnings.
+
+Signed-off-by: Ann Thornton <Ann.Thornton@freescale.com>
+---
+ arch/arm/mach-mx3/Makefile                  |    2 +-
+ arch/arm/mach-mx3/board-mx3_3stack.h        |    2 +
+ arch/arm/mach-mx3/devices.c                 |   10 +-
+ arch/arm/mach-mx3/mx3_3stack.c              |   40 +----
+ arch/arm/mach-mx3/mx3_3stack_pmic_mc13783.c |  264 +++++++++++++++++++++++++++
+ arch/arm/mach-mx3/pm.c                      |   10 -
+ 6 files changed, 278 insertions(+), 50 deletions(-)
+
+diff --git a/arch/arm/mach-mx3/Makefile b/arch/arm/mach-mx3/Makefile
+index 9e9c274..3c5f0a0 100644
+--- a/arch/arm/mach-mx3/Makefile
++++ b/arch/arm/mach-mx3/Makefile
+@@ -8,7 +8,7 @@ obj-y			:= system.o iomux.o cpu.o mm.o clock.o dptc.o devices.o serial.o dma.o m
+ obj-$(CONFIG_MACH_MX31ADS)	+= mx31ads.o mx31ads_gpio.o
+ obj-$(CONFIG_MACH_MX31LITE)	+= mx31lite.o
+ obj-$(CONFIG_MACH_PCM037)	+= pcm037.o
+-obj-$(CONFIG_MACH_MX31_3DS)	+= mx3_3stack.o mx3_3stack_gpio.o
++obj-$(CONFIG_MACH_MX31_3DS)	+= mx3_3stack.o mx3_3stack_gpio.o mx3_3stack_pmic_mc13783.o
+ 
+ # power management
+ obj-$(CONFIG_PM) 		+= pm.o
+diff --git a/arch/arm/mach-mx3/board-mx3_3stack.h b/arch/arm/mach-mx3/board-mx3_3stack.h
+index 480cf25..6f59ebe 100644
+--- a/arch/arm/mach-mx3/board-mx3_3stack.h
++++ b/arch/arm/mach-mx3/board-mx3_3stack.h
+@@ -146,5 +146,7 @@ extern unsigned int sdhc_get_card_det_status(struct device *dev);
+ extern int sdhc_init_card_det(int id);
+ extern int sdhc_write_protect(struct device *dev);
+ 
++extern int __init mx3_3stack_init_mc13783(void);
++
+ #endif				/* CONFIG_MACH_MX31_3DS */
+ #endif				/* __ASM_ARCH_MXC_BOARD_MX31PDK_H__ */
+diff --git a/arch/arm/mach-mx3/devices.c b/arch/arm/mach-mx3/devices.c
+index 6fe6dfe..b27df57 100644
+--- a/arch/arm/mach-mx3/devices.c
++++ b/arch/arm/mach-mx3/devices.c
+@@ -678,7 +678,7 @@ static inline void mxc_init_hmp4e(void)
+ 	/* override fuse for Hantro HW clock */
+ 	if (__raw_readl(iim_reg + 0x808) == 0x4) {
+ 		if (!(__raw_readl(iim_reg + 0x800) & (1 << 5))) {
+-			writel(__raw_readl(iim_reg + 0x808) & 0xfffffffb, 
++			writel(__raw_readl(iim_reg + 0x808) & 0xfffffffb,
+ 					   iim_reg + 0x808);
+ 		}
+ 	}
+@@ -722,11 +722,11 @@ static struct resource dptc_resources[] = {
+ 
+ /*! Platform Data for DPTC */
+ static struct mxc_dptc_data dptc_data = {
+-	.reg_id = "SW1A_NORMAL",
++	.reg_id = "SW1A",
+ 	.clk_id = "cpu_clk",
+-	.dptccr_reg_addr = MXC_CCM_PMCR0,
+-	.dcvr0_reg_addr = MXC_CCM_DCVR0,
+-	.gpc_cntr_reg_addr = MXC_CCM_PMCR0,
++	.dptccr_reg_addr = (unsigned int)MXC_CCM_PMCR0,
++	.dcvr0_reg_addr = (int)MXC_CCM_DCVR0,
++	.gpc_cntr_reg_addr = (int)MXC_CCM_PMCR0,
+ 	.dptccr = 0xFFFFFFFF,
+ 	.dptc_wp_supported = DPTC_WP_SUPPORTED,
+ 	.dptc_wp_allfreq = dptc_wp_allfreq_26ckih,
+diff --git a/arch/arm/mach-mx3/mx3_3stack.c b/arch/arm/mach-mx3/mx3_3stack.c
+index 308fab8..c43ab64 100644
+--- a/arch/arm/mach-mx3/mx3_3stack.c
++++ b/arch/arm/mach-mx3/mx3_3stack.c
+@@ -225,7 +225,7 @@ static struct mxc_lcd_platform_data lcd_data = {
+ static struct mxc_camera_platform_data camera_data = {
+ 	.core_regulator = "VVIB",
+ 	.io_regulator = "VMMC1",
+-	.analog_regulator = "SW2B_NORMAL",
++	.analog_regulator = "SW2B",
+ 	.gpo_regulator = "GPO3",
+ 	.mclk = 27000000,
+ };
+@@ -330,14 +330,15 @@ static struct spi_board_info mxc_spi_board_info[] __initdata = {
+ 	 .irq = IOMUX_TO_IRQ(MX31_PIN_GPIO1_3),
+ 	 .max_speed_hz = 4000000,
+ 	 .bus_num = 2,
+-	 .platform_data = (void *)IOMUX_TO_IRQ(MX31_PIN_GPIO1_2),
+-	 .chip_select = 2,},
++	 .chip_select = 2,
++	},
+ 	{
+ 	 .modalias = "lcd_spi",
+ 	 .platform_data = (void *)&lcd_data,
+ 	 .max_speed_hz = 5000000,
+ 	 .bus_num = 1,
+-	 .chip_select = 2,},
++	 .chip_select = 2,
++	},
+ };
+ 
+ /*lan9217 device*/
+@@ -578,36 +579,6 @@ static int __init mxc_expio_init(void)
+ 	return 0;
+ }
+ 
+-static int __init mxc_init_regulator(void)
+-{
+-	int err;
+-	struct regulator *gpo1;
+-	struct regulator *gpo2;
+-	struct regulator *gpo3;
+-	struct regulator *gpo4;
+-
+-	gpo1 = regulator_get(NULL, "GPO1");
+-	gpo2 = regulator_get(NULL, "GPO2");
+-	gpo3 = regulator_get(NULL, "GPO3");
+-	gpo4 = regulator_get(NULL, "GPO4");
+-#if 0
+-	err = regulator_set_platform_source(gpo2, gpo1);
+-	if (err)
+-		printk(KERN_ERR "Unable to set GPO1 be the parent of GPO2\n");
+-
+-	err = regulator_set_platform_source(gpo3, gpo1);
+-	if (err)
+-		printk(KERN_ERR "Unable to set GPO1 be the parent of GPO3\n");
+-
+-	err = regulator_set_platform_source(gpo4, gpo1);
+-	if (err)
+-		printk(KERN_ERR "Unable to set GPO1 be the parent of GPO4\n");
+-#endif
+-	return 0;
+-}
+-
+-module_init(mxc_init_regulator);
+-
+ #if (defined(CONFIG_MXC_PMIC_MC13783) || \
+ 	defined(CONFIG_MXC_PMIC_MC13783_MODULE)) \
+ 	&& (defined(CONFIG_SND_MXC_PMIC) || defined(CONFIG_SND_MXC_PMIC_MODULE))
+@@ -1008,6 +979,7 @@ static void __init mxc_board_init(void)
+ 	mxc_init_enet();
+ 	mxc_init_nand_mtd();
+ 	mxc_init_ch7024();
++	mx3_3stack_init_mc13783();
+ 
+ 	i2c_register_board_info(0, mxc_i2c_board_info,
+ 				ARRAY_SIZE(mxc_i2c_board_info));
+diff --git a/arch/arm/mach-mx3/mx3_3stack_pmic_mc13783.c b/arch/arm/mach-mx3/mx3_3stack_pmic_mc13783.c
+new file mode 100644
+index 0000000..1d3d569
+--- /dev/null
++++ b/arch/arm/mach-mx3/mx3_3stack_pmic_mc13783.c
+@@ -0,0 +1,264 @@
++/*
++ * mx3-3stack-pmic-mc13783.c  --  i.MX3 3STACK Driver for Atlas MC13783 PMIC
++ */
++ /*
++  * Copyright 2009 Freescale Semiconductor, Inc. All Rights Reserved.
++  */
++
++ /*
++  * The code contained herein is licensed under the GNU General Public
++  * License. You may obtain a copy of the GNU General Public License
++  * Version 2 or later at the following locations:
++  *
++  * http://www.opensource.org/licenses/gpl-license.html
++  * http://www.gnu.org/copyleft/gpl.html
++  */
++
++#include <linux/module.h>
++#include <linux/init.h>
++#include <linux/platform_device.h>
++#include <linux/spi/spi.h>
++#include <linux/err.h>
++#include <linux/pmic_external.h>
++#include <linux/regulator/machine.h>
++#include <linux/mfd/mc13783/core.h>
++#include "iomux.h"
++
++/*
++ * Convenience conversion.
++ * Here atm, maybe there is somewhere better for this.
++ */
++#define mV_to_uV(mV) (mV * 1000)
++
++static struct regulator_consumer_supply gpo_consumers[] = {
++	{
++		.supply = "GPO1",
++	}
++};
++
++struct mc13783;
++
++static struct regulator_init_data violo_init = {
++	.constraints = {
++		.min_uV = mV_to_uV(1200), /* mc13783 allows min of 1200. */
++		.max_uV = mV_to_uV(1800), /* mc13783 allows max of 1800. */
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++		.boot_on = 1,
++	}
++};
++
++static struct regulator_init_data vdig_init = {
++	.constraints = {
++		.min_uV = mV_to_uV(1200), /* mc13783 allows min of 1200. */
++		.max_uV = mV_to_uV(1800), /* mc13783 allows max of 1800. */
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++		.boot_on = 1,
++	}
++};
++
++static struct regulator_init_data vgen_init = {
++	.constraints = {
++		.min_uV = mV_to_uV(1100), /* mc13783 allows min of 1100. */
++		.max_uV = mV_to_uV(2775), /* mc13783 allows max of 2775. */
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++		.boot_on = 1,
++	}
++};
++
++static struct regulator_init_data vrfdig_init = {
++	.constraints = {
++		.min_uV = mV_to_uV(1200), /* mc13783 allows min of 1200. */
++		.max_uV = mV_to_uV(1875), /* mc13783 allows max of 1875. */
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++		.boot_on = 1,
++	}
++};
++
++static struct regulator_init_data vrfref_init = {
++	.constraints = {
++		.min_uV = mV_to_uV(2475), /* mc13783 allows min of 2475. */
++		.max_uV = mV_to_uV(2775), /* mc13783 allows max of 2775. */
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++		.boot_on = 1,
++	}
++};
++
++static struct regulator_init_data vrfcp_init = {
++	.constraints = {
++		.min_uV = mV_to_uV(2700), /* mc13783 allows min of 2700. */
++		.max_uV = mV_to_uV(2775), /* mc13783 allows max of 2775. */
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++		.boot_on = 1,
++	}
++};
++
++static struct regulator_init_data vsim_init = {
++	.constraints = {
++		.min_uV = mV_to_uV(1800), /* mc13783 allows min of 1800. */
++		.max_uV = mV_to_uV(2900), /* mc13783 allows max of 2900. */
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++	}
++};
++
++static struct regulator_init_data vesim_init = {
++	.constraints = {
++		.min_uV = mV_to_uV(1800), /* mc13783 allows min of 1800. */
++		.max_uV = mV_to_uV(2900), /* mc13783 allows max of 2900. */
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++	}
++};
++
++static struct regulator_init_data vcam_init = {
++	.constraints = {
++		.min_uV = mV_to_uV(1500), /* mc13783 allows min of 1500. */
++		.max_uV = mV_to_uV(3000), /* mc13783 allows max of 3000. */
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++	}
++};
++
++static struct regulator_init_data vvib_init = {
++	.constraints = {
++		.min_uV = mV_to_uV(1300), /* mc13783 allows min of 1300. */
++		.max_uV = mV_to_uV(3000), /* mc13783 allows max of 3000. */
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++	}
++};
++
++static struct regulator_init_data vrf_init = {
++	.constraints = {
++		.min_uV = mV_to_uV(1500), /* mc13783 allows min of 1500. */
++		.max_uV = mV_to_uV(2775), /* mc13783 allows max of 2775. */
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++		.boot_on = 1,
++	}
++};
++
++static struct regulator_init_data vmmc_init = {
++	.constraints = {
++		.min_uV = mV_to_uV(1600), /* mc13783 allows min of 1600. */
++		.max_uV = mV_to_uV(3000), /* mc13783 allows max of 3000. */
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++	}
++};
++
++static struct regulator_init_data sw3_init = {
++	.constraints = {
++		.min_uV = mV_to_uV(5000), /* mc13783 allows min of 5000. */
++		.max_uV = mV_to_uV(5500), /* mc13783 allows max of 5500. */
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++		.boot_on = 1,
++	}
++};
++
++static struct regulator_init_data sw1_init = {
++	.constraints = {
++		.min_uV = mV_to_uV(1200), /* mc13783 allows min of 900. */
++		.max_uV = mV_to_uV(1600), /* mc13783 allows max of 2200. */
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE
++				  | REGULATOR_CHANGE_MODE,
++		.valid_modes_mask = REGULATOR_MODE_FAST
++				    | REGULATOR_MODE_NORMAL
++				    | REGULATOR_MODE_IDLE
++				    | REGULATOR_MODE_STANDBY,
++		.always_on = 1,
++		.boot_on = 1,
++		.initial_state = PM_SUSPEND_MEM,
++		.state_mem = {
++			.uV = mV_to_uV(1250),
++			.mode = REGULATOR_MODE_NORMAL,
++			.enabled = 1,
++		},
++	}
++};
++
++static struct regulator_init_data sw_init = {
++	.constraints = {
++		.min_uV = mV_to_uV(1200), /* mc13783 allows min of 900. */
++		.max_uV = mV_to_uV(1600), /* mc13783 allows max of 2200. */
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++		.boot_on = 1,
++	}
++};
++
++static struct regulator_init_data vaudio_init = {
++	.constraints = {
++		.boot_on = 1,
++	}
++};
++
++static struct regulator_init_data viohi_init = {
++	.constraints = {
++		.boot_on = 1,
++	}
++};
++
++static struct regulator_init_data vrfbg_init = {
++	.constraints = {
++		.boot_on = 1,
++	}
++};
++
++static struct regulator_init_data gpo1_init = {
++	.constraints = {
++	}
++};
++
++static struct regulator_init_data gpo_init = {
++	.constraints = {
++	},
++	.num_consumer_supplies = ARRAY_SIZE(gpo_consumers),
++	.consumer_supplies = gpo_consumers,
++};
++
++static int mc13783_regulator_init(void *data)
++{
++	struct mc13783 *mc13783 = data;
++
++	mc13783_register_regulator(mc13783, MC13783_SW1A, &sw1_init);
++	mc13783_register_regulator(mc13783, MC13783_SW1B, &sw_init);
++	mc13783_register_regulator(mc13783, MC13783_SW2A, &sw_init);
++	mc13783_register_regulator(mc13783, MC13783_SW2B, &sw_init);
++	mc13783_register_regulator(mc13783, MC13783_SW3, &sw3_init);
++	mc13783_register_regulator(mc13783, MC13783_VMMC1, &vmmc_init);
++	mc13783_register_regulator(mc13783, MC13783_VMMC2, &vmmc_init);
++	mc13783_register_regulator(mc13783, MC13783_VVIB, &vvib_init);
++	mc13783_register_regulator(mc13783, MC13783_VIOHI, &viohi_init);
++	mc13783_register_regulator(mc13783, MC13783_VIOLO, &violo_init);
++	mc13783_register_regulator(mc13783, MC13783_VDIG, &vdig_init);
++	mc13783_register_regulator(mc13783, MC13783_VRFDIG, &vrfdig_init);
++	mc13783_register_regulator(mc13783, MC13783_VRFREF, &vrfref_init);
++	mc13783_register_regulator(mc13783, MC13783_VRFCP, &vrfcp_init);
++	mc13783_register_regulator(mc13783, MC13783_VRF1, &vrf_init);
++	mc13783_register_regulator(mc13783, MC13783_VRF2, &vrf_init);
++	mc13783_register_regulator(mc13783, MC13783_VAUDIO, &vaudio_init);
++	mc13783_register_regulator(mc13783, MC13783_VCAM, &vcam_init);
++	mc13783_register_regulator(mc13783, MC13783_VGEN, &vgen_init);
++	mc13783_register_regulator(mc13783, MC13783_VSIM, &vsim_init);
++	mc13783_register_regulator(mc13783, MC13783_VESIM, &vesim_init);
++	mc13783_register_regulator(mc13783, MC13783_GPO1, &gpo1_init);
++	mc13783_register_regulator(mc13783, MC13783_GPO2, &gpo_init);
++	mc13783_register_regulator(mc13783, MC13783_GPO3, &gpo_init);
++	mc13783_register_regulator(mc13783, MC13783_GPO4, &gpo_init);
++
++	return 0;
++}
++
++static struct pmic_platform_data mc13783_plat = {
++	.init = mc13783_regulator_init,
++	.power_key_irq = IOMUX_TO_IRQ(MX31_PIN_GPIO1_2),
++};
++
++static struct spi_board_info __initdata mc13783_spi_device = {
++	.modalias = "pmic_spi",
++	.irq = IOMUX_TO_IRQ(MX31_PIN_GPIO1_3),
++	.max_speed_hz = 4000000,
++	.bus_num = 2,
++	.platform_data = &mc13783_plat,
++	.chip_select = 2,
++};
++
++int __init mx3_3stack_init_mc13783(void)
++{
++	return spi_register_board_info(&mc13783_spi_device, 1);
++}
++
+diff --git a/arch/arm/mach-mx3/pm.c b/arch/arm/mach-mx3/pm.c
+index d9c8a0c..68b6922 100644
+--- a/arch/arm/mach-mx3/pm.c
++++ b/arch/arm/mach-mx3/pm.c
+@@ -69,16 +69,6 @@ static int mx31_suspend_enter(suspend_state_t state)
+  */
+ static int mx31_suspend_prepare(void)
+ {
+-	struct regulator *reg_core;
+-	reg_core = regulator_get(NULL, "SW1A_STBY");
+-	if (reg_core == NULL || IS_ERR(reg_core)) {
+-		printk(KERN_ERR "Get regulator SW1A_STBY fail\n");
+-		return -1;
+-	}
+-	regulator_set_voltage(reg_core, 1250000, 1250000);
+-	regulator_set_mode(reg_core, REGULATOR_MODE_STANDBY);
+-	regulator_put(reg_core);
+-
+ 	return 0;
+ }
+ 
+-- 
+1.5.4.4
+

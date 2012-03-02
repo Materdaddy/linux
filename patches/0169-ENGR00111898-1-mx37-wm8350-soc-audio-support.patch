@@ -1,0 +1,135 @@
+From 03742aa04f000a83a4534414c935ef82055ac928 Mon Sep 17 00:00:00 2001
+From: Alan Tull <r80115@freescale.com>
+Date: Mon, 27 Apr 2009 15:45:33 -0500
+Subject: [PATCH] ENGR00111898-1 mx37: wm8350 soc audio support
+
+Enable WM8350 soc audio.  Disable SGTL5000 audio.
+Don't store snd_soc_codec in wm8350 struct.
+Add regulator names to wm8350 audio platform data.
+
+Signed-off-by: Alan Tull <r80115@freescale.com>
+---
+ arch/arm/configs/imx37_3stack_defconfig      |    6 ++--
+ arch/arm/mach-mx37/mx37_3stack_pmic_wm8350.c |   43 ++++++++++++++++++-------
+ include/linux/mfd/wm8350/audio.h             |    5 +--
+ 3 files changed, 36 insertions(+), 18 deletions(-)
+
+diff --git a/arch/arm/configs/imx37_3stack_defconfig b/arch/arm/configs/imx37_3stack_defconfig
+index d0918b2..966bb7a 100644
+--- a/arch/arm/configs/imx37_3stack_defconfig
++++ b/arch/arm/configs/imx37_3stack_defconfig
+@@ -1,7 +1,6 @@
+ #
+ # Automatically generated make config: don't edit
+ # Linux kernel version: 2.6.28
+-# Tue Apr 14 09:45:33 2009
+ #
+ CONFIG_ARM=y
+ CONFIG_SYS_SUPPORTS_APM_EMULATION=y
+@@ -1192,9 +1191,10 @@ CONFIG_SND_SOC=y
+ CONFIG_SND_MXC_SOC=y
+ CONFIG_SND_MXC_SOC_SSI=y
+ # CONFIG_SND_MXC_SOC_IRAM is not set
+-CONFIG_SND_SOC_IMX_3STACK_SGTL5000=y
++CONFIG_SND_SOC_IMX_3STACK_WM8350=y
++# CONFIG_SND_SOC_IMX_3STACK_SGTL5000 is not set
+ # CONFIG_SND_SOC_ALL_CODECS is not set
+-CONFIG_SND_SOC_SGTL5000=y
++CONFIG_SND_SOC_WM8350=y
+ # CONFIG_SOUND_PRIME is not set
+ CONFIG_HID_SUPPORT=y
+ CONFIG_HID=y
+diff --git a/arch/arm/mach-mx37/mx37_3stack_pmic_wm8350.c b/arch/arm/mach-mx37/mx37_3stack_pmic_wm8350.c
+index cc74bd3..9c3d246 100644
+--- a/arch/arm/mach-mx37/mx37_3stack_pmic_wm8350.c
++++ b/arch/arm/mach-mx37/mx37_3stack_pmic_wm8350.c
+@@ -204,6 +204,16 @@ static struct platform_device mxc_wm8350_devices[] = {
+ 	 },
+ };
+ 
++struct mxc_audio_platform_data imx_3stack_audio_platform_data = {
++	.ssi_num = 2,
++	.src_port = 2,
++	.ext_port = 5,
++	.regulator1 = "DCDC6",
++	.regulator2 = "DCDC3",
++};
++
++static struct platform_device *imx_snd_device;
++
+ static int mx37_wm8350_init(struct wm8350 *wm8350)
+ {
+ 	int i, ret;
+@@ -245,7 +255,28 @@ static int mx37_wm8350_init(struct wm8350 *wm8350)
+ 	wm8350_register_regulator(wm8350, WM8350_LDO_4, &ldo4_data);
+ 	wm8350_register_regulator(wm8350, WM8350_ISINK_A, &isinka_data);
+ 
++	/* register sound */
++	pr_info("Registering imx37_snd_device");
++	imx_snd_device = platform_device_alloc("wm8350-imx-3stack-audio", -1);
++	if (!imx_snd_device) {
++		ret = -ENOMEM;
++		goto err;
++	}
++	imx_3stack_audio_platform_data.priv = wm8350;
++
++	imx_snd_device->dev.platform_data = &imx_3stack_audio_platform_data;
++	ret = platform_device_add(imx_snd_device);
++	if (ret)
++		goto snd_err;
++
+ 	return 0;
++
++snd_err:
++	platform_device_put(imx_snd_device);
++
++err:
++	kfree(wm8350->reg_cache);
++	return ret;
+ }
+ 
+ struct wm8350_platform_data __initdata mx37_wm8350_pdata = {
+@@ -293,15 +324,3 @@ static __init int wm8350_regulator_init(void)
+ }
+ 
+ late_initcall(wm8350_regulator_init);
+-
+-/* extern const char imx_3stack_audio[32]; */
+-
+-struct mxc_audio_platform_data imx_3stack_audio_platform_data = {
+-	.ssi_num = 2,
+-	.src_port = 2,
+-	.ext_port = 5,
+-	.regulator1 = "DCDC6",
+-	.regulator2 = "DCDC3"
+-};
+-
+-static struct platform_device *imx_snd_device;
+diff --git a/include/linux/mfd/wm8350/audio.h b/include/linux/mfd/wm8350/audio.h
+index af95a1d..7489d55 100644
+--- a/include/linux/mfd/wm8350/audio.h
++++ b/include/linux/mfd/wm8350/audio.h
+@@ -602,6 +602,8 @@ struct wm8350_audio_platform_data {
+ 	int drain_msecs;	/* OFF drain time */
+ 	int cap_discharge_msecs;	/* Cap ON (from OFF) discharge time */
+ 	int vmid_charge_msecs;	/* vmid power up time */
++	char *regulator1;
++	char *regulator2;
+ 	u32 vmid_s_curve:2;	/* vmid enable s curve speed */
+ 	u32 dis_out4:2;		/* out4 discharge speed */
+ 	u32 dis_out3:2;		/* out3 discharge speed */
+@@ -617,11 +619,8 @@ struct wm8350_audio_platform_data {
+ 	u32 codec_current_charge:2;	/* codec current @ vmid charge */
+ };
+ 
+-struct snd_soc_codec;
+-
+ struct wm8350_codec {
+ 	struct platform_device *pdev;
+-	struct snd_soc_codec *codec;
+ 	struct wm8350_audio_platform_data *platform_data;
+ };
+ 
+-- 
+1.5.4.4
+

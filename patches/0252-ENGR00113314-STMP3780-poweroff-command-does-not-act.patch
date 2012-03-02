@@ -1,0 +1,39 @@
+From c9986f5028077e7086babb0f1be07f7dd9120906 Mon Sep 17 00:00:00 2001
+From: Nancy Chen <Nancy.Chen@freescale.com>
+Date: Thu, 11 Jun 2009 16:13:43 -0500
+Subject: [PATCH] ENGR00113314 STMP3780: poweroff command does not actually shut the device off
+
+STMP3780: The poweroff command does not actually shut the device off.
+
+Signed-off-by: Nancy Chen <Nancy.Chen@freescale.com>
+---
+ arch/arm/mach-stmp3xxx/pm.c |    6 ++++++
+ 1 files changed, 6 insertions(+), 0 deletions(-)
+
+diff --git a/arch/arm/mach-stmp3xxx/pm.c b/arch/arm/mach-stmp3xxx/pm.c
+index 4ffa9f8..d2018cc 100644
+--- a/arch/arm/mach-stmp3xxx/pm.c
++++ b/arch/arm/mach-stmp3xxx/pm.c
+@@ -335,6 +335,11 @@ void stmp37xx_pm_idle(void)
+ 	local_irq_enable();
+ }
+ 
++static void stmp37xx_pm_power_off(void)
++{
++	HW_POWER_RESET_WR((0x3e77 << 16) | 1);
++}
++
+ static int __init stmp37xx_pm_init(void)
+ {
+ 	saved_sram = kmalloc(0x4000, GFP_ATOMIC);
+@@ -344,6 +349,7 @@ static int __init stmp37xx_pm_init(void)
+ 		return -ENOMEM;
+ 	}
+ 
++	pm_power_off = stmp37xx_pm_power_off;
+ 	pm_idle = stmp37xx_pm_idle;
+ 	suspend_set_ops(&stmp37xx_suspend_ops);
+ 	return 0;
+-- 
+1.5.4.4
+

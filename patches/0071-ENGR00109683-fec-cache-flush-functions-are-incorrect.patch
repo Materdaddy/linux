@@ -1,0 +1,101 @@
+From 5d5fecfaf20f025389a09ad66ee102f3354754aa Mon Sep 17 00:00:00 2001
+From: Sam Yang <r52096@freescale.com>
+Date: Tue, 17 Mar 2009 10:28:20 +0800
+Subject: [PATCH] ENGR00109683 fec cache flush functions are incorrect
+
+1. dma_sync_single will be removed in 2.7.x kernel. And the
+dma_sync_single_for_cpu's implementation is changed.
+All the calling of dma_sync_single should be changed to
+dma_sync_single_for_device.
+2. dma_sync_single_for_device will indirectly call inner and outer cache
+operation:
+flush for DMA_TO_DEVICE, invalid for DMA_FROM_DEVICE. But to the buffer which
+is not aligned with cache line, invalid operation will call clean&invlaid to
+sure the data out of buffer will be drained to external memory. for recevie
+packet, it is dirty by such operation. So we should move the invalid operationi
+before the buffer is added into FEC rx buffer.
+3. disable copy function because there are the too many unalignement trap in
+interrupt context.
+
+Signed-off-by: Sam Yang <r52096@freescale.com>
+---
+ drivers/net/fec.c |   18 ++++++++++++------
+ 1 files changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/net/fec.c b/drivers/net/fec.c
+index 34bc338..c4049a5 100644
+--- a/drivers/net/fec.c
++++ b/drivers/net/fec.c
+@@ -19,7 +19,7 @@
+  * Copyright (c) 2004-2006 Macq Electronique SA.
+  */
+ /*
+- * Copyright 2006-2008 Freescale Semiconductor, Inc. All Rights Reserved.
++ * Copyright 2006-2009 Freescale Semiconductor, Inc. All Rights Reserved.
+  */
+ 
+ #include <linux/module.h>
+@@ -270,7 +270,7 @@ static void __inline__ fec_dcache_flush_range(void * start, void * end);
+  *     And the max size of tcp & ip header is 128bytes. Normally it is 40bytes.
+  *     So I set the default value between 128 to 256.
+  */
+-static int fec_copy_threshold = 192;
++static int fec_copy_threshold = -1;
+ 
+ /* MII processing.  We keep this as simple as possible.  Requests are
+  * placed on the list (if there is room).  When the request is finished
+@@ -673,7 +673,6 @@ while (!((status = bdp->cbd_sc) & BD_ENET_RX_EMPTY)) {
+ 	pkt_len = bdp->cbd_datlen;
+ 	dev->stats.rx_bytes += pkt_len;
+ 	data = (__u8*)__va(bdp->cbd_bufaddr);
+-	fec_dcache_inv_range(data, data+pkt_len -4);
+ 
+ 	/* This does 16 byte alignment, exactly what we need.
+ 	 * The packet length includes FCS, but we don't want to
+@@ -693,10 +692,12 @@ while (!((status = bdp->cbd_sc) & BD_ENET_RX_EMPTY)) {
+ 		if ((pkt_len - 4) < fec_copy_threshold) {
+ 			skb_reserve(skb, 2);    /*skip 2bytes, so ipheader is align 4bytes*/
+ 			skb_put(skb,pkt_len-4); /* Make room */
+-		skb_copy_to_linear_data(skb, data, pkt_len-4);
++			skb_copy_to_linear_data(skb, data, pkt_len-4);
+ 		} else {
+ 			struct sk_buff * pskb = fep->rx_skbuff[rx_index];
+ 
++			fec_dcache_inv_range(skb->data, skb->data +
++					     FEC_ENET_RX_FRSIZE);
+ 			fep->rx_skbuff[rx_index] = skb;
+ 			skb->data = FEC_ADDR_ALIGNMENT(skb->data);
+ 			bdp->cbd_bufaddr = __pa(skb->data);
+@@ -2209,7 +2210,9 @@ static void __inline__ fec_localhw_setup(struct net_device *dev)
+  */
+ static void __inline__ fec_dcache_inv_range(void * start, void * end)
+ {
+-	dmac_inv_range(start, end);
++	dma_sync_single_for_device(NULL, (unsigned long)__pa(start),
++				   (unsigned long)(end - start),
++				   DMA_FROM_DEVICE);
+ 	return ;
+ }
+ 
+@@ -2218,7 +2221,8 @@ static void __inline__ fec_dcache_inv_range(void * start, void * end)
+  */
+ static void __inline__ fec_dcache_flush_range(void * start, void * end)
+ {
+-	dmac_flush_range(start, end);
++	dma_sync_single_for_device(NULL, (unsigned long)__pa(start),
++				   (unsigned long)(end - start), DMA_TO_DEVICE);
+ 	return ;
+ }
+ 
+@@ -2850,6 +2854,8 @@ int __init fec_enet_init(struct net_device *dev)
+ 			return -ENOMEM;
+ 		}
+ 		fep->rx_skbuff[i] = pskb;
++		fec_dcache_inv_range(pskb->data, pskb->data +
++				     FEC_ENET_RX_FRSIZE);
+ 		pskb->data = FEC_ADDR_ALIGNMENT(pskb->data);
+ 		bdp->cbd_sc = BD_ENET_RX_EMPTY;
+ 		bdp->cbd_bufaddr = __pa(pskb->data);
+-- 
+1.5.4.4
+

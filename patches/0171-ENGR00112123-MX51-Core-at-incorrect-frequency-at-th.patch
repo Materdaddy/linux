@@ -1,0 +1,58 @@
+From dd66e98de5f030f595c743501ec8e41b5e45380f Mon Sep 17 00:00:00 2001
+From: Ranjani Vaidyanathan-RA5478 <Ranjani.Vaidyanathan@freescale.com>
+Date: Fri, 1 May 2009 09:47:48 -0500
+Subject: [PATCH] ENGR00112123: MX51:Core at incorrect frequency at the lower GP voltage.
+
+MX51 TO2 data sheet specs the core frequency to be at or below 167MHz when
+the core voltage is 0.775V. Change the CPU working points to work at the
+correct frequency.
+
+Signed-off-by: Ranjani Vaidyanathan-RA5478 <Ranjani.Vaidyanathan@freescale.com>
+---
+ arch/arm/mach-mx51/mx51_3stack.c  |    6 +++---
+ arch/arm/mach-mx51/mx51_babbage.c |    6 +++---
+ 2 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm/mach-mx51/mx51_3stack.c b/arch/arm/mach-mx51/mx51_3stack.c
+index 7e4d887..ac53348 100644
+--- a/arch/arm/mach-mx51/mx51_3stack.c
++++ b/arch/arm/mach-mx51/mx51_3stack.c
+@@ -76,12 +76,12 @@ static struct cpu_wp cpu_wp_auto[] = {
+ 	 .cpu_voltage = 1050000,},
+ 	{
+ 	 .pll_rate = 800000000,
+-	 .cpu_rate = 200000000,
+-	 .pdf = 3,
++	 .cpu_rate = 160000000,
++	 .pdf = 4,
+ 	 .mfi = 8,
+ 	 .mfd = 2,
+ 	 .mfn = 1,
+-	 .cpu_podf = 3,
++	 .cpu_podf = 4,
+ 	 .cpu_voltage = 775000,},
+ };
+ 
+diff --git a/arch/arm/mach-mx51/mx51_babbage.c b/arch/arm/mach-mx51/mx51_babbage.c
+index e3a0910..803800b 100644
+--- a/arch/arm/mach-mx51/mx51_babbage.c
++++ b/arch/arm/mach-mx51/mx51_babbage.c
+@@ -74,12 +74,12 @@ static struct cpu_wp cpu_wp_auto[] = {
+ 	 .cpu_voltage = 1050000,},
+ 	{
+ 	 .pll_rate = 800000000,
+-	 .cpu_rate = 200000000,
+-	 .pdf = 3,
++	 .cpu_rate = 160000000,
++	 .pdf = 4,
+ 	 .mfi = 8,
+ 	 .mfd = 2,
+ 	 .mfn = 1,
+-	 .cpu_podf = 3,
++	 .cpu_podf = 4,
+ 	 .cpu_voltage = 775000,},
+ };
+ 
+-- 
+1.5.4.4
+

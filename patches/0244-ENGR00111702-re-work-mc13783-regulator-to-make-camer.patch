@@ -1,0 +1,60 @@
+From 8fdebf268091f649c29d71b758b337edf5d32448 Mon Sep 17 00:00:00 2001
+From: Zhou Jingyu <b02241@freescale.com>
+Date: Thu, 11 Jun 2009 18:16:11 +0800
+Subject: [PATCH] ENGR00111702 re-work mc13783 regulator to make camera work
+
+Change voltage range of SWB2
+Add dummy enable routine for SWB2
+
+Signed-off-by: Zhou Jingyu <Jingyu.Zhou@freescale.com>
+---
+ arch/arm/mach-mx3/mx3_3stack_pmic_mc13783.c |    2 +-
+ drivers/regulator/reg-mc13783.c             |   12 ++++++++++++
+ 2 files changed, 13 insertions(+), 1 deletions(-)
+
+diff --git a/arch/arm/mach-mx3/mx3_3stack_pmic_mc13783.c b/arch/arm/mach-mx3/mx3_3stack_pmic_mc13783.c
+index 9e17989..2a48770 100644
+--- a/arch/arm/mach-mx3/mx3_3stack_pmic_mc13783.c
++++ b/arch/arm/mach-mx3/mx3_3stack_pmic_mc13783.c
+@@ -174,7 +174,7 @@ static struct regulator_init_data sw1_init = {
+ static struct regulator_init_data sw_init = {
+ 	.constraints = {
+ 		.min_uV = mV_to_uV(1200), /* mc13783 allows min of 900. */
+-		.max_uV = mV_to_uV(1600), /* mc13783 allows max of 2200. */
++		.max_uV = mV_to_uV(2200), /* mc13783 allows max of 2200. */
+ 		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
+ 		.boot_on = 1,
+ 	}
+diff --git a/drivers/regulator/reg-mc13783.c b/drivers/regulator/reg-mc13783.c
+index bf419fb..c761c7b 100644
+--- a/drivers/regulator/reg-mc13783.c
++++ b/drivers/regulator/reg-mc13783.c
+@@ -1927,6 +1927,16 @@ static int mc13783_sw_get_normal_voltage(struct regulator_dev *reg)
+ 	return mV * 1000;
+ }
+ 
++static int mc13783_sw_normal_enable(struct regulator_dev *reg)
++{
++	return 0;
++}
++
++static int mc13783_sw_normal_disable(struct regulator_dev *reg)
++{
++	return 0;
++}
++
+ static int mc13783_sw_stby_enable(struct regulator_dev *reg)
+ {
+ 	return 0;
+@@ -2347,6 +2357,8 @@ static struct regulator_ops mc13783_sw_normal_ops = {
+ 	.get_voltage = mc13783_sw_get_normal_voltage,
+ 	.get_mode = mc13783_sw_get_normal_mode,
+ 	.set_mode = mc13783_sw_set_normal_mode,
++	.enable = mc13783_sw_normal_enable,
++	.disable = mc13783_sw_normal_disable,
+ };
+ 
+ static struct regulator_desc reg_mc13783[] = {
+-- 
+1.5.4.4
+

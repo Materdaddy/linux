@@ -1,0 +1,95 @@
+From c93dade67610c073b19b8d36080fb386475767f3 Mon Sep 17 00:00:00 2001
+From: Lionel.Xu <r63889@freescale.com>
+Date: Tue, 28 Apr 2009 13:13:24 +0800
+Subject: [PATCH] ENGR00111918 SGTL5000: Enable amixer controls Jack Function/Speaker Function
+
+Enable alsa amixer controls Jack Function and Speaker Function. By setting or
+unsetting these controls it is now able to turn on or off headphone and speaker
+output.
+
+Signed-off-by: Lionel Xu <r63889@freescale.com>
+---
+ sound/soc/codecs/sgtl5000.c         |   14 +++++++-------
+ sound/soc/imx/imx-3stack-sgtl5000.c |   13 +++++--------
+ 2 files changed, 12 insertions(+), 15 deletions(-)
+
+diff --git a/sound/soc/codecs/sgtl5000.c b/sound/soc/codecs/sgtl5000.c
+index 10c2b96..a34f188 100644
+--- a/sound/soc/codecs/sgtl5000.c
++++ b/sound/soc/codecs/sgtl5000.c
+@@ -252,6 +252,9 @@ static const struct snd_soc_dapm_widget sgtl5000_dapm_widgets[] = {
+ 	SND_SOC_DAPM_OUTPUT("HP_OUT"),
+ 	SND_SOC_DAPM_OUTPUT("LINE_OUT"),
+ 
++	SND_SOC_DAPM_PGA("HP", SGTL5000_CHIP_ANA_POWER, 4, 0, NULL, 0),
++	SND_SOC_DAPM_PGA("LO", SGTL5000_CHIP_ANA_POWER, 0, 0, NULL, 0),
++
+ 	SND_SOC_DAPM_MUX("ADC Mux", SND_SOC_NOPM, 0, 0, &adc_mux),
+ 	SND_SOC_DAPM_MUX("DAC Mux", SND_SOC_NOPM, 0, 0, &dac_mux),
+ 
+@@ -265,8 +268,10 @@ static const struct snd_soc_dapm_route audio_map[] = {
+ 	{"ADC", NULL, "ADC Mux"},
+ 	{"DAC Mux", "DAC", "DAC"},
+ 	{"DAC Mux", "LINE_IN", "LINE_IN"},
+-	{"LINE_OUT", NULL, "DAC"},
+-	{"HP_OUT", NULL, "DAC Mux"},
++	{"LO", NULL, "DAC"},
++	{"HP", NULL, "DAC Mux"},
++	{"LINE_OUT", NULL, "LO"},
++	{"HP_OUT", NULL, "HP"},
+ };
+ 
+ static int sgtl5000_add_widgets(struct snd_soc_codec *codec)
+@@ -662,11 +667,6 @@ static int sgtl5000_set_bias_level(struct snd_soc_codec *codec,
+ 		   avoid pops. */
+ 		reg = sgtl5000_read(codec, SGTL5000_CHIP_ANA_POWER);
+ 		if ((reg & SGTL5000_HP_POWERUP) == 0) {
+-			reg |= SGTL5000_HP_POWERUP;
+-			reg |= SGTL5000_LINE_OUT_POWERUP;
+-			sgtl5000_write(codec, SGTL5000_CHIP_ANA_POWER, reg);
+-			msleep(10);
+-
+ 			reg |= SGTL5000_VAG_POWERUP;
+ 			reg |= SGTL5000_REFTOP_POWERUP;
+ 			reg |= SGTL5000_DAC_POWERUP;
+diff --git a/sound/soc/imx/imx-3stack-sgtl5000.c b/sound/soc/imx/imx-3stack-sgtl5000.c
+index 2ba9776..f927175 100644
+--- a/sound/soc/imx/imx-3stack-sgtl5000.c
++++ b/sound/soc/imx/imx-3stack-sgtl5000.c
+@@ -195,9 +195,6 @@ static const struct snd_soc_dapm_route audio_map[] = {
+ 	/* HP_OUT --> Headphone Jack */
+ 	{"Headphone Jack", NULL, "HP_OUT"},
+ 
+-	/* LINE_OUT --> Line Out Jack */
+-	{"Line Out Jack", NULL, "LINE_OUT"},
+-
+ 	/* LINE_OUT --> Ext Speaker */
+ 	{"Ext Spk", NULL, "LINE_OUT"},
+ };
+@@ -301,10 +298,11 @@ static int sgtl5000_set_spk(struct snd_kcontrol *kcontrol,
+ 		return 0;
+ 
+ 	sgtl5000_spk_func = ucontrol->value.enumerated.item[0];
+-	if (sgtl5000_spk_func)
+-		snd_soc_dapm_enable_pin(codec, "Line Out Jack");
+-	else
+-		snd_soc_dapm_disable_pin(codec, "Line Out Jack");
++	if (sgtl5000_spk_func) {
++		snd_soc_dapm_enable_pin(codec, "Ext Spk");
++	} else {
++		snd_soc_dapm_disable_pin(codec, "Ext Spk");
++	}
+ 
+ 	snd_soc_dapm_sync(codec);
+ 	return 1;
+@@ -332,7 +330,6 @@ static int spk_amp_event(struct snd_soc_dapm_widget *w,
+ static const struct snd_soc_dapm_widget imx_3stack_dapm_widgets[] = {
+ 	SND_SOC_DAPM_MIC("Mic Jack", NULL),
+ 	SND_SOC_DAPM_LINE("Line In Jack", NULL),
+-	SND_SOC_DAPM_LINE("Line Out Jack", NULL),
+ 	SND_SOC_DAPM_SPK("Ext Spk", spk_amp_event),
+ 	SND_SOC_DAPM_HP("Headphone Jack", NULL),
+ };
+-- 
+1.5.4.4
+

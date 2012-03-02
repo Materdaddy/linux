@@ -1,0 +1,41 @@
+From 0d6810a9a44e645267c5a919644b92dab2eb988b Mon Sep 17 00:00:00 2001
+From: Wu Guoxing <b02248@freescale.com>
+Date: Thu, 7 May 2009 09:46:49 +0800
+Subject: [PATCH] ENGR00112238-1 mx35: Change CONFIG_FORCE_MAX_ZONEORDER
+
+Change CONFIG_FORCE_MAX_ZONEORDER to be 13 as default
+
+Signed-off-by: Wu Guoxing <b02248@freescale.com>
+---
+ arch/arm/configs/imx35_3stack_defconfig |    1 +
+ arch/arm/mach-mx35/Kconfig              |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletions(-)
+
+diff --git a/arch/arm/configs/imx35_3stack_defconfig b/arch/arm/configs/imx35_3stack_defconfig
+index 05bba60..c897e9e 100644
+--- a/arch/arm/configs/imx35_3stack_defconfig
++++ b/arch/arm/configs/imx35_3stack_defconfig
+@@ -192,6 +192,7 @@ CONFIG_ARCH_MXC_HAS_NFC_V2_1=y
+ #
+ # MX35 Options
+ #
++CONFIG_FORCE_MAX_ZONEORDER=13
+ CONFIG_MX35_OPTIONS=y
+ CONFIG_MACH_MX35_3DS=y
+ # CONFIG_MACH_MX35EVB is not set
+diff --git a/arch/arm/mach-mx35/Kconfig b/arch/arm/mach-mx35/Kconfig
+index 9d1dbcd..6fdc1dd 100644
+--- a/arch/arm/mach-mx35/Kconfig
++++ b/arch/arm/mach-mx35/Kconfig
+@@ -3,7 +3,7 @@ menu "MX35 Options"
+ 
+ config FORCE_MAX_ZONEORDER
+     int "MAX_ORDER"
+-    default "11"
++    default "13"
+ 
+ config MX35_OPTIONS
+ 	bool
+-- 
+1.5.4.4
+

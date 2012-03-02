@@ -1,0 +1,36 @@
+From b8d4595156bb85cf9ad3ed60598a5e2176d1ee1b Mon Sep 17 00:00:00 2001
+From: Sam Yang <r52096@freescale.com>
+Date: Tue, 24 Mar 2009 15:32:59 +0800
+Subject: [PATCH] ENGR00110150 FEC new fix of reopening causes network wdog timeout
+
+start queue when the interface is opened.
+
+Signed-off-by: Sam Yang <r52096@freescale.com>
+---
+ drivers/net/fec.c |    3 +--
+ 1 files changed, 1 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/fec.c b/drivers/net/fec.c
+index c4049a5..bce8462 100644
+--- a/drivers/net/fec.c
++++ b/drivers/net/fec.c
+@@ -2650,6 +2650,7 @@ fec_enet_open(struct net_device *dev)
+ 	}
+ 
+ 	fep->opened = 1;
++	netif_start_queue(dev);
+ 	return 0;		/* Success */
+ }
+ 
+@@ -3059,8 +3060,6 @@ fec_restart(struct net_device *dev, int duplex)
+ 	*/
+ 	fecp->fec_ecntrl = 2;
+ 	fecp->fec_r_des_active = 0x01000000;
+-
+-	netif_start_queue(dev);
+ }
+ 
+ static void
+-- 
+1.5.4.4
+

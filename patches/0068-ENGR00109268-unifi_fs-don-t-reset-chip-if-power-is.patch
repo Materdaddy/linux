@@ -1,0 +1,31 @@
+From 2d1dd61bb31dda4a02ea3d3bf70df0c67c9cb628 Mon Sep 17 00:00:00 2001
+From: Richard Zhao <b20223@freescale.com>
+Date: Tue, 10 Mar 2009 16:58:32 +0800
+Subject: [PATCH] ENGR00109268 unifi_fs: don't reset chip if power is on by default
+
+If power is on by default, sdio device has been initialized, so we don't
+reset the chip.
+
+Signed-off-by: Richard Zhao <b20223@freescale.com>
+---
+ drivers/mmc/card/unifi_fs/fs_lx.c |    4 ++--
+ 1 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/mmc/card/unifi_fs/fs_lx.c b/drivers/mmc/card/unifi_fs/fs_lx.c
+index ef53c60..37b7bba 100644
+--- a/drivers/mmc/card/unifi_fs/fs_lx.c
++++ b/drivers/mmc/card/unifi_fs/fs_lx.c
+@@ -360,8 +360,8 @@ int fs_sdio_register_driver(struct fs_driver *driver)
+ {
+ 	int ret;
+ 
+-	/* Switch us on */
+-	fs_unifi_power_on(-1);
++	/* Switch us on, sdio device may exist if power is on by default. */
++	fs_unifi_power_on(available_sdio_dev ? 0 : 1);
+ 
+ 	/* Store the context to the device driver to the global */
+ 	available_driver = driver;
+-- 
+1.5.4.4
+

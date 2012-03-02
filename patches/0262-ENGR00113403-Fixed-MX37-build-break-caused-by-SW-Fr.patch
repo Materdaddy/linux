@@ -1,0 +1,28 @@
+From 241696308d646ec9a7a50ec1dae87e7423e161aa Mon Sep 17 00:00:00 2001
+From: Ranjani Vaidyanathan-RA5478 <Ranjani.Vaidyanathan@freescale.com>
+Date: Tue, 16 Jun 2009 10:25:15 -0500
+Subject: [PATCH] ENGR00113403: Fixed MX37 build break caused by SW Frequency scaling.
+
+Fixed build break.
+
+Signed-off-by: Ranjani Vaidyanathan-RA5478 <Ranjani.Vaidyanathan@freescale.com>
+---
+ arch/arm/mach-mx37/clock.c |    2 ++
+ 1 files changed, 2 insertions(+), 0 deletions(-)
+
+diff --git a/arch/arm/mach-mx37/clock.c b/arch/arm/mach-mx37/clock.c
+index 69a64f1..a79f73e 100644
+--- a/arch/arm/mach-mx37/clock.c
++++ b/arch/arm/mach-mx37/clock.c
+@@ -54,6 +54,8 @@ static int cpu_curr_wp;
+ static struct cpu_wp *cpu_wp_tbl;
+ 
+ int cpu_wp_nr;
++int lp_high_freq;
++int lp_med_freq;
+ 
+ extern void propagate_rate(struct clk *tclk);
+ extern void board_ref_clk_rate(unsigned long *ckil, unsigned long *osc,
+-- 
+1.5.4.4
+

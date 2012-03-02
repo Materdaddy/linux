@@ -1,0 +1,52 @@
+From f111dd666c2c1575e435c3f09a1d266f0e788406 Mon Sep 17 00:00:00 2001
+From: Lionel.Xu <r63889@freescale.com>
+Date: Fri, 8 May 2009 15:54:39 +0800
+Subject: [PATCH] ENGR00112272 MX31/35 RTC: To make mxc_rtc independent of pmic_rtc
+
+Relevant code in function mxc_rtc_probe to sync internal time with external time
+should be removed to make mxc_rtc independent of external. Moremover, getting
+external time will return error on mx35.
+
+Signed-off-by: Lionel Xu <r63889@freescale.com>
+---
+ drivers/rtc/rtc-mxc.c |   15 ++-------------
+ 1 files changed, 2 insertions(+), 13 deletions(-)
+
+diff --git a/drivers/rtc/rtc-mxc.c b/drivers/rtc/rtc-mxc.c
+index d256da5..b6b168d 100644
+--- a/drivers/rtc/rtc-mxc.c
++++ b/drivers/rtc/rtc-mxc.c
+@@ -632,11 +632,10 @@ static int mxc_rtc_probe(struct platform_device *pdev)
+ 	struct clk *clk;
+ 	struct timespec tv;
+ 	struct resource *res;
+-	struct rtc_time temp_time;
+ 	struct rtc_device *rtc;
+ 	struct rtc_plat_data *pdata = NULL;
+-	u32 sec, reg;
+-	int ret;
++	u32 reg;
++	int ret = 0;
+ 
+ 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 	if (!res)
+@@ -672,16 +671,6 @@ static int mxc_rtc_probe(struct platform_device *pdev)
+ 	}
+ 	pdata->rtc = rtc;
+ 	platform_set_drvdata(pdev, pdata);
+-	ret = get_ext_rtc_time(&sec);
+-	if (ret == MXC_EXTERNAL_RTC_OK) {
+-		rtc_time_to_tm(sec, &temp_time);
+-		mxc_rtc_set_time(&pdev->dev, &temp_time);
+-
+-	} else if (ret == MXC_EXTERNAL_RTC_NONE) {
+-		pr_info("No external RTC clock\n");
+-	} else {
+-		pr_info("Reading external RTC failed\n");
+-	}
+ 	tv.tv_nsec = 0;
+ 	tv.tv_sec = get_alarm_or_time(&pdev->dev, MXC_RTC_TIME);
+ 	clk = clk_get(NULL, "ckil");
+-- 
+1.5.4.4
+

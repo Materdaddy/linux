@@ -1,0 +1,40 @@
+From f76bb265ee5b23dcedeba702bc2498c0f5bbd0d3 Mon Sep 17 00:00:00 2001
+From: Wallace Wang <r59996@freescale.com>
+Date: Thu, 30 Apr 2009 13:39:43 +0800
+Subject: [PATCH] ENGR00111686 FM: second time modprobe mxc_si4702 failed after rmprobe
+
+Fix Wrong device_create porting
+
+Signed-off-by: Wallace Wang <r59996@freescale.com>
+---
+ drivers/char/mxc_si4702.c |    7 ++++---
+ 1 files changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/char/mxc_si4702.c b/drivers/char/mxc_si4702.c
+index b6f5782..b4b0809 100644
+--- a/drivers/char/mxc_si4702.c
++++ b/drivers/char/mxc_si4702.c
+@@ -1114,8 +1114,8 @@ static int __devinit si4702_probe(struct i2c_client *client,
+ 		goto char_dev_remove;
+ 	}
+ 
+-	dev = device_create(drv_data->radio_class, NULL, NULL,
+-			    MKDEV(drv_data->major, drv_data->minor), "si4702");
++	dev = device_create(drv_data->radio_class, NULL,
++		    MKDEV(drv_data->major, drv_data->minor), NULL, "si4702");
+ 	if (IS_ERR(dev)) {
+ 		dev_err(&client->dev,
+ 			"SI4702: failed to create radio class device\n");
+@@ -1162,7 +1162,8 @@ static int __devexit si4702_remove(struct i2c_client *client)
+ 
+ 	plat_data = (struct mxc_fm_platform_data *)client->dev.platform_data;
+ 
+-	device_destroy(drv_data->radio_class, MKDEV(drv_data->major, 0));
++	device_destroy(drv_data->radio_class,
++		       MKDEV(drv_data->major, drv_data->minor));
+ 	class_destroy(drv_data->radio_class);
+ 
+ 	unregister_chrdev(drv_data->major, "si4702");
+-- 
+1.5.4.4
+

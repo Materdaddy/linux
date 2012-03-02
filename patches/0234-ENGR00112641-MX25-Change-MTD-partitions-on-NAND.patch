@@ -1,0 +1,33 @@
+From 043823fc59ce2c9fae59531e24cdf54b27e43a02 Mon Sep 17 00:00:00 2001
+From: Sammy He <r62914@freescale.com>
+Date: Tue, 9 Jun 2009 15:06:12 +0800
+Subject: [PATCH] ENGR00112641 MX25: Change MTD partitions on NAND
+
+Change bootloader partition to 1M and kernel partition to 5M.
+
+Signed-off-by: Sammy He <r62914@freescale.com>
+---
+ arch/arm/mach-mx25/mx25_3stack.c |    4 ++--
+ 1 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm/mach-mx25/mx25_3stack.c b/arch/arm/mach-mx25/mx25_3stack.c
+index f5ccc03..16f1864 100644
+--- a/arch/arm/mach-mx25/mx25_3stack.c
++++ b/arch/arm/mach-mx25/mx25_3stack.c
+@@ -141,11 +141,11 @@ static struct mtd_partition mxc_nand_partitions[] = {
+ 	{
+ 	 .name = "nand.bootloader",
+ 	 .offset = 0,
+-	 .size = 256 * 1024},
++	 .size = 1024 * 1024},
+ 	{
+ 	 .name = "nand.kernel",
+ 	 .offset = MTDPART_OFS_APPEND,
+-	 .size = 4 * 1024 * 1024},
++	 .size = 5 * 1024 * 1024},
+ 	{
+ 	 .name = "nand.rootfs",
+ 	 .offset = MTDPART_OFS_APPEND,
+-- 
+1.5.4.4
+

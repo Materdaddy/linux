@@ -1,0 +1,312 @@
+From f77fd130ada8c3c5c5d2ecf82bee153b520476ab Mon Sep 17 00:00:00 2001
+From: Jun Li <r65092@freescale.com>
+Date: Tue, 3 Mar 2009 11:36:56 +0800
+Subject: [PATCH] ENGR00108463 Support i.MX31 USB host remote wakeup by USB device.
+
+When i.MX31 acts as USB host and is in SR/STOP mode, it can be waked up by
+usb device connection, disconnection, or usb activity of usb hid device.
+
+Signed-off-by: Li Jun <r65092@freescale.com>
+---
+ arch/arm/mach-mx3/mxc_pm.c     |    6 ++++-
+ arch/arm/mach-mx3/usb.h        |   10 +++++++-
+ arch/arm/mach-mx3/usb_h2.c     |   10 +++++++-
+ arch/arm/plat-mxc/usb_common.c |   42 ++++++++++++++++++++++++++++++++++++++++
+ drivers/usb/core/hcd.c         |   21 ++++++++++++++++++-
+ drivers/usb/host/Kconfig       |   16 +++++++++++++++
+ drivers/usb/host/ehci-arc.c    |   34 +++++++++++++++++++++++++++++++-
+ include/linux/usb/ehci_def.h   |    1 +
+ 8 files changed, 132 insertions(+), 8 deletions(-)
+
+diff --git a/arch/arm/mach-mx3/mxc_pm.c b/arch/arm/mach-mx3/mxc_pm.c
+index 114ce7a..4b96f0f 100644
+--- a/arch/arm/mach-mx3/mxc_pm.c
++++ b/arch/arm/mach-mx3/mxc_pm.c
+@@ -336,9 +336,13 @@ void mxc_pm_lowpower(int mode)
+ 		/* wake up by keypad and usbotg */
+ 		reg = __raw_readl(MXC_CCM_WIMR);
+ 		reg &= ~(1 << 18);
+-#ifdef CONFIG_USB_GADGET_WAKE_UP
++#if defined(CONFIG_USB_GADGET_WAKE_UP) || \
++		defined(CONFIG_USB_EHCI_ARC_OTG_WAKE_UP)
+ 		reg &= ~(1 << 5);
+ #endif
++#ifdef CONFIG_USB_EHCI_ARC_H2_WAKE_UP
++		reg &= ~(1 << 6);
++#endif
+ 		__raw_writel(reg, MXC_CCM_WIMR);
+ 
+ 		flush_cache_all();
+diff --git a/arch/arm/mach-mx3/usb.h b/arch/arm/mach-mx3/usb.h
+index d272195..bd87791 100644
+--- a/arch/arm/mach-mx3/usb.h
++++ b/arch/arm/mach-mx3/usb.h
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright 2005-2008 Freescale Semiconductor, Inc. All Rights Reserved.
++ * Copyright 2005-2009 Freescale Semiconductor, Inc. All Rights Reserved.
+  */
+ 
+ /*
+@@ -62,8 +62,14 @@ static struct fsl_usb2_platform_data __maybe_unused dr_13783_config;
+ #ifdef CONFIG_USB_EHCI_ARC_OTG
+ static inline void dr_register_host(struct resource *r, int rs)
+ {
++	struct platform_device *dr_pdev;
++
+ 	PDATA->operating_mode = DR_HOST_MODE;
+-	host_pdev_register(r, rs, PDATA);
++	dr_pdev = host_pdev_register(r, rs, PDATA);
++#ifdef CONFIG_USB_EHCI_ARC_OTG_WAKE_UP
++	/* set host may and should wakeup */
++	device_init_wakeup(&(dr_pdev->dev), 1);
++#endif
+ }
+ #else
+ static inline void dr_register_host(struct resource *r, int rs)
+diff --git a/arch/arm/mach-mx3/usb_h2.c b/arch/arm/mach-mx3/usb_h2.c
+index d47f26b..ea51a27 100644
+--- a/arch/arm/mach-mx3/usb_h2.c
++++ b/arch/arm/mach-mx3/usb_h2.c
+@@ -47,6 +47,8 @@ static struct resource usbh2_resources[] = {
+ 
+ static int __init usbh2_init(void)
+ {
++	struct platform_device *h2_pdev;
++
+ 	pr_debug("%s: \n", __func__);
+ 
+ 	if (machine_is_mx31_3ds()) {
+@@ -62,8 +64,12 @@ static int __init usbh2_init(void)
+ 		usbh2_config.xcvr_pwr->regu2 = usbh2_regux;
+ 	}
+ 
+-	host_pdev_register(usbh2_resources, ARRAY_SIZE(usbh2_resources),
+-			   &usbh2_config);
++	h2_pdev = host_pdev_register(usbh2_resources,
++			ARRAY_SIZE(usbh2_resources), &usbh2_config);
++#ifdef CONFIG_USB_EHCI_ARC_H2_WAKE_UP
++	/* set host2 may and should wakeup */
++	device_init_wakeup(&(h2_pdev->dev), 1);
++#endif
+ 	return 0;
+ }
+ module_init(usbh2_init);
+diff --git a/arch/arm/plat-mxc/usb_common.c b/arch/arm/plat-mxc/usb_common.c
+index f756a39..9fe7739 100644
+--- a/arch/arm/plat-mxc/usb_common.c
++++ b/arch/arm/plat-mxc/usb_common.c
+@@ -465,6 +465,9 @@ int fsl_usb_host_init(struct platform_device *pdev)
+ 	if (xops->init)
+ 		xops->init(xops);
+ 
++	if (usb_register_remote_wakeup(pdev))
++		pr_debug("Host is not a wakeup source.\n");
++
+ 	if (xops->xcvr_type == PORTSC_PTS_SERIAL) {
+ 		if (cpu_is_mx35()) {
+ 			usbh2_set_serial_xcvr();
+@@ -494,6 +497,10 @@ int fsl_usb_host_init(struct platform_device *pdev)
+ 			usbh2_set_ulpi_xcvr();
+ 	}
+ 
++	if (pdata->name == "Host 2")
++		/* disable remote wakeup irq */
++		USBCTRL &= ~UCTRL_H2WIE;
++
+ 	pr_debug("%s: %s success\n", __func__, pdata->name);
+ 	return 0;
+ }
+@@ -819,3 +826,38 @@ void usbotg_uninit(struct fsl_usb2_platform_data *pdata)
+ 	}
+ }
+ EXPORT_SYMBOL(usbotg_uninit);
++
++#if defined(CONFIG_USB_EHCI_ARC_H2_WAKE_UP) || \
++	defined(CONFIG_USB_EHCI_ARC_OTG_WAKE_UP)
++int usb_wakeup_irq(struct device *wkup_dev)
++{
++	int wakeup_req = 0;
++	struct fsl_usb2_platform_data *pdata = wkup_dev->platform_data;
++
++	if (pdata->name == "Host 2")
++		wakeup_req = USBCTRL & UCTRL_H2WIR;
++	else if (pdata->name == "DR")
++		wakeup_req = USBCTRL & UCTRL_OWIR;
++
++	return wakeup_req;
++}
++EXPORT_SYMBOL(usb_wakeup_irq);
++
++void usb_wakeup_set(struct device *wkup_dev, int para)
++{
++	struct fsl_usb2_platform_data *pdata = wkup_dev->platform_data;
++
++	if (pdata->name == "Host 2") {
++		if (para)
++			USBCTRL |= UCTRL_H2WIE;
++		else
++			USBCTRL &= ~UCTRL_H2WIE;
++	} else if (pdata->name == "DR") {
++		if (para)
++			USBCTRL |= UCTRL_OWIE;
++		else
++			USBCTRL &= ~UCTRL_OWIE;
++	}
++}
++EXPORT_SYMBOL(usb_wakeup_set);
++#endif
+diff --git a/drivers/usb/core/hcd.c b/drivers/usb/core/hcd.c
+index e1b4262..0221294 100644
+--- a/drivers/usb/core/hcd.c
++++ b/drivers/usb/core/hcd.c
+@@ -117,6 +117,11 @@ static inline int is_root_hub(struct usb_device *udev)
+ 	return (udev->parent == NULL);
+ }
+ 
++#if defined(CONFIG_USB_EHCI_ARC_H2_WAKE_UP) || \
++	defined(CONFIG_USB_EHCI_ARC_OTG_WAKE_UP)
++extern int usb_wakeup_irq(struct device *wkup_dev);
++extern void usb_wakeup_set(struct device *wkup_dev, int para);
++#endif
+ /*-------------------------------------------------------------------------*/
+ 
+ /*
+@@ -1724,10 +1729,22 @@ irqreturn_t usb_hcd_irq (int irq, void *__hcd)
+ 	 * assume it's never used.
+ 	 */
+ 	local_irq_save(flags);
+-
++#if defined(CONFIG_USB_EHCI_ARC_H2_WAKE_UP) || \
++	defined(CONFIG_USB_EHCI_ARC_OTG_WAKE_UP)
++	/* if receive a remote wakeup interrrupt when suspend */
++	if (usb_wakeup_irq(hcd->self.controller)) {
++		/* disable remote wake up irq */
++		usb_wakeup_set(hcd->self.controller, 0);
++		set_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags);
++		rc = hcd->driver->irq(hcd);
++	} else if (unlikely(hcd->state == HC_STATE_HALT ||
++		!test_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags))) {
++		rc = IRQ_NONE;
++#else
+ 	if (unlikely(hcd->state == HC_STATE_HALT ||
+-		     !test_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags))) {
++		!test_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags))) {
+ 		rc = IRQ_NONE;
++#endif
+ 	} else if (hcd->driver->irq(hcd) == IRQ_NONE) {
+ 		rc = IRQ_NONE;
+ 	} else {
+diff --git a/drivers/usb/host/Kconfig b/drivers/usb/host/Kconfig
+index 85ac079..cad5acd 100644
+--- a/drivers/usb/host/Kconfig
++++ b/drivers/usb/host/Kconfig
+@@ -65,6 +65,14 @@ config USB_EHCI_ARC_H2
+ 	---help---
+ 	  Enable support for the USB Host2 port.
+ 
++config USB_EHCI_ARC_H2_WAKE_UP
++        bool "Support wake up from Freescale Host2 port"
++	depends on PM && USB_EHCI_ARC_H2
++	default n
++	---help---
++	  Enable support system wake up from Host2 port usb device
++	  connection and disconnection.
++
+ config USB_EHCI_ARC_OTG
+ 	bool "Support for DR host port on Freescale controller"
+ 	depends on USB_EHCI_ARC
+@@ -72,6 +80,14 @@ config USB_EHCI_ARC_OTG
+ 	---help---
+ 	  Enable support for the USB OTG port in HS/FS Host mode.
+ 
++config USB_EHCI_ARC_OTG_WAKE_UP
++        bool "Support wake up from Freescale OTG port"
++	depends on PM && USB_EHCI_ARC_OTG
++	default n
++	---help---
++	  Enable support system wake up from Host1 port usb device
++	  connection and disconnection.
++
+ config USB_STATIC_IRAM
+ 	bool "Use IRAM for USB"
+ 	depends on USB_EHCI_ARC
+diff --git a/drivers/usb/host/ehci-arc.c b/drivers/usb/host/ehci-arc.c
+index 421fac5..1a139a8 100644
+--- a/drivers/usb/host/ehci-arc.c
++++ b/drivers/usb/host/ehci-arc.c
+@@ -452,6 +452,10 @@ static int ehci_fsl_drv_shutdown(struct platform_device *pdev)
+  *
+  * They're also used for turning on/off the port when doing OTG.
+  */
++#if defined(CONFIG_USB_EHCI_ARC_H2_WAKE_UP) || \
++	defined(CONFIG_USB_EHCI_ARC_OTG_WAKE_UP)
++extern void usb_wakeup_set(struct device *wkup_dev, int para);
++#endif
+ static int ehci_fsl_drv_suspend(struct platform_device *pdev,
+ 				pm_message_t message)
+ {
+@@ -513,11 +517,40 @@ static int ehci_fsl_drv_suspend(struct platform_device *pdev,
+ 	pdata->pm_portsc &= cpu_to_hc32(ehci, ~PORT_RWC_BITS);
+ 
+ 	pdata->suspended = 1;
++#if defined(CONFIG_USB_EHCI_ARC_H2_WAKE_UP) || \
++	defined(CONFIG_USB_EHCI_ARC_OTG_WAKE_UP)
++	/* enable remote wake up irq */
++	usb_wakeup_set(&(pdev->dev), 1);
++
++	/* We CAN NOT enable wake up by connetion and disconnection
++	 * concurrently */
++	tmp = ehci_readl(ehci, &ehci->regs->port_status[0]);
++	/* if there is no usb device connectted */
++	if (tmp & PORT_CONNECT) {
++		/* enable wake up by usb device disconnection */
++		tmp |= PORT_WKDISC_E;
++		tmp &= ~(PORT_WKOC_E | PORT_WKCONN_E);
++	} else {
++		/* enable wake up by usb device insertion */
++		tmp |= PORT_WKCONN_E;
++		tmp &= ~(PORT_WKOC_E | PORT_WKDISC_E);
++	}
++	ehci_writel(ehci, tmp, &ehci->regs->port_status[0]);
+ 
++	/* Set the port into suspend */
++	tmp = ehci_readl(ehci, &ehci->regs->port_status[0]);
++	tmp |= PORT_SUSPEND;
++	ehci_writel(ehci, tmp, &ehci->regs->port_status[0]);
++#else
+ 	/* clear PP to cut power to the port */
+ 	tmp = ehci_readl(ehci, &ehci->regs->port_status[0]);
+ 	tmp &= ~PORT_POWER;
+ 	ehci_writel(ehci, tmp, &ehci->regs->port_status[0]);
++#endif
++	/* Disable PHY clock */
++	tmp = ehci_readl(ehci, &ehci->regs->port_status[0]);
++	tmp |= PORT_PHCD;
++	ehci_writel(ehci, tmp, &ehci->regs->port_status[0]);
+ 
+ 	return 0;
+ }
+@@ -568,7 +601,6 @@ static int ehci_fsl_drv_resume(struct platform_device *pdev)
+ 	ehci_writel(ehci, pdata->pm_portsc, &ehci->regs->port_status[0]);
+ 
+ 	set_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags);
+-	hcd->state = HC_STATE_RUNNING;
+ 	pdev->dev.power.power_state = PMSG_ON;
+ 
+ 	tmp = ehci_readl(ehci, &ehci->regs->command);
+diff --git a/include/linux/usb/ehci_def.h b/include/linux/usb/ehci_def.h
+index 5b88e36..19acf0f 100644
+--- a/include/linux/usb/ehci_def.h
++++ b/include/linux/usb/ehci_def.h
+@@ -101,6 +101,7 @@ struct ehci_regs {
+ 	/* PORTSC: offset 0x44 */
+ 	u32		port_status [0];	/* up to N_PORTS */
+ /* 31:23 reserved */
++#define PORT_PHCD	(1<<23)		/* PHY Low Power Suspend */
+ #define PORT_WKOC_E	(1<<22)		/* wake on overcurrent (enable) */
+ #define PORT_WKDISC_E	(1<<21)		/* wake on disconnect (enable) */
+ #define PORT_WKCONN_E	(1<<20)		/* wake on connect (enable) */
+-- 
+1.5.4.4
+

@@ -1,0 +1,1787 @@
+From 697b79f092f6e4c1cd5d9b14af589d5f08f6437a Mon Sep 17 00:00:00 2001
+From: ra43240 <Ann.Thornton@freescale.com>
+Date: Fri, 30 Jan 2009 18:07:05 -0600
+Subject: [PATCH] ENGR00107844-2: regulator: update drivers to mainline regulator api
+
+Update drivers for mainline regulator support.
+
+Signed-off-by: Ann Thornton <Ann.Thornton@freescale.com>
+---
+ arch/arm/mach-mx3/mx3_3stack.c                |    8 +++---
+ arch/arm/mach-mx3/pm.c                        |    6 ++--
+ arch/arm/mach-mx3/usb_h2.c                    |    6 ++--
+ arch/arm/mach-mx35/dvfs.c                     |   11 ++++++++-
+ arch/arm/mach-mx35/mx35_3stack.c              |    6 ++--
+ arch/arm/mach-mx37/lpmodes.c                  |   14 ++++++------
+ arch/arm/mach-mx37/mx37_3stack.c              |   10 ++++----
+ arch/arm/mach-mx37/mx37_3stack_pmic_wm8350.c  |    4 +-
+ arch/arm/mach-mx51/lpmodes.c                  |    7 +++--
+ arch/arm/mach-mx51/mx51_3stack.c              |   27 +++++++++++------------
+ arch/arm/mach-mx51/pm.c                       |    2 +-
+ arch/arm/plat-mxc/cpufreq.c                   |   18 ++++++++--------
+ arch/arm/plat-mxc/dptc.c                      |   23 ++++++++++++++------
+ arch/arm/plat-mxc/dvfs_core.c                 |   13 +++++++----
+ arch/arm/plat-mxc/usb_common.c                |    2 +-
+ arch/arm/plat-mxc/utmixc.c                    |    6 ++--
+ drivers/ata/pata_fsl.c                        |    8 +++---
+ drivers/char/mxc_si4702.c                     |   14 ++++++------
+ drivers/hwmon/isl29003.c                      |    8 +++---
+ drivers/hwmon/mxc_mma7450.c                   |   12 +++++-----
+ drivers/input/keyboard/mpr084.c               |    6 ++--
+ drivers/input/touchscreen/tsc2007.c           |    4 +-
+ drivers/media/video/mxc/capture/adv7180.c     |   18 ++++++++--------
+ drivers/media/video/mxc/capture/emma_ov2640.c |   18 ++++++++--------
+ drivers/media/video/mxc/capture/ov2640.c      |   18 ++++++++--------
+ drivers/media/video/mxc/capture/ov3640.c      |   23 +++++++++++---------
+ drivers/mmc/card/unifi_fs/fs_lx.c             |   28 +++++++++++++-----------
+ drivers/mmc/host/mx_sdhci.c                   |    5 ++-
+ drivers/mmc/host/mxc_mmc.c                    |    8 +++---
+ drivers/mxc/bt/mxc_bt.c                       |   12 +++++-----
+ drivers/mxc/gps_ioctrl/agpsgpiodev.c          |   14 ++++++------
+ drivers/mxc/mlb/mxc_mlb.c                     |    6 ++--
+ drivers/net/can/flexcan/dev.c                 |    8 +++---
+ drivers/net/can/flexcan/drv.c                 |    2 +-
+ drivers/net/can/flexcan/flexcan.h             |    4 +-
+ drivers/video/backlight/wm8350_bl.c           |   16 +++++++-------
+ drivers/video/mxc/ch7024.c                    |    8 +++---
+ drivers/video/mxc/mxcfb_claa_wvga.c           |    8 +++---
+ drivers/video/mxc/mxcfb_epson_vga.c           |   10 ++++----
+ drivers/video/mxc/tve.c                       |    6 ++--
+ include/linux/usb/fsl_xcvr.h                  |    2 +-
+ 41 files changed, 227 insertions(+), 202 deletions(-)
+
+diff --git a/arch/arm/mach-mx3/mx3_3stack.c b/arch/arm/mach-mx3/mx3_3stack.c
+index 55b8852..308fab8 100644
+--- a/arch/arm/mach-mx3/mx3_3stack.c
++++ b/arch/arm/mach-mx3/mx3_3stack.c
+@@ -32,8 +32,8 @@
+ #include <linux/fsl_devices.h>
+ #include <linux/spi/spi.h>
+ #include <linux/i2c.h>
+-#include <linux/regulator/regulator-platform.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/machine.h>
++#include <linux/regulator/consumer.h>
+ #include <linux/ata.h>
+ #if defined(CONFIG_MTD) || defined(CONFIG_MTD_MODULE)
+ #include <linux/mtd/mtd.h>
+@@ -590,7 +590,7 @@ static int __init mxc_init_regulator(void)
+ 	gpo2 = regulator_get(NULL, "GPO2");
+ 	gpo3 = regulator_get(NULL, "GPO3");
+ 	gpo4 = regulator_get(NULL, "GPO4");
+-
++#if 0
+ 	err = regulator_set_platform_source(gpo2, gpo1);
+ 	if (err)
+ 		printk(KERN_ERR "Unable to set GPO1 be the parent of GPO2\n");
+@@ -602,7 +602,7 @@ static int __init mxc_init_regulator(void)
+ 	err = regulator_set_platform_source(gpo4, gpo1);
+ 	if (err)
+ 		printk(KERN_ERR "Unable to set GPO1 be the parent of GPO4\n");
+-
++#endif
+ 	return 0;
+ }
+ 
+diff --git a/arch/arm/mach-mx3/pm.c b/arch/arm/mach-mx3/pm.c
+index 532b700..d9c8a0c 100644
+--- a/arch/arm/mach-mx3/pm.c
++++ b/arch/arm/mach-mx3/pm.c
+@@ -41,7 +41,7 @@
+ #include <linux/kernel.h>
+ #include <linux/err.h>
+ #include <linux/suspend.h>
+-#include <linux/regulator/regulator-platform.h>
++#include <linux/regulator/machine.h>
+ #include <mach/mxc_pm.h>
+ 
+ /*
+@@ -75,9 +75,9 @@ static int mx31_suspend_prepare(void)
+ 		printk(KERN_ERR "Get regulator SW1A_STBY fail\n");
+ 		return -1;
+ 	}
+-	regulator_set_voltage(reg_core, 1250000);
++	regulator_set_voltage(reg_core, 1250000, 1250000);
+ 	regulator_set_mode(reg_core, REGULATOR_MODE_STANDBY);
+-	regulator_put(reg_core, NULL);
++	regulator_put(reg_core);
+ 
+ 	return 0;
+ }
+diff --git a/arch/arm/mach-mx3/usb_h2.c b/arch/arm/mach-mx3/usb_h2.c
+index c5689d5..6ecc8bf 100644
+--- a/arch/arm/mach-mx3/usb_h2.c
++++ b/arch/arm/mach-mx3/usb_h2.c
+@@ -16,7 +16,7 @@
+ #include <linux/platform_device.h>
+ #include <linux/fsl_devices.h>
+ #include <linux/usb/fsl_xcvr.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #include <mach/arc_otg.h>
+ #include "usb.h"
+ 
+@@ -67,12 +67,12 @@ void usbh2_put_xcvr_power(struct device *dev)
+ 	usbh2_regux = ((struct fsl_usb2_platform_data *)dev->
+ 			platform_data)->xcvr_pwr->regu2;
+ 	regulator_disable(usbh2_regux);
+-	regulator_put(usbh2_regux, dev);
++	regulator_put(usbh2_regux);
+ 
+ 	usbh2_regux = ((struct fsl_usb2_platform_data *)dev->
+ 			platform_data)->xcvr_pwr->regu1;
+ 	regulator_disable(usbh2_regux);
+-	regulator_put(usbh2_regux, dev);
++	regulator_put(usbh2_regux);
+ }
+ EXPORT_SYMBOL(usbh2_put_xcvr_power);
+ 
+diff --git a/arch/arm/mach-mx35/dvfs.c b/arch/arm/mach-mx35/dvfs.c
+index 05477a9..aa067d2 100644
+--- a/arch/arm/mach-mx35/dvfs.c
++++ b/arch/arm/mach-mx35/dvfs.c
+@@ -36,7 +36,7 @@
+ #include <linux/sysdev.h>
+ #include <linux/delay.h>
+ #include <linux/clk.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #include <mach/hardware.h>
+ #include "crm_regs.h"
+ 
+@@ -287,6 +287,8 @@ static void dvfs_workqueue_handler(struct work_struct *work)
+ 					     dvfs_wp_tbl[curr_dvfs].cpu_rate);
+ 				regulator_set_voltage(core_reg,
+ 						      dvfs_wp_tbl[curr_dvfs].
++						      core_voltage,
++						      dvfs_wp_tbl[curr_dvfs].
+ 						      core_voltage);
+ 				pr_info("Decrease frequency to: %ld \n",
+ 					dvfs_wp_tbl[curr_dvfs].cpu_rate);
+@@ -297,6 +299,8 @@ static void dvfs_workqueue_handler(struct work_struct *work)
+ 				/*Increase voltage and then frequency */
+ 				regulator_set_voltage(core_reg,
+ 						      dvfs_wp_tbl[curr_dvfs].
++						      core_voltage,
++						      dvfs_wp_tbl[curr_dvfs].
+ 						      core_voltage);
+ 				clk_set_rate(cpu_clk,
+ 					     dvfs_wp_tbl[curr_dvfs].cpu_rate);
+@@ -413,6 +417,7 @@ static void stop_dvfs(void)
+ 			}
+ 			clk_set_rate(cpu_clk, stored_cpu_rate);
+ 			regulator_set_voltage(core_reg,
++					      dvfs_wp_tbl[index].core_voltage,
+ 					      dvfs_wp_tbl[index].core_voltage);
+ 		} else if (stored_cpu_rate > curr_cpu) {
+ 			for (index = 0; index < dvfs_wp_num; index++) {
+@@ -421,6 +426,7 @@ static void stop_dvfs(void)
+ 					break;
+ 			}
+ 			regulator_set_voltage(core_reg,
++					      dvfs_wp_tbl[index].core_voltage,
+ 					      dvfs_wp_tbl[index].core_voltage);
+ 			clk_set_rate(cpu_clk, stored_cpu_rate);
+ 		}
+@@ -547,6 +553,7 @@ static int __init dvfs_init(void)
+ 	for (index = 0; index < dvfs_wp_num; index++) {
+ 		if (dvfs_wp_tbl[index].cpu_rate == curr_cpu) {
+ 			regulator_set_voltage(core_reg,
++					      dvfs_wp_tbl[index].core_voltage,
+ 					      dvfs_wp_tbl[index].core_voltage);
+ 			break;
+ 		}
+@@ -587,7 +594,7 @@ static void __exit dvfs_cleanup(void)
+ 	dvfs_sysdev_ctrl_exit();
+ 
+ 	clk_put(cpu_clk);
+-	regulator_put(core_reg, NULL);
++	regulator_put(core_reg);
+ }
+ 
+ module_init(dvfs_init);
+diff --git a/arch/arm/mach-mx35/mx35_3stack.c b/arch/arm/mach-mx35/mx35_3stack.c
+index 9530561..d78fd03 100644
+--- a/arch/arm/mach-mx35/mx35_3stack.c
++++ b/arch/arm/mach-mx35/mx35_3stack.c
+@@ -30,7 +30,7 @@
+ #include <linux/mtd/partitions.h>
+ #include <linux/delay.h>
+ #include <linux/regulator/mcu_max8660-bus.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ 
+ #include <asm/mach/flash.h>
+ #endif
+@@ -699,8 +699,8 @@ static int __init mxc_init_pmic(void)
+ 		/* TBD: If core voltage is expected to be updated above 1.375v,
+ 		* this code needs to be moved before entering standby mode,
+ 		* which is decided by MC13892 Hi bit behavior */
+-		regulator_set_voltage(sw2_stby_reg, 1000000);
+-		regulator_put(sw2_stby_reg, NULL);
++		regulator_set_voltage(sw2_stby_reg, 1000000, 1000000);
++		regulator_put(sw2_stby_reg);
+ #endif
+ 	}
+ 	return 0;
+diff --git a/arch/arm/mach-mx37/lpmodes.c b/arch/arm/mach-mx37/lpmodes.c
+index 6328b78..e4222ef 100644
+--- a/arch/arm/mach-mx37/lpmodes.c
++++ b/arch/arm/mach-mx37/lpmodes.c
+@@ -36,7 +36,7 @@
+ #include <linux/platform_device.h>
+ #include <mach/clock.h>
+ #include <mach/hardware.h>
+-#include <linux/regulator/regulator-platform.h>
++#include <linux/regulator/consumer.h>
+ #include "crm_regs.h"
+ 
+ #define ARM_LP_CLK  200000000
+@@ -112,7 +112,7 @@ void enter_lp_video_mode(void)
+ 	else
+ 		gp_core = regulator_get(NULL, "SW1");
+ 
+-	ret = regulator_set_voltage(gp_core, GP_LPM_VOLTAGE);
++	ret = regulator_set_voltage(gp_core, GP_LPM_VOLTAGE, GP_LPM_VOLTAGE);
+ 	if (ret < 0)
+ 		printk(KERN_DEBUG "COULD NOT SET GP VOLTAGE!!!\n");
+ 
+@@ -131,7 +131,7 @@ void exit_lp_video_mode(void)
+ 	else
+ 		gp_core = regulator_get(NULL, "SW1");
+ 
+-	ret = regulator_set_voltage(gp_core, GP_NORMAL_VOLTAGE);
++	ret = regulator_set_voltage(gp_core, GP_NORMAL_VOLTAGE, GP_NORMAL_VOLTAGE);
+ 	if (ret < 0)
+ 		printk(KERN_DEBUG "COULD NOT SET GP VOLTAGE!!!!\n");
+ 
+@@ -221,7 +221,7 @@ void enter_lp_audio_mode(void)
+ 		lp_core = regulator_get(NULL, "SW2");
+ 
+ 	if (lp_core != NULL) {
+-		ret = regulator_set_voltage(lp_core, LP_LPM_VOLTAGE);
++		ret = regulator_set_voltage(lp_core, LP_LPM_VOLTAGE, LP_LPM_VOLTAGE);
+ 		if (ret < 0)
+ 			printk(KERN_DEBUG "COULD NOT SET GP VOLTAGE!!!!!!\n");
+ 	}
+@@ -240,7 +240,7 @@ void enter_lp_audio_mode(void)
+ 		gp_core = regulator_get(NULL, "SW1");
+ 
+ 	if (gp_core != NULL) {
+-		ret = regulator_set_voltage(gp_core, GP_LPM_VOLTAGE);
++		ret = regulator_set_voltage(gp_core, GP_LPM_VOLTAGE, GP_LPM_VOLTAGE);
+ 		if (ret < 0)
+ 			printk(KERN_DEBUG "COULD NOT SET GP VOLTAGE!!!!!\n");
+ 	}
+@@ -264,7 +264,7 @@ void exit_lp_audio_mode(void)
+ 		lp_core = regulator_get(NULL, "SW2");
+ 
+ 	if (lp_core != NULL) {
+-		ret = regulator_set_voltage(lp_core, LP_NORMAL_VOLTAGE);
++		ret = regulator_set_voltage(lp_core, LP_NORMAL_VOLTAGE, LP_NORMAL_VOLTAGE);
+ 		if (ret < 0)
+ 			printk(KERN_DEBUG "COULD NOT SET GP VOLTAGE!!!!!!\n");
+ 	}
+@@ -275,7 +275,7 @@ void exit_lp_audio_mode(void)
+ 	else
+ 		gp_core = regulator_get(NULL, "SW1");
+ 
+-	ret = regulator_set_voltage(gp_core, GP_NORMAL_VOLTAGE);
++	ret = regulator_set_voltage(gp_core, GP_NORMAL_VOLTAGE, GP_NORMAL_VOLTAGE);
+ 	if (ret < 0)
+ 		printk(KERN_DEBUG "COULD NOT SET GP VOLTAGE!!!!\n");
+ 
+diff --git a/arch/arm/mach-mx37/mx37_3stack.c b/arch/arm/mach-mx37/mx37_3stack.c
+index 9b7700c..301a7fe 100644
+--- a/arch/arm/mach-mx37/mx37_3stack.c
++++ b/arch/arm/mach-mx37/mx37_3stack.c
+@@ -25,7 +25,7 @@
+ #include <linux/spi/spi.h>
+ #include <linux/i2c.h>
+ #include <linux/ata.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #if defined(CONFIG_MTD) || defined(CONFIG_MTD_MODULE)
+ #include <linux/mtd/mtd.h>
+ #include <linux/mtd/map.h>
+@@ -144,7 +144,7 @@ static void mc13892_reg_int(void)
+ 		regulator = regulator_get(NULL, reg_name[i]);
+ 		if (regulator != ERR_PTR(-ENOENT)) {
+ 			regulator_enable(regulator);
+-			regulator_put(regulator, NULL);
++			regulator_put(regulator);
+ 		}
+ 	}
+ 	for (i = 0; i < ARRAY_SIZE(reg_name); i++) {
+@@ -156,7 +156,7 @@ static void mc13892_reg_int(void)
+ 		regulator = regulator_get(NULL, reg_name[i]);
+ 		if (regulator != ERR_PTR(-ENOENT)) {
+ 			regulator_disable(regulator);
+-			regulator_put(regulator, NULL);
++			regulator_put(regulator);
+ 		}
+ 	}
+ 
+@@ -541,7 +541,7 @@ static void mxc_unifi_hardreset(void)
+ 		gpo4 = regulator_get(NULL, "GPO4");
+ 		if (!IS_ERR(gpo4))
+ 			regulator_enable(gpo4);
+-		regulator_put(gpo4, NULL);
++		regulator_put(gpo4);
+ 	} else {
+ 		mxc_request_iomux(MX37_PIN_AUD5_RXC, IOMUX_CONFIG_GPIO);
+ 		mxc_set_gpio_dataout(MX37_PIN_AUD5_RXC, 1);
+@@ -695,7 +695,7 @@ static void bt_reset(void)
+ 		gpo4 = regulator_get(NULL, "GPO4");
+ 		if (!IS_ERR(gpo4))
+ 			regulator_enable(gpo4);
+-		regulator_put(gpo4, NULL);
++		regulator_put(gpo4);
+ 	} else {
+ 		mxc_request_iomux(MX37_PIN_AUD5_RXC, IOMUX_CONFIG_GPIO);
+ 		mxc_set_gpio_dataout(MX37_PIN_AUD5_RXC, 1);
+diff --git a/arch/arm/mach-mx37/mx37_3stack_pmic_wm8350.c b/arch/arm/mach-mx37/mx37_3stack_pmic_wm8350.c
+index 0026b63..a66434e 100644
+--- a/arch/arm/mach-mx37/mx37_3stack_pmic_wm8350.c
++++ b/arch/arm/mach-mx37/mx37_3stack_pmic_wm8350.c
+@@ -23,8 +23,8 @@
+ #include <linux/platform_device.h>
+ #include <linux/i2c.h>
+ #include <linux/err.h>
+-#include <linux/regulator/regulator.h>
+-#include <linux/regulator/regulator-platform.h>
++#include <linux/regulator/consumer.h>
++#include <linux/regulator/machine.h>
+ #include <linux/regulator/wm8350/wm8350.h>
+ #include <linux/regulator/wm8350/wm8350-pmic.h>
+ #include <linux/regulator/wm8350/wm8350-gpio.h>
+diff --git a/arch/arm/mach-mx51/lpmodes.c b/arch/arm/mach-mx51/lpmodes.c
+index 7cba15d..240e531 100644
+--- a/arch/arm/mach-mx51/lpmodes.c
++++ b/arch/arm/mach-mx51/lpmodes.c
+@@ -36,7 +36,7 @@
+ #include <linux/platform_device.h>
+ #include <mach/clock.h>
+ #include <mach/hardware.h>
+-#include <linux/regulator/regulator-platform.h>
++#include <linux/regulator/machine.h>
+ #include "crm_regs.h"
+ 
+ #define ARM_LP_CLK  200000000
+@@ -71,7 +71,7 @@ void enter_lp_audio_mode(void)
+ 	clk_put(tclk);
+ 
+ 	/* Set the voltage to 0.775v for the GP domain. */
+-	ret = regulator_set_voltage(gp_core, GP_LPM_VOLTAGE);
++	ret = regulator_set_voltage(gp_core, GP_LPM_VOLTAGE, GP_LPM_VOLTAGE);
+ 	if (ret < 0)
+ 		printk(KERN_DEBUG "COULD NOT SET GP VOLTAGE!!!\n");
+ 
+@@ -84,7 +84,8 @@ void exit_lp_audio_mode(void)
+ 	int ret;
+ 
+ 	/* Set the voltage to 1.05v for the GP domain. */
+-	ret = regulator_set_voltage(gp_core, GP_NORMAL_VOLTAGE);
++	ret = regulator_set_voltage(gp_core,
++				    GP_NORMAL_VOLTAGE, GP_NORMAL_VOLTAGE);
+ 	if (ret < 0)
+ 		printk(KERN_DEBUG "COULD NOT SET GP VOLTAGE!!!\n");
+ 
+diff --git a/arch/arm/mach-mx51/mx51_3stack.c b/arch/arm/mach-mx51/mx51_3stack.c
+index a164af3..fdbebf0 100644
+--- a/arch/arm/mach-mx51/mx51_3stack.c
++++ b/arch/arm/mach-mx51/mx51_3stack.c
+@@ -36,7 +36,7 @@
+ #include <asm/mach/flash.h>
+ #endif
+ 
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #include <mach/hardware.h>
+ #include <mach/spba.h>
+ #include <asm/irq.h>
+@@ -89,7 +89,7 @@ struct cpu_wp *get_cpu_wp(int *wp)
+ 	return cpu_wp_auto;
+ }
+ 
+-static void mc13892_reg_int(void)
++static int __init mc13892_reg_int(void)
+ {
+ 	int i = 0;
+ 	struct regulator *regulator;
+@@ -127,22 +127,18 @@ static void mc13892_reg_int(void)
+ 
+ 	for (i = 0; i < ARRAY_SIZE(reg_name); i++) {
+ 		regulator = regulator_get(NULL, reg_name[i]);
+-		if (regulator != ERR_PTR(-ENOENT)) {
+-			regulator_enable(regulator);
+-			regulator_put(regulator, NULL);
+-		}
+-	}
+-	for (i = 0; i < ARRAY_SIZE(reg_name); i++) {
++		if (regulator == ERR_PTR(-ENOENT))
++			continue;
++
++		regulator_enable(regulator);
+ 		if ((strcmp(reg_name[i], "VIOHI") == 0) ||
+ 			(strcmp(reg_name[i], "VPLL") == 0) ||
+ 			(strcmp(reg_name[i], "VDIG") == 0) ||
+ 			(strcmp(reg_name[i], "VGEN2") == 0))
+ 			continue;
+-		regulator = regulator_get(NULL, reg_name[i]);
+-		if (regulator != ERR_PTR(-ENOENT)) {
+-			regulator_disable(regulator);
+-			regulator_put(regulator, NULL);
+-		}
++
++		regulator_disable(regulator);
++		regulator_put(regulator);
+ 	}
+ 
+ 	gp = regulator_get(NULL, "SW1_STBY");
+@@ -167,6 +163,8 @@ static void mc13892_reg_int(void)
+ 
+ 	regulator_put(gp);
+ 	regulator_put(lp);
++
++	return 0;
+ }
+ 
+ late_initcall(mc13892_reg_int);
+@@ -407,7 +405,8 @@ static struct i2c_board_info mxc_i2c1_board_info[] __initdata = {
+ 	 .type = "mc13892",
+ 	 .addr = 0x08,
+ 	 .platform_data = (void *)MX51_PIN_GPIO1_5,
+-	 },
++	 .irq  = IOMUX_TO_IRQ(MX51_PIN_GPIO1_5),
++	},
+ 	{
+ 	 .type = "wm8903-i2c",
+ 	 .addr = 0x1a,
+diff --git a/arch/arm/mach-mx51/pm.c b/arch/arm/mach-mx51/pm.c
+index 5d5f4dd..3b5787a 100644
+--- a/arch/arm/mach-mx51/pm.c
++++ b/arch/arm/mach-mx51/pm.c
+@@ -16,7 +16,7 @@
+ #include <linux/kernel.h>
+ #include <linux/clk.h>
+ #include <linux/platform_device.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #include <linux/suspend.h>
+ #include "crm_regs.h"
+ 
+diff --git a/arch/arm/plat-mxc/cpufreq.c b/arch/arm/plat-mxc/cpufreq.c
+index eacd654..3c4ee1b 100644
+--- a/arch/arm/plat-mxc/cpufreq.c
++++ b/arch/arm/plat-mxc/cpufreq.c
+@@ -27,7 +27,7 @@
+ #include <linux/cpufreq.h>
+ #include <linux/init.h>
+ #include <linux/proc_fs.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #include <linux/clk.h>
+ #include <linux/delay.h>
+ #include <linux/io.h>
+@@ -93,7 +93,7 @@ static int set_cpu_freq(int freq)
+ 
+ 	/*Set the voltage for the GP domain. */
+ 	if (freq > org_cpu_rate) {
+-		ret = regulator_set_voltage(gp_regulator, gp_volt);
++		ret = regulator_set_voltage(gp_regulator, gp_volt, gp_volt);
+ 		if (ret < 0) {
+ 			printk(KERN_DEBUG "COULD NOT SET GP VOLTAGE!!!!\n");
+ 			return ret;
+@@ -107,7 +107,7 @@ static int set_cpu_freq(int freq)
+ 	}
+ 
+ 	if (freq < org_cpu_rate) {
+-		ret = regulator_set_voltage(gp_regulator, gp_volt);
++		ret = regulator_set_voltage(gp_regulator, gp_volt, gp_volt);
+ 		if (ret < 0) {
+ 			printk(KERN_DEBUG "COULD NOT SET GP VOLTAGE!!!!\n");
+ 			return ret;
+@@ -166,7 +166,7 @@ static int set_low_bus_freq(void)
+ 		clk_set_parent(vpu_core_clk, amode_parent_clk);
+ 
+ 	/* Set the voltage to 1.0v for the LP domain. */
+-	ret = regulator_set_voltage(lp_regulator, 1000000);
++	ret = regulator_set_voltage(lp_regulator, 1000000, 1000000);
+ 	if (ret < 0) {
+ 		printk(KERN_DEBUG "COULD NOT SET GP VOLTAGE!!!!!!\n");
+ 		return ret;
+@@ -192,7 +192,7 @@ static int set_high_bus_freq(void)
+ 	low_bus_freq_mode = 0;
+ 
+ 	/* Set the voltage to 1.2v for the LP domain. */
+-	ret = regulator_set_voltage(lp_regulator, 1200000);
++	ret = regulator_set_voltage(lp_regulator, 1200000, 1200000);
+ 	if (ret < 0) {
+ 		printk(KERN_DEBUG "COULD NOT SET LP VOLTAGE!!!!!!\n");
+ 		return ret;
+@@ -520,8 +520,8 @@ static int __init mxc_cpufreq_driver_init(struct cpufreq_policy *policy)
+ 			clk_put(osc);
+ 		}
+ 
+-		regulator_put(gp_regulator, NULL);
+-		regulator_put(lp_regulator, NULL);
++		regulator_put(gp_regulator);
++		regulator_put(lp_regulator);
+ 		printk(KERN_ERR "%s: failed to register i.MXC CPUfreq\n",
+ 		       __func__);
+ 		return ret;
+@@ -562,8 +562,8 @@ static int mxc_cpufreq_driver_exit(struct cpufreq_policy *policy)
+ 		clk_put(lp_apm);
+ 		clk_put(osc);
+ 	}
+-	regulator_put(gp_regulator, NULL);
+-	regulator_put(lp_regulator, NULL);
++	regulator_put(gp_regulator);
++	regulator_put(lp_regulator);
+ 	return 0;
+ }
+ 
+diff --git a/arch/arm/plat-mxc/dptc.c b/arch/arm/plat-mxc/dptc.c
+index 0dd286c..6b7f559 100644
+--- a/arch/arm/plat-mxc/dptc.c
++++ b/arch/arm/plat-mxc/dptc.c
+@@ -42,13 +42,22 @@
+ #include <linux/clk.h>
+ #include <linux/workqueue.h>
+ #include <linux/platform_device.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ 
+ #include <mach/clock.h>
+ #include <mach/gpio.h>
+ #include <mach/hardware.h>
+ #include <mach/mxc_dptc.h>
+ 
++/*
++ * Convenience conversion.
++ * Here atm, maybe there is somewhere better for this.
++ */
++#define mV_to_uV(mV) (mV * 1000)
++#define uV_to_mV(uV) (uV / 1000)
++#define V_to_uV(V) (mV_to_uV(V * 1000))
++#define uV_to_V(uV) (uV_to_mV(uV) / 1000)
++
+ enum {
+ 	DPTC_PTVAI_NOCHANGE = 0x0,
+ 	DPTC_PTVAI_DECREASE,
+@@ -92,7 +101,7 @@ static void update_dptc_wp(struct dptc_device *drv_data, u32 wp)
+ 	int voltage_uV;
+ 	int ret = 0;
+ 
+-	voltage_uV = mV_to_uV(dptc_data->dptc_wp_allfreq[wp].voltage);
++	voltage_uV = dptc_data->dptc_wp_allfreq[wp].voltage * 1000;
+ 
+ 	__raw_writel(dptc_data->dptc_wp_allfreq[wp].dcvr0,
+ 		     dptc_data->dcvr0_reg_addr);
+@@ -104,7 +113,7 @@ static void update_dptc_wp(struct dptc_device *drv_data, u32 wp)
+ 		     dptc_data->dcvr0_reg_addr + 0xC);
+ 
+ 	/* Set the voltage */
+-	ret = regulator_set_voltage(drv_data->dptc_reg, voltage_uV);
++	ret = regulator_set_voltage(drv_data->dptc_reg, voltage_uV, voltage_uV);
+ 	if (ret < 0)
+ 		printk(KERN_DEBUG "COULD NOT SET VOLTAGE!!!!!\n");
+ 
+@@ -195,12 +204,12 @@ static int start_dptc(struct device *dev)
+ 	u32 dptccr;
+ 	unsigned long flags;
+ 	unsigned long clk_rate;
+-	int voltage_mV;
++	int voltage_uV;
+ 
+ 	/* Get the voltage */
+-	voltage_mV = uV_to_mV(regulator_get_voltage(drv_data->dptc_reg));
++	voltage_uV = regulator_get_voltage(drv_data->dptc_reg);
+ 	drv_data->curr_wp =
+-	    (dptc_data->dptc_wp_allfreq[0].voltage - voltage_mV) / 25;
++	    (dptc_data->dptc_wp_allfreq[0].voltage - (voltage_uV / 1000)) / 25;
+ 
+ 	update_dptc_wp(drv_data, drv_data->curr_wp);
+ 
+@@ -260,7 +269,7 @@ static void stop_dptc(struct device *dev)
+ 	update_dptc_wp(drv_data, 0);
+ 	drv_data->curr_wp = 0;
+ 
+-	regulator_put(drv_data->dptc_reg, NULL);
++	regulator_put(drv_data->dptc_reg);
+ 
+ 	pr_info("DPTC has been stopped\n");
+ }
+diff --git a/arch/arm/plat-mxc/dvfs_core.c b/arch/arm/plat-mxc/dvfs_core.c
+index d6a4252..31c817e 100644
+--- a/arch/arm/plat-mxc/dvfs_core.c
++++ b/arch/arm/plat-mxc/dvfs_core.c
+@@ -37,7 +37,7 @@
+ #include <linux/sysdev.h>
+ #include <linux/delay.h>
+ #include <linux/clk.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #include <linux/input.h>
+ #include <linux/platform_device.h>
+ 
+@@ -286,7 +286,7 @@ static void dvfs_core_workqueue_handler(struct work_struct *work)
+ 			__raw_writel(reg, dvfs_data->gpc_vcr_reg_addr);
+ 
+ 			/* Set the voltage for the GP domain. */
+-			ret = regulator_set_voltage(core_regulator, uvol);
++			ret = regulator_set_voltage(core_regulator, uvol, uvol);
+ 			if (ret < 0) {
+ 				printk(KERN_DEBUG
+ 				       "COULD NOT SET CORE VOLTAGE!!!!!\n");
+@@ -314,7 +314,8 @@ static void dvfs_core_workqueue_handler(struct work_struct *work)
+ 			__raw_writel(reg, dvfs_data->gpc_vcr_reg_addr);
+ 
+ 			ret = regulator_set_voltage(core_regulator,
+-										cpu_wp_tbl[curr_wp].cpu_voltage);
++						cpu_wp_tbl[curr_wp].cpu_voltage,
++						cpu_wp_tbl[curr_wp].cpu_voltage);
+ 			if (ret < 0) {
+ 				printk(KERN_DEBUG
+ 				       "COULD NOT SET CORE VOLTAGE!!!!\n");
+@@ -371,8 +372,10 @@ static void stop_dvfs(void)
+ 		curr_cpu = clk_get_rate(cpu_clk);
+ 		if (curr_cpu != cpu_wp_tbl[curr_wp].cpu_rate) {
+ 			if (regulator_set_voltage(core_regulator,
+-									  cpu_wp_tbl[curr_wp].cpu_voltage) == 0)
+-				clk_set_rate(cpu_clk, cpu_wp_tbl[curr_wp].cpu_rate);
++					cpu_wp_tbl[curr_wp].cpu_voltage,
++					cpu_wp_tbl[curr_wp].cpu_voltage) == 0)
++				clk_set_rate(cpu_clk,
++					     cpu_wp_tbl[curr_wp].cpu_rate);
+ 		}
+ 
+ 		clk_disable(dvfs_clk);
+diff --git a/arch/arm/plat-mxc/usb_common.c b/arch/arm/plat-mxc/usb_common.c
+index 72c4bfe..43e78e5 100644
+--- a/arch/arm/plat-mxc/usb_common.c
++++ b/arch/arm/plat-mxc/usb_common.c
+@@ -40,7 +40,7 @@
+ #include <linux/fsl_devices.h>
+ #include <linux/usb/otg.h>
+ #include <linux/usb/fsl_xcvr.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #include <mach/arc_otg.h>
+ #include <asm/mach-types.h>
+ 
+diff --git a/arch/arm/plat-mxc/utmixc.c b/arch/arm/plat-mxc/utmixc.c
+index 7537f73..a258fb7 100644
+--- a/arch/arm/plat-mxc/utmixc.c
++++ b/arch/arm/plat-mxc/utmixc.c
+@@ -59,7 +59,7 @@ static void set_power(struct fsl_xcvr_ops *this,
+ 		} else {
+ 			regulator_disable(usbotg_regux);
+ 		}
+-		regulator_put(usbotg_regux, dev);
++		regulator_put(usbotg_regux);
+ #if defined(CONFIG_MXC_PMIC_MC13892_MODULE) || defined(CONFIG_MXC_PMIC_MC13892)
+ 	} else if (machine_is_mx51_3ds()) {
+ 		unsigned int value;
+@@ -69,7 +69,7 @@ static void set_power(struct fsl_xcvr_ops *this,
+ 			regulator_enable(usbotg_regux);
+ 		else
+ 			regulator_disable(usbotg_regux);
+-		regulator_put(usbotg_regux, dev);
++		regulator_put(usbotg_regux);
+ 
+ 		/* VUSBIN */
+ 		pmic_read_reg(REG_USB1, &value, 0xffffff);
+@@ -85,7 +85,7 @@ static void set_power(struct fsl_xcvr_ops *this,
+ 			regulator_enable(usbotg_regux);
+ 		else
+ 			regulator_disable(usbotg_regux);
+-		regulator_put(usbotg_regux, dev);
++		regulator_put(usbotg_regux);
+ #endif
+ 	}
+ }
+diff --git a/drivers/ata/pata_fsl.c b/drivers/ata/pata_fsl.c
+index 987b591..6d8bbda 100644
+--- a/drivers/ata/pata_fsl.c
++++ b/drivers/ata/pata_fsl.c
+@@ -3,7 +3,7 @@
+  */
+ 
+ /*
+- * Copyright 2007-2008 Freescale Semiconductor, Inc. All Rights Reserved.
++ * Copyright 2007-2009 Freescale Semiconductor, Inc. All Rights Reserved.
+  */
+ 
+ /*
+@@ -25,7 +25,7 @@
+ #include <linux/platform_device.h>
+ #include <linux/fsl_devices.h>
+ #include <linux/clk.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #include <asm/dma.h>
+ 
+ #define DRV_NAME "pata_fsl"
+@@ -928,11 +928,11 @@ static int __devexit pata_fsl_remove(struct platform_device *pdev)
+ 	/* Disable Core regulator & IO Regulator */
+ 	if (plat->core_reg != NULL) {
+ 		regulator_disable(core_reg);
+-		regulator_put(core_reg, &pdev->dev);
++		regulator_put(core_reg);
+ 	}
+ 	if (plat->io_reg != NULL) {
+ 		regulator_disable(io_reg);
+-		regulator_put(io_reg, &pdev->dev);
++		regulator_put(io_reg);
+ 	}
+ 
+ 	if (plat->exit)
+diff --git a/drivers/char/mxc_si4702.c b/drivers/char/mxc_si4702.c
+index fedc11d..916b093 100644
+--- a/drivers/char/mxc_si4702.c
++++ b/drivers/char/mxc_si4702.c
+@@ -20,7 +20,7 @@
+ #include <linux/i2c.h>
+ #include <linux/delay.h>
+ #include <linux/fs.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #include <asm/uaccess.h>
+ #include <linux/err.h>
+ #include <linux/mxc_si4702.h>
+@@ -151,13 +151,13 @@ static int __devinit si4702_probe(struct i2c_client *client, const struct i2c_de
+ 	if (reg_vio == ERR_PTR(-ENOENT))
+ 		return -ENOENT;
+ 	regulator_enable(reg_vio);	/*shall i check the return value */
+-	regulator_put(reg_vio, &client->dev);
++	regulator_put(reg_vio);
+ 
+ 	reg_vdd = regulator_get(&client->dev, data->reg_vdd);
+ 	if (reg_vdd == ERR_PTR(-ENOENT))
+ 		return -ENOENT;
+ 	regulator_enable(reg_vdd);
+-	regulator_put(reg_vdd, &client->dev);
++	regulator_put(reg_vdd);
+ 	/*attach client and check device id */
+ 	if (SI4702_DEVICE_ID != si4702_id_detect(client)) {
+ 		dev_info(&client->dev, "id wrong.\n");
+@@ -229,13 +229,13 @@ static int __devinit si4702_probe(struct i2c_client *client, const struct i2c_de
+ 	if (reg_vio == ERR_PTR(-ENOENT))
+ 		return -ENOENT;
+ 	regulator_disable(reg_vio);	/*shall i check the return value */
+-	regulator_put(reg_vio, &client->dev);
++	regulator_put(reg_vio);
+ 
+ 	reg_vdd = regulator_get(&client->dev, data->reg_vdd);
+ 	if (reg_vdd == ERR_PTR(-ENOENT))
+ 		return -ENOENT;
+ 	regulator_disable(reg_vdd);
+-	regulator_put(reg_vdd, &client->dev);
++	regulator_put(reg_vdd);
+ 
+ 	return 0;
+ }
+@@ -256,13 +256,13 @@ static int __devexit si4702_remove(struct i2c_client *client)
+ 	if (reg_vio == ERR_PTR(-ENOENT))
+ 		return -ENOENT;
+ 	regulator_disable(reg_vio);	/*shall i check the return value */
+-	regulator_put(reg_vio, &client->dev);
++	regulator_put(reg_vio);
+ 
+ 	reg_vdd = regulator_get(&client->dev, data->reg_vdd);
+ 	if (reg_vdd == ERR_PTR(-ENOENT))
+ 		return -ENOENT;
+ 	regulator_disable(reg_vdd);
+-	regulator_put(reg_vdd, &client->dev);
++	regulator_put(reg_vdd);
+ 
+ 	return 0;
+ }
+diff --git a/drivers/hwmon/isl29003.c b/drivers/hwmon/isl29003.c
+index 82062a3..9d56ae9 100644
+--- a/drivers/hwmon/isl29003.c
++++ b/drivers/hwmon/isl29003.c
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright 2008 Freescale Semiconductor, Inc. All Rights Reserved.
++ * Copyright 2008-2009 Freescale Semiconductor, Inc. All Rights Reserved.
+  */
+ 
+ /*
+@@ -27,7 +27,7 @@
+ #include <linux/ctype.h>
+ #include <linux/delay.h>
+ #include <linux/err.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ 
+ enum isl29003_width {
+ 	ISL29003_WIDTH_16 = 0,
+@@ -331,7 +331,7 @@ exit2:
+ 	kfree(data);
+ exit1:
+ 	if (vdd_reg) {
+-		regulator_put(vdd_reg, &client->dev);
++		regulator_put(vdd_reg);
+ 		vdd_reg = NULL;
+ 	}
+ 	isl29003_client = NULL;
+@@ -344,7 +344,7 @@ static int isl29003_i2c_remove(struct i2c_client *client)
+ 	struct isl29003_data *data = i2c_get_clientdata(client);
+ 
+ 	if (data->vdd_reg) {
+-		regulator_put(data->vdd_reg, &isl29003_client->dev);
++		regulator_put(data->vdd_reg);
+ 		data->vdd_reg = NULL;
+ 	}
+ 	hwmon_device_unregister(data->hwmon_dev);
+diff --git a/drivers/hwmon/mxc_mma7450.c b/drivers/hwmon/mxc_mma7450.c
+index f6a4b2d..60a2782 100644
+--- a/drivers/hwmon/mxc_mma7450.c
++++ b/drivers/hwmon/mxc_mma7450.c
+@@ -19,7 +19,7 @@
+ #include <linux/err.h>
+ #include <linux/input-polldev.h>
+ #include <linux/hwmon.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #include <linux/irq.h>
+ #include <linux/interrupt.h>
+ #include <mach/mxc.h>
+@@ -634,7 +634,7 @@ static int mma7450_probe(struct i2c_client *client,
+ 	if (reg_avdd != ERR_PTR(-ENOENT))
+ 		regulator_enable(reg_avdd);
+ 	else {
+-		regulator_put(reg_dvdd_io, &client->dev);
++		regulator_put(reg_dvdd_io);
+ 		return -EINVAL;
+ 	}
+ 
+@@ -731,8 +731,8 @@ static int mma7450_probe(struct i2c_client *client,
+       error_disable_power:
+ 	regulator_disable(reg_dvdd_io);	/*shall I check the return value */
+ 	regulator_disable(reg_avdd);
+-	regulator_put(reg_dvdd_io, &client->dev);
+-	regulator_put(reg_avdd, &client->dev);
++	regulator_put(reg_dvdd_io);
++	regulator_put(reg_avdd);
+ 
+ 	return ret;
+ }
+@@ -748,8 +748,8 @@ static int mma7450_remove(struct i2c_client *client)
+ 	device_remove_file(&client->dev, &mma7450_dev_attr);
+ 	regulator_disable(reg_dvdd_io);	/*shall I check the return value */
+ 	regulator_disable(reg_avdd);
+-	regulator_put(reg_dvdd_io, &client->dev);
+-	regulator_put(reg_avdd, &client->dev);
++	regulator_put(reg_dvdd_io);
++	regulator_put(reg_avdd);
+ 	return 0;
+ }
+ 
+diff --git a/drivers/input/keyboard/mpr084.c b/drivers/input/keyboard/mpr084.c
+index 6bca746..68038b2 100644
+--- a/drivers/input/keyboard/mpr084.c
++++ b/drivers/input/keyboard/mpr084.c
+@@ -33,7 +33,7 @@
+ #include <linux/kthread.h>
+ #include <linux/input.h>
+ #include <linux/delay.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #include <asm/mach/irq.h>
+ #include <mach/gpio.h>
+ 
+@@ -304,7 +304,7 @@ static int mpr084_i2c_remove(struct i2c_client *client)
+ 	/*Disable the Regulator*/
+ 	if (keypad->vdd_reg) {
+ 		regulator_disable(vdd_reg);
+-		regulator_put(vdd_reg, &client->dev);
++		regulator_put(vdd_reg);
+ 	}
+ 
+ 	err = i2c_detach_client(client);
+@@ -461,7 +461,7 @@ exit_free:
+ 	/*disable the Regulator*/
+ 	if (vdd_reg) {
+ 		regulator_disable(vdd_reg);
+-		regulator_put(vdd_reg, &client->dev);
++		regulator_put(vdd_reg);
+ 		vdd_reg = NULL;
+ 	}
+ 	kfree(data);
+diff --git a/drivers/input/touchscreen/tsc2007.c b/drivers/input/touchscreen/tsc2007.c
+index 1eea8b7..4c7244f 100644
+--- a/drivers/input/touchscreen/tsc2007.c
++++ b/drivers/input/touchscreen/tsc2007.c
+@@ -35,7 +35,7 @@
+ #include <linux/kthread.h>
+ #include <linux/input.h>
+ #include <linux/delay.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #include <asm/mach/irq.h>
+ 
+ #define DRIVER_NAME "tsc2007"
+@@ -344,7 +344,7 @@ static int tsc2007_i2c_remove(struct i2c_client *client)
+ 
+ 	if (d->vdd_reg) {
+ 		regulator_disable(d->vdd_reg);
+-		regulator_put(d->vdd_reg, &client->dev);
++		regulator_put(d->vdd_reg);
+ 		d->vdd_reg = NULL;
+ 	}
+ 	return 0;
+diff --git a/drivers/media/video/mxc/capture/adv7180.c b/drivers/media/video/mxc/capture/adv7180.c
+index 7e3b89a..5dec852 100644
+--- a/drivers/media/video/mxc/capture/adv7180.c
++++ b/drivers/media/video/mxc/capture/adv7180.c
+@@ -30,7 +30,7 @@
+ #include <linux/wait.h>
+ #include <linux/videodev2.h>
+ #include <linux/workqueue.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #include <media/v4l2-int-device.h>
+ #include <linux/regulator/mcu_max8660-bus.h>
+ #include "mxc_v4l2_capture.h"
+@@ -805,7 +805,7 @@ static int adv7180_probe(struct i2c_client *client,
+ 		dvddio_regulator =
+ 		    regulator_get(&client->dev, plat_data->dvddio_reg);
+ 		if (!IS_ERR_VALUE((unsigned long)dvddio_regulator)) {
+-			regulator_set_voltage(dvddio_regulator, 3300000);
++			regulator_set_voltage(dvddio_regulator, 3300000, 3300000);
+ 			if (regulator_enable(dvddio_regulator) != 0)
+ 				return -ENODEV;
+ 		}
+@@ -815,7 +815,7 @@ static int adv7180_probe(struct i2c_client *client,
+ 		dvdd_regulator =
+ 		    regulator_get(&client->dev, plat_data->dvdd_reg);
+ 		if (!IS_ERR_VALUE((unsigned long)dvdd_regulator)) {
+-			regulator_set_voltage(dvdd_regulator, 1800000);
++			regulator_set_voltage(dvdd_regulator, 1800000, 1800000);
+ 			if (regulator_enable(dvdd_regulator) != 0)
+ 				return -ENODEV;
+ 		}
+@@ -825,7 +825,7 @@ static int adv7180_probe(struct i2c_client *client,
+ 		avdd_regulator =
+ 		    regulator_get(&client->dev, plat_data->avdd_reg);
+ 		if (!IS_ERR_VALUE((unsigned long)avdd_regulator)) {
+-			regulator_set_voltage(avdd_regulator, 1800000);
++			regulator_set_voltage(avdd_regulator, 1800000, 1800000);
+ 			if (regulator_enable(avdd_regulator) != 0)
+ 				return -ENODEV;
+ 		}
+@@ -835,7 +835,7 @@ static int adv7180_probe(struct i2c_client *client,
+ 		pvdd_regulator =
+ 		    regulator_get(&client->dev, plat_data->pvdd_reg);
+ 		if (!IS_ERR_VALUE((unsigned long)pvdd_regulator)) {
+-			regulator_set_voltage(pvdd_regulator, 1800000);
++			regulator_set_voltage(pvdd_regulator, 1800000, 1800000);
+ 			if (regulator_enable(pvdd_regulator) != 0)
+ 				return -ENODEV;
+ 		}
+@@ -910,22 +910,22 @@ static int adv7180_detach(struct i2c_client *client)
+ 
+ 	if (dvddio_regulator) {
+ 		regulator_disable(dvddio_regulator);
+-		regulator_put(dvddio_regulator, &client->dev);
++		regulator_put(dvddio_regulator);
+ 	}
+ 
+ 	if (dvdd_regulator) {
+ 		regulator_disable(dvdd_regulator);
+-		regulator_put(dvdd_regulator, &client->dev);
++		regulator_put(dvdd_regulator);
+ 	}
+ 
+ 	if (avdd_regulator) {
+ 		regulator_disable(avdd_regulator);
+-		regulator_put(avdd_regulator, &client->dev);
++		regulator_put(avdd_regulator);
+ 	}
+ 
+ 	if (pvdd_regulator) {
+ 		regulator_disable(pvdd_regulator);
+-		regulator_put(pvdd_regulator, &client->dev);
++		regulator_put(pvdd_regulator);
+ 	}
+ 
+ 	v4l2_int_device_unregister(&adv7180_int_device);
+diff --git a/drivers/media/video/mxc/capture/emma_ov2640.c b/drivers/media/video/mxc/capture/emma_ov2640.c
+index b593eb6..ceffea4 100644
+--- a/drivers/media/video/mxc/capture/emma_ov2640.c
++++ b/drivers/media/video/mxc/capture/emma_ov2640.c
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright 2005-2008 Freescale Semiconductor, Inc. All Rights Reserved.
++ * Copyright 2005-2009 Freescale Semiconductor, Inc. All Rights Reserved.
+  */
+ 
+ /*
+@@ -18,7 +18,7 @@
+ #include <linux/delay.h>
+ #include <linux/device.h>
+ #include <linux/i2c.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ 
+ #include "mxc_v4l2_capture.h"
+ 
+@@ -210,22 +210,22 @@ static int ov2640_remove(struct i2c_client *client)
+ 
+ 	if (!IS_ERR_VALUE((unsigned long)io_regulator)) {
+ 		regulator_disable(io_regulator);
+-		regulator_put(io_regulator, NULL);
++		regulator_put(io_regulator);
+ 	}
+ 
+ 	if (!IS_ERR_VALUE((unsigned long)core_regulator)) {
+ 		regulator_disable(core_regulator);
+-		regulator_put(core_regulator, NULL);
++		regulator_put(core_regulator);
+ 	}
+ 
+ 	if (!IS_ERR_VALUE((unsigned long)gpo_regulator)) {
+ 		regulator_disable(gpo_regulator);
+-		regulator_put(gpo_regulator, NULL);
++		regulator_put(gpo_regulator);
+ 	}
+ 
+ 	if (!IS_ERR_VALUE((unsigned long)analog_regulator)) {
+ 		regulator_disable(analog_regulator);
+-		regulator_put(analog_regulator, NULL);
++		regulator_put(analog_regulator);
+ 	}
+ 
+ 	return 0;
+@@ -323,7 +323,7 @@ static sensor_interface *ov2640_config(int *frame_rate, int high_quality)
+ 
+ 	/*set io votage */
+ 	if (!IS_ERR_VALUE((unsigned long)io_regulator)) {
+-		regulator_set_voltage(io_regulator, 2800000);
++		regulator_set_voltage(io_regulator, 2800000, 2800000);
+ 		if (regulator_enable(io_regulator) != 0) {
+ 			dev_dbg(&ov2640_i2c_client->dev,
+ 				"%s:io set voltage error\n", __func__);
+@@ -336,7 +336,7 @@ static sensor_interface *ov2640_config(int *frame_rate, int high_quality)
+ 
+ 	/*core votage */
+ 	if (!IS_ERR_VALUE((unsigned long)core_regulator)) {
+-		regulator_set_voltage(core_regulator, 1300000);
++		regulator_set_voltage(core_regulator, 1300000, 1300000);
+ 		if (regulator_enable(core_regulator) != 0) {
+ 			dev_dbg(&ov2640_i2c_client->dev,
+ 				"%s:core set voltage error\n", __func__);
+@@ -360,7 +360,7 @@ static sensor_interface *ov2640_config(int *frame_rate, int high_quality)
+ 	}
+ 
+ 	if (!IS_ERR_VALUE((unsigned long)analog_regulator)) {
+-		regulator_set_voltage(analog_regulator, 2000000);
++		regulator_set_voltage(analog_regulator, 2000000, 2000000);
+ 		if (regulator_enable(analog_regulator) != 0) {
+ 			dev_dbg(&ov2640_i2c_client->dev,
+ 				"%s:analog set voltage error\n", __func__);
+diff --git a/drivers/media/video/mxc/capture/ov2640.c b/drivers/media/video/mxc/capture/ov2640.c
+index a354447..a0e6016 100644
+--- a/drivers/media/video/mxc/capture/ov2640.c
++++ b/drivers/media/video/mxc/capture/ov2640.c
+@@ -26,7 +26,7 @@
+ #include <linux/delay.h>
+ #include <linux/device.h>
+ #include <linux/i2c.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ 
+ #include <media/v4l2-int-device.h>
+ #include "mxc_v4l2_capture.h"
+@@ -598,12 +598,12 @@ static int ioctl_dev_init(struct v4l2_int_device *s)
+ 	ov2640_data.on = true;
+ 
+ 	if (!IS_ERR_VALUE((unsigned long)io_regulator)) {
+-		regulator_set_voltage(io_regulator, 2800000);
++		regulator_set_voltage(io_regulator, 2800000, 2800000);
+ 		if (regulator_enable(io_regulator) != 0)
+ 			return -EIO;
+ 	}
+ 	if (!IS_ERR_VALUE((unsigned long)core_regulator)) {
+-		regulator_set_voltage(core_regulator, 1300000);
++		regulator_set_voltage(core_regulator, 1300000, 1300000);
+ 		if (regulator_enable(core_regulator) != 0)
+ 			return -EIO;
+ 		}
+@@ -614,8 +614,8 @@ static int ioctl_dev_init(struct v4l2_int_device *s)
+ 		}
+ 	}
+ 	if (!IS_ERR_VALUE((unsigned long)analog_regulator)) {
+-		/* regulator_set_voltage(analog_regulator, 2800000); */
+-		regulator_set_voltage(analog_regulator, 2000000);
++		/* regulator_set_voltage(analog_regulator, 2800000, 2800000); */
++		regulator_set_voltage(analog_regulator, 2000000, 2000000);
+ 		if (regulator_enable(analog_regulator) != 0)
+ 			return -EIO;
+ 	}
+@@ -731,22 +731,22 @@ static int ov2640_remove(struct i2c_client *client)
+ 
+ 	if (!IS_ERR_VALUE((unsigned long)gpo_regulator)) {
+ 		regulator_disable(gpo_regulator);
+-		regulator_put(gpo_regulator, &client->dev);
++		regulator_put(gpo_regulator);
+ 	}
+ 
+ 	if (!IS_ERR_VALUE((unsigned long)analog_regulator)) {
+ 		regulator_disable(analog_regulator);
+-		regulator_put(analog_regulator, &client->dev);
++		regulator_put(analog_regulator);
+ 	}
+ 
+ 	if (!IS_ERR_VALUE((unsigned long)core_regulator)) {
+ 		regulator_disable(core_regulator);
+-		regulator_put(core_regulator, &client->dev);
++		regulator_put(core_regulator);
+ 	}
+ 
+ 	if (!IS_ERR_VALUE((unsigned long)io_regulator)) {
+ 		regulator_disable(io_regulator);
+-		regulator_put(io_regulator, &client->dev);
++		regulator_put(io_regulator);
+ 	}
+ 
+ 	return 0;
+diff --git a/drivers/media/video/mxc/capture/ov3640.c b/drivers/media/video/mxc/capture/ov3640.c
+index c9b2f45..7c2d3e3 100644
+--- a/drivers/media/video/mxc/capture/ov3640.c
++++ b/drivers/media/video/mxc/capture/ov3640.c
+@@ -18,7 +18,7 @@
+ #include <linux/delay.h>
+ #include <linux/device.h>
+ #include <linux/i2c.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #include <media/v4l2-int-device.h>
+ #include "mxc_v4l2_capture.h"
+ 
+@@ -955,7 +955,8 @@ static int ov3640_probe(struct i2c_client *client,
+ 
+ 	io_regulator = regulator_get(&client->dev, plat_data->io_regulator);
+ 	if (!IS_ERR_VALUE((u32)io_regulator)) {
+-		regulator_set_voltage(io_regulator, OV3640_VOLTAGE_DIGITAL_IO);
++		regulator_set_voltage(io_regulator, OV3640_VOLTAGE_DIGITAL_IO,
++				      OV3640_VOLTAGE_DIGITAL_IO);
+ 		if (regulator_enable(io_regulator) != 0) {
+ 			pr_err("%s:io set voltage error\n", __func__);
+ 			goto err1;
+@@ -968,6 +969,7 @@ static int ov3640_probe(struct i2c_client *client,
+ 	core_regulator = regulator_get(&client->dev, plat_data->core_regulator);
+ 	if (!IS_ERR_VALUE((u32)core_regulator)) {
+ 		regulator_set_voltage(core_regulator,
++				      OV3640_VOLTAGE_DIGITAL_CORE,
+ 				      OV3640_VOLTAGE_DIGITAL_CORE);
+ 		if (regulator_enable(core_regulator) != 0) {
+ 			pr_err("%s:core set voltage error\n", __func__);
+@@ -981,7 +983,8 @@ static int ov3640_probe(struct i2c_client *client,
+ 	analog_regulator =
+ 		regulator_get(&client->dev, plat_data->analog_regulator);
+ 	if (!IS_ERR_VALUE((u32)analog_regulator)) {
+-		regulator_set_voltage(analog_regulator, OV3640_VOLTAGE_ANALOG);
++		regulator_set_voltage(analog_regulator, OV3640_VOLTAGE_ANALOG,
++				      OV3640_VOLTAGE_ANALOG);
+ 		if (regulator_enable(analog_regulator) != 0) {
+ 			pr_err("%s:analog set voltage error\n", __func__);
+ 			goto err3;
+@@ -1010,17 +1013,17 @@ static int ov3640_probe(struct i2c_client *client,
+ err4:
+ 	if (!IS_ERR_VALUE((u32)analog_regulator)) {
+ 		regulator_disable(analog_regulator);
+-		regulator_put(analog_regulator, &client->dev);
++		regulator_put(analog_regulator);
+ 	}
+ err3:
+ 	if (!IS_ERR_VALUE((u32)core_regulator)) {
+ 		regulator_disable(core_regulator);
+-		regulator_put(core_regulator, &client->dev);
++		regulator_put(core_regulator);
+ 	}
+ err2:
+ 	if (!IS_ERR_VALUE((u32)io_regulator)) {
+ 		regulator_disable(io_regulator);
+-		regulator_put(io_regulator, &client->dev);
++		regulator_put(io_regulator);
+ 	}
+ err1:
+ 	return -1;
+@@ -1040,22 +1043,22 @@ static int ov3640_remove(struct i2c_client *client)
+ 
+ 	if (!IS_ERR_VALUE((unsigned long)gpo_regulator)) {
+ 		regulator_disable(gpo_regulator);
+-		regulator_put(gpo_regulator, &client->dev);
++		regulator_put(gpo_regulator);
+ 	}
+ 
+ 	if (!IS_ERR_VALUE((unsigned long)analog_regulator)) {
+ 		regulator_disable(analog_regulator);
+-		regulator_put(analog_regulator, &client->dev);
++		regulator_put(analog_regulator);
+ 	}
+ 
+ 	if (!IS_ERR_VALUE((unsigned long)core_regulator)) {
+ 		regulator_disable(core_regulator);
+-		regulator_put(core_regulator, &client->dev);
++		regulator_put(core_regulator);
+ 	}
+ 
+ 	if (!IS_ERR_VALUE((unsigned long)io_regulator)) {
+ 		regulator_disable(io_regulator);
+-		regulator_put(io_regulator, &client->dev);
++		regulator_put(io_regulator);
+ 	}
+ 
+ 	return 0;
+diff --git a/drivers/mmc/card/unifi_fs/fs_lx.c b/drivers/mmc/card/unifi_fs/fs_lx.c
+index 439c6f0..ef53c60 100644
+--- a/drivers/mmc/card/unifi_fs/fs_lx.c
++++ b/drivers/mmc/card/unifi_fs/fs_lx.c
+@@ -40,7 +40,7 @@
+ #include <mach/gpio.h>
+ 
+ #include <linux/platform_device.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ 
+ #include "fs_sdio_api.h"
+ 
+@@ -264,13 +264,14 @@ static void fs_unifi_power_on(int check_card)
+ 		tmp = regulator_get_voltage(reg_unifi->reg_1v5_ana_bb);
+ 		if (tmp < 1500000)
+ 			regulator_set_voltage(reg_unifi->reg_1v5_ana_bb,
+-					     1500000);
++					     1500000, 1500000);
+ 		regulator_enable(reg_unifi->reg_1v5_ana_bb);
+ 	}
+ 	if (reg_unifi->reg_vdd_vpa) {
+ 		tmp = regulator_get_voltage(reg_unifi->reg_vdd_vpa);
+ 		if (tmp < 3000000)
+-			regulator_set_voltage(reg_unifi->reg_vdd_vpa, 3000000);
++			regulator_set_voltage(reg_unifi->reg_vdd_vpa,
++					      3000000, 3000000);
+ 		regulator_enable(reg_unifi->reg_vdd_vpa);
+ 	}
+ 	/* WL_1V5DD should come on last, 10ms after other supplies */
+@@ -278,7 +279,8 @@ static void fs_unifi_power_on(int check_card)
+ 	if (reg_unifi->reg_1v5_dd) {
+ 		tmp = regulator_get_voltage(reg_unifi->reg_1v5_dd);
+ 		if (tmp < 1500000)
+-			regulator_set_voltage(reg_unifi->reg_1v5_dd, 1500000);
++			regulator_set_voltage(reg_unifi->reg_1v5_dd,
++					      1500000, 1500000);
+ 		regulator_enable(reg_unifi->reg_1v5_dd);
+ 	}
+ 	msleep(10);
+@@ -605,16 +607,16 @@ static int fs_unifi_init(void)
+ 
+ err_reg_1v5_dd:
+ 	if (reg_unifi->reg_vdd_vpa)
+-		regulator_put(reg_unifi->reg_vdd_vpa, NULL);
++		regulator_put(reg_unifi->reg_vdd_vpa);
+ err_reg_vdd_vpa:
+ 	if (reg_unifi->reg_1v5_ana_bb)
+-		regulator_put(reg_unifi->reg_1v5_ana_bb, NULL);
++		regulator_put(reg_unifi->reg_1v5_ana_bb);
+ err_reg_1v5_ana_bb:
+ 	if (reg_unifi->reg_gpo2)
+-		regulator_put(reg_unifi->reg_gpo2, NULL);
++		regulator_put(reg_unifi->reg_gpo2);
+ err_reg_gpo2:
+ 	if (reg_unifi->reg_gpo1)
+-		regulator_put(reg_unifi->reg_gpo1, NULL);
++		regulator_put(reg_unifi->reg_gpo1);
+ err_reg_gpo1:
+ 	kfree(reg_unifi);
+ 	return err;
+@@ -628,18 +630,18 @@ int fs_unifi_remove(void)
+ 	plat_data->priv = NULL;
+ 
+ 	if (reg_unifi->reg_1v5_dd)
+-		regulator_put(reg_unifi->reg_1v5_dd, NULL);
++		regulator_put(reg_unifi->reg_1v5_dd);
+ 	if (reg_unifi->reg_vdd_vpa)
+-		regulator_put(reg_unifi->reg_vdd_vpa, NULL);
++		regulator_put(reg_unifi->reg_vdd_vpa);
+ 
+ 	if (reg_unifi->reg_1v5_ana_bb)
+-		regulator_put(reg_unifi->reg_1v5_ana_bb, NULL);
++		regulator_put(reg_unifi->reg_1v5_ana_bb);
+ 
+ 	if (reg_unifi->reg_gpo2)
+-		regulator_put(reg_unifi->reg_gpo2, NULL);
++		regulator_put(reg_unifi->reg_gpo2);
+ 
+ 	if (reg_unifi->reg_gpo1)
+-		regulator_put(reg_unifi->reg_gpo1, NULL);
++		regulator_put(reg_unifi->reg_gpo1);
+ 
+ 	kfree(reg_unifi);
+ 	return 0;
+diff --git a/drivers/mmc/host/mx_sdhci.c b/drivers/mmc/host/mx_sdhci.c
+index 17a34ee..2a29ad4 100644
+--- a/drivers/mmc/host/mx_sdhci.c
++++ b/drivers/mmc/host/mx_sdhci.c
+@@ -36,7 +36,7 @@
+ #include <linux/mmc/mmc.h>
+ #include <linux/mmc/card.h>
+ #include <linux/clk.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ 
+ #include <asm/dma.h>
+ #include <asm/io.h>
+@@ -854,7 +854,8 @@ static void sdhci_set_power(struct sdhci_host *host, unsigned short power)
+ 				voltage = 1800000;
+ 			else if (power >= 8)
+ 				voltage = 2000000 + (power - 8) * 100000;
+-			regulator_set_voltage(host->regulator_mmc, voltage);
++			regulator_set_voltage(host->regulator_mmc,
++					      voltage, voltage);
+ 
+ 			if (regulator_enable(host->regulator_mmc) == 0) {
+ 				DBG("mmc power on\n");
+diff --git a/drivers/mmc/host/mxc_mmc.c b/drivers/mmc/host/mxc_mmc.c
+index 849d36c..c532ccf 100644
+--- a/drivers/mmc/host/mxc_mmc.c
++++ b/drivers/mmc/host/mxc_mmc.c
+@@ -55,7 +55,7 @@
+ #include <linux/delay.h>
+ #include <linux/timer.h>
+ #include <linux/clk.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ 
+ #include <asm/dma.h>
+ #include <asm/io.h>
+@@ -1009,7 +1009,7 @@ static void mxcmci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
+ 			voltage = 1800000;
+ 		else if (ios->vdd >= 8)
+ 			voltage = 2000000 + (ios->vdd - 8) * 100000;
+-		regulator_set_voltage(host->regulator_mmc, voltage);
++		regulator_set_voltage(host->regulator_mmc, voltage, voltage);
+ 	}
+ 	host->current_vdd = ios->vdd;
+ 
+@@ -1326,7 +1326,7 @@ static int mxcmci_probe(struct platform_device *pdev)
+       out2:
+ 	clk_disable(host->clk);
+ 	regulator_disable(host->regulator_mmc);
+-	regulator_put(host->regulator_mmc, &pdev->dev);
++	regulator_put(host->regulator_mmc);
+       out1:
+ 	gpio_sdhc_inactive(pdev->id);
+       out0:
+@@ -1362,7 +1362,7 @@ static int mxcmci_remove(struct platform_device *pdev)
+ 				   host->res->end - host->res->start + 1);
+ 		mmc_free_host(mmc);
+ 		if (NULL != host->regulator_mmc)
+-			regulator_put(host->regulator_mmc, &pdev->dev);
++			regulator_put(host->regulator_mmc);
+ 		gpio_sdhc_inactive(pdev->id);
+ 	}
+ 	platform_set_drvdata(pdev, NULL);
+diff --git a/drivers/mxc/bt/mxc_bt.c b/drivers/mxc/bt/mxc_bt.c
+index 398ce2d..6da165a 100644
+--- a/drivers/mxc/bt/mxc_bt.c
++++ b/drivers/mxc/bt/mxc_bt.c
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright 2008 Freescale Semiconductor, Inc. All Rights Reserved.
++ * Copyright 2008-2009 Freescale Semiconductor, Inc. All Rights Reserved.
+  */
+ 
+ /*
+@@ -22,7 +22,7 @@
+ #include <linux/platform_device.h>
+ #include <linux/kernel.h>
+ #include <linux/init.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ 
+ static struct regulator *bt_vdd;
+ static struct regulator *bt_vdd_parent;
+@@ -76,19 +76,19 @@ static int mxc_bt_remove(struct platform_device *pdev)
+ 	platform_data = (struct mxc_bt_platform_data *)pdev->dev.platform_data;
+ 	if (bt_vdd) {
+ 		regulator_disable(bt_vdd);
+-		regulator_put(bt_vdd, &pdev->dev);
++		regulator_put(bt_vdd);
+ 	}
+ 	if (bt_vdd_parent) {
+ 		regulator_disable(bt_vdd_parent);
+-		regulator_put(bt_vdd_parent, &pdev->dev);
++		regulator_put(bt_vdd_parent);
+ 	}
+ 	if (bt_vusb) {
+ 		regulator_disable(bt_vusb);
+-		regulator_put(bt_vusb, &pdev->dev);
++		regulator_put(bt_vusb);
+ 	}
+ 	if (bt_vusb_parent) {
+ 		regulator_disable(bt_vusb_parent);
+-		regulator_put(bt_vusb_parent, &pdev->dev);
++		regulator_put(bt_vusb_parent);
+ 	}
+ 	return 0;
+ 
+diff --git a/drivers/mxc/gps_ioctrl/agpsgpiodev.c b/drivers/mxc/gps_ioctrl/agpsgpiodev.c
+index 84d1fc6..cf67143 100644
+--- a/drivers/mxc/gps_ioctrl/agpsgpiodev.c
++++ b/drivers/mxc/gps_ioctrl/agpsgpiodev.c
+@@ -23,7 +23,7 @@
+ #include <asm/uaccess.h>	/* for get_user, put_user, access_ok */
+ #include <linux/sched.h>	/* jiffies */
+ #include <linux/poll.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #include <linux/delay.h>
+ #include <linux/platform_device.h>
+ #include "agpsgpiodev.h"
+@@ -193,9 +193,9 @@ static int __init gps_ioctrl_probe(struct platform_device *pdev)
+ 		gps_regu =
+ 		    regulator_get(&(pdev->dev), mxc_gps_ioctrl_data->core_reg);
+ 		if (!IS_ERR_VALUE((u32)gps_regu)) {
+-			regulator_set_voltage(gps_regu, 1800000);
++			regulator_set_voltage(gps_regu, 1800000, 1800000);
+ 			regulator_enable(gps_regu);
+-			regulator_put(gps_regu, &(pdev->dev));
++			regulator_put(gps_regu);
+ 		} else {
+ 			return -1;
+ 		}
+@@ -206,9 +206,9 @@ static int __init gps_ioctrl_probe(struct platform_device *pdev)
+ 		    regulator_get(&(pdev->dev),
+ 				  mxc_gps_ioctrl_data->analog_reg);
+ 		if (!IS_ERR_VALUE((u32)gps_regu)) {
+-			regulator_set_voltage(gps_regu, 2800000);
++			regulator_set_voltage(gps_regu, 2800000, 2800000);
+ 			regulator_enable(gps_regu);
+-			regulator_put(gps_regu, &(pdev->dev));
++			regulator_put(gps_regu);
+ 		} else {
+ 			return -1;
+ 		}
+@@ -236,7 +236,7 @@ static int gps_ioctrl_remove(struct platform_device *pdev)
+ 		gps_regu =
+ 		    regulator_get(&(pdev->dev), mxc_gps_ioctrl_data->core_reg);
+ 		regulator_disable(gps_regu);
+-		regulator_put(gps_regu, &(pdev->dev));
++		regulator_put(gps_regu);
+ 	}
+ 	/* close GPS GPO1 2v8 for GL gps */
+ 	if (mxc_gps_ioctrl_data->analog_reg != NULL) {
+@@ -244,7 +244,7 @@ static int gps_ioctrl_remove(struct platform_device *pdev)
+ 		    regulator_get(&(pdev->dev),
+ 				  mxc_gps_ioctrl_data->analog_reg);
+ 		regulator_disable(gps_regu);
+-		regulator_put(gps_regu, &(pdev->dev));
++		regulator_put(gps_regu);
+ 	}
+ 
+ 	return 0;
+diff --git a/drivers/mxc/mlb/mxc_mlb.c b/drivers/mxc/mlb/mxc_mlb.c
+index f8983d0..b170c92 100644
+--- a/drivers/mxc/mlb/mxc_mlb.c
++++ b/drivers/mxc/mlb/mxc_mlb.c
+@@ -24,7 +24,7 @@
+ #include <linux/clk.h>
+ #include <linux/interrupt.h>
+ #include <linux/platform_device.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #include <linux/mxc_mlb.h>
+ 
+ #include <asm/irq.h>
+@@ -937,7 +937,7 @@ static int __devinit mxc_mlb_probe(struct platform_device *pdev)
+ 	/* power on MLB */
+ 	reg_nvcc = regulator_get(&pdev->dev, plat_data->reg_nvcc);
+ 	/* set MAX LDO6 for NVCC to 2.5V */
+-	regulator_set_voltage(reg_nvcc, 2500000);
++	regulator_set_voltage(reg_nvcc, 2500000, 2500000);
+ 	regulator_enable(reg_nvcc);
+ 
+ 	/* enable clock */
+@@ -979,7 +979,7 @@ static int __devexit mxc_mlb_remove(struct platform_device *pdev)
+ 
+ 	/* disable mlb power */
+ 	regulator_disable(reg_nvcc);
+-	regulator_put(reg_nvcc, &pdev->dev);
++	regulator_put(reg_nvcc);
+ 
+ 	/* inactive GPIO */
+ 	gpio_mlb_inactive();
+diff --git a/drivers/net/can/flexcan/dev.c b/drivers/net/can/flexcan/dev.c
+index fc7b6a8..f2040c1 100644
+--- a/drivers/net/can/flexcan/dev.c
++++ b/drivers/net/can/flexcan/dev.c
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright 2008 Freescale Semiconductor, Inc. All Rights Reserved.
++ * Copyright 2008-2009 Freescale Semiconductor, Inc. All Rights Reserved.
+  */
+ 
+ /*
+@@ -506,7 +506,7 @@ static int flexcan_device_attach(struct flexcan_device *flexcan)
+ 	return 0;
+       plat_err:
+ 	if (flexcan->core_reg) {
+-		regulator_put(flexcan->core_reg, &pdev->dev);
++		regulator_put(flexcan->core_reg);
+ 		flexcan->core_reg = NULL;
+ 	}
+       no_irq_err:
+@@ -524,12 +524,12 @@ static void flexcan_device_detach(struct flexcan_device *flexcan)
+ 	}
+ 
+ 	if (flexcan->io_reg) {
+-		regulator_put(flexcan->io_reg, &pdev->dev);
++		regulator_put(flexcan->io_reg);
+ 		flexcan->io_reg = NULL;
+ 	}
+ 
+ 	if (flexcan->core_reg) {
+-		regulator_put(flexcan->core_reg, &pdev->dev);
++		regulator_put(flexcan->core_reg);
+ 		flexcan->core_reg = NULL;
+ 	}
+ 
+diff --git a/drivers/net/can/flexcan/drv.c b/drivers/net/can/flexcan/drv.c
+index 0e8445e..1eaeac5 100644
+--- a/drivers/net/can/flexcan/drv.c
++++ b/drivers/net/can/flexcan/drv.c
+@@ -26,7 +26,7 @@
+ #include <linux/if_arp.h>
+ #include <linux/if_ether.h>
+ #include <linux/platform_device.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #include <linux/clk.h>
+ 
+ #include <asm/io.h>
+diff --git a/drivers/net/can/flexcan/flexcan.h b/drivers/net/can/flexcan/flexcan.h
+index ade2284..d19cc1e 100644
+--- a/drivers/net/can/flexcan/flexcan.h
++++ b/drivers/net/can/flexcan/flexcan.h
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright 2008 Freescale Semiconductor, Inc. All Rights Reserved.
++ * Copyright 2008-2009 Freescale Semiconductor, Inc. All Rights Reserved.
+  */
+ 
+ /*
+@@ -24,7 +24,7 @@
+ 
+ #include <linux/list.h>
+ #include <linux/platform_device.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #include <linux/clk.h>
+ #include <linux/can.h>
+ #include <linux/can/core.h>
+diff --git a/drivers/video/backlight/wm8350_bl.c b/drivers/video/backlight/wm8350_bl.c
+index 1271518..d928433 100644
+--- a/drivers/video/backlight/wm8350_bl.c
++++ b/drivers/video/backlight/wm8350_bl.c
+@@ -16,7 +16,7 @@
+ #include <linux/fb.h>
+ #include <linux/platform_device.h>
+ #include <linux/backlight.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #include <linux/regulator/wm8350/wm8350-bus.h>
+ 
+ struct wm8350_backlight {
+@@ -184,14 +184,14 @@ static int wm8350_bl_probe(struct platform_device *pdev)
+ 		pdata->dcdc == WM8350_DCDC_2 ? "DCDC2" : "DCDC5");
+ 	if (IS_ERR(dcdc) || dcdc == NULL) {
+ 		printk(KERN_ERR "%s: cant get DCDC\n", __func__);
+-		regulator_put(isink, &pdev->dev);
++		regulator_put(isink);
+ 		return PTR_ERR(dcdc);
+ 	}
+ 
+ 	bl = kzalloc(sizeof(*bl), GFP_KERNEL);
+ 	if (bl == NULL) {
+-		regulator_put(isink, &pdev->dev);
+-		regulator_put(dcdc, &pdev->dev);
++		regulator_put(isink);
++		regulator_put(dcdc);
+ 		return -ENOMEM;
+ 	}
+ 
+@@ -212,8 +212,8 @@ static int wm8350_bl_probe(struct platform_device *pdev)
+ 		bl, &wm8350_bl_ops);
+ 	if (IS_ERR(bl->device)) {
+ 		ret =  PTR_ERR(bl->device);
+-		regulator_put(dcdc, &pdev->dev);
+-		regulator_put(isink, &pdev->dev);
++		regulator_put(dcdc);
++		regulator_put(isink);
+ 		kfree(bl);
+ 		return ret;
+ 	}
+@@ -269,8 +269,8 @@ static int wm8350_bl_remove(struct platform_device *pdev)
+ 	regulator_disable(isink);
+ 	regulator_unregister_client(isink, &bl->notifier);
+ 	regulator_unregister_client(dcdc, &bl->notifier);
+-	regulator_put(isink, &pdev->dev);
+-	regulator_put(dcdc, &pdev->dev);
++	regulator_put(isink);
++	regulator_put(dcdc);
+ 	return 0;
+ }
+ 
+diff --git a/drivers/video/mxc/ch7024.c b/drivers/video/mxc/ch7024.c
+index 20221ac..924e499 100644
+--- a/drivers/video/mxc/ch7024.c
++++ b/drivers/video/mxc/ch7024.c
+@@ -27,8 +27,8 @@
+ #include <linux/interrupt.h>
+ #include <linux/irq.h>
+ #include <linux/sysfs.h>
+-#include <linux/regulator/regulator.h>
+ #include <linux/mxcfb.h>
++#include <linux/regulator/consumer.h>
+ #include <asm/uaccess.h>
+ #include <asm/atomic.h>
+ #include <mach/gpio.h>
+@@ -781,9 +781,9 @@ static int ch7024_remove(struct i2c_client *client)
+ {
+ 	free_irq(client->irq, client);
+ 
+-	regulator_put(io_reg, &client->dev);
+-	regulator_put(core_reg, &client->dev);
+-	regulator_put(analog_reg, &client->dev);
++	regulator_put(io_reg);
++	regulator_put(core_reg);
++	regulator_put(analog_reg);
+ 
+ 	driver_remove_file(&client->driver->driver, &driver_attr_headphone);
+ 	driver_remove_file(&client->driver->driver, &driver_attr_brightness);
+diff --git a/drivers/video/mxc/mxcfb_claa_wvga.c b/drivers/video/mxc/mxcfb_claa_wvga.c
+index 68d285e..a9fd00b 100644
+--- a/drivers/video/mxc/mxcfb_claa_wvga.c
++++ b/drivers/video/mxc/mxcfb_claa_wvga.c
+@@ -34,8 +34,8 @@
+ #include <linux/fb.h>
+ #include <linux/init.h>
+ #include <linux/platform_device.h>
+-#include <linux/regulator/regulator.h>
+ #include <linux/mxcfb.h>
++#include <linux/regulator/consumer.h>
+ 
+ static void lcd_poweron(void);
+ static void lcd_poweroff(void);
+@@ -125,7 +125,7 @@ static int __devinit lcd_probe(struct platform_device *pdev)
+ 			io_reg = NULL;
+ 		core_reg = regulator_get(&pdev->dev, plat->core_reg);
+ 		if (!IS_ERR(core_reg)) {
+-			regulator_set_voltage(io_reg, 1800000);
++			regulator_set_voltage(io_reg, 1800000, 1800000);
+ 		} else {
+ 			core_reg = NULL;
+ 		}
+@@ -152,9 +152,9 @@ static int __devexit lcd_remove(struct platform_device *pdev)
+ {
+ 	fb_unregister_client(&nb);
+ 	lcd_poweroff();
+-	regulator_put(io_reg, &pdev->dev);
++	regulator_put(io_reg);
+ 	if (core_reg)
+-		regulator_put(core_reg, &pdev->dev);
++		regulator_put(core_reg);
+ 
+ 	return 0;
+ }
+diff --git a/drivers/video/mxc/mxcfb_epson_vga.c b/drivers/video/mxc/mxcfb_epson_vga.c
+index c434d38..9424d34 100644
+--- a/drivers/video/mxc/mxcfb_epson_vga.c
++++ b/drivers/video/mxc/mxcfb_epson_vga.c
+@@ -34,7 +34,7 @@
+ #include <linux/fb.h>
+ #include <linux/init.h>
+ #include <linux/platform_device.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ #include <linux/spi/spi.h>
+ #include <linux/mxcfb.h>
+ #include <linux/ipu.h>
+@@ -132,12 +132,12 @@ static int __devinit lcd_probe(struct device *dev)
+ 	if (plat) {
+ 		io_reg = regulator_get(dev, plat->io_reg);
+ 		if (!IS_ERR(io_reg)) {
+-			regulator_set_voltage(io_reg, 1800000);
++			regulator_set_voltage(io_reg, 1800000, 1800000);
+ 			regulator_enable(io_reg);
+ 		}
+ 		core_reg = regulator_get(dev, plat->core_reg);
+ 		if (!IS_ERR(core_reg)) {
+-			regulator_set_voltage(core_reg, 2800000);
++			regulator_set_voltage(core_reg, 2800000, 2800000);
+ 			regulator_enable(core_reg);
+ 		}
+ 
+@@ -191,8 +191,8 @@ static int __devexit lcd_remove(struct device *dev)
+ {
+ 	fb_unregister_client(&nb);
+ 	lcd_poweroff();
+-	regulator_put(io_reg, dev);
+-	regulator_put(core_reg, dev);
++	regulator_put(io_reg);
++	regulator_put(core_reg);
+ 
+ 	return 0;
+ }
+diff --git a/drivers/video/mxc/tve.c b/drivers/video/mxc/tve.c
+index 5703b0f..78d011e 100644
+--- a/drivers/video/mxc/tve.c
++++ b/drivers/video/mxc/tve.c
+@@ -29,8 +29,8 @@
+ #include <linux/irq.h>
+ #include <linux/sysfs.h>
+ #include <linux/platform_device.h>
+-#include <linux/regulator/regulator.h>
+ #include <linux/mxcfb.h>
++#include <linux/regulator/consumer.h>
+ #include <asm/uaccess.h>
+ #include <asm/atomic.h>
+ #include <mach/gpio.h>
+@@ -360,13 +360,13 @@ static int tve_probe(struct platform_device *pdev)
+ 
+ 	tve.dac_reg = regulator_get(&pdev->dev, plat_data->dac_reg);
+ 	if (!IS_ERR(tve.dac_reg)) {
+-		regulator_set_voltage(tve.dac_reg, 2500000);
++		regulator_set_voltage(tve.dac_reg, 2500000, 2500000);
+ 		regulator_enable(tve.dac_reg);
+ 	}
+ 
+ 	tve.dig_reg = regulator_get(&pdev->dev, plat_data->dig_reg);
+ 	if (!IS_ERR(tve.dig_reg)) {
+-		regulator_set_voltage(tve.dig_reg, 1250000);
++		regulator_set_voltage(tve.dig_reg, 1250000, 1250000);
+ 		regulator_enable(tve.dig_reg);
+ 	}
+ 
+diff --git a/include/linux/usb/fsl_xcvr.h b/include/linux/usb/fsl_xcvr.h
+index febeb53..9a48bb6 100644
+--- a/include/linux/usb/fsl_xcvr.h
++++ b/include/linux/usb/fsl_xcvr.h
+@@ -1,7 +1,7 @@
+ #ifndef __LINUX_USB_FSL_XCVR_H
+ #define __LINUX_USB_FSL_XCVR_H
+ #include <linux/platform_device.h>
+-#include <linux/regulator/regulator.h>
++#include <linux/regulator/consumer.h>
+ 
+ struct fsl_usb2_platform_data;
+ 
+-- 
+1.5.4.4
+

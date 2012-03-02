@@ -1,0 +1,30 @@
+From 0c0b880d93b38757e9aa9b917cdc4f9345024261 Mon Sep 17 00:00:00 2001
+From: Jun Li <r65092@freescale.com>
+Date: Wed, 27 May 2009 12:58:33 +0800
+Subject: [PATCH] ENGR00112832 fix copyright problem with Huashan USB gadget patch
+
+If the original codes is 1994 and update was only done in
+2009, then it should read:
+Copyright 1994, 2009 Freescale Semiconductor, Inc.
+
+Signed-off-by: Li Jun <r65092@freescale.com>
+---
+ include/linux/fsl_devices.h |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/include/linux/fsl_devices.h b/include/linux/fsl_devices.h
+index 6c417ca..8b3b8ee 100644
+--- a/include/linux/fsl_devices.h
++++ b/include/linux/fsl_devices.h
+@@ -6,7 +6,7 @@
+  *
+  * Maintainer: Kumar Gala <galak@kernel.crashing.org>
+  *
+- * Copyright 2009 Freescale Semiconductor, Inc
++ * Copyright 2004, 2009 Freescale Semiconductor, Inc
+  *
+  * This program is free software; you can redistribute  it and/or modify it
+  * under  the terms of  the GNU General  Public License as published by the
+-- 
+1.5.4.4
+

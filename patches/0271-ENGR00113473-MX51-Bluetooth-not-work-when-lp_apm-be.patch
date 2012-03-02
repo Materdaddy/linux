@@ -1,0 +1,36 @@
+From ec75a15b9fab3e16e456838d79420a3cfab06573 Mon Sep 17 00:00:00 2001
+From: Katherine Lu <katherine.lu@freescale.com>
+Date: Thu, 18 Jun 2009 17:11:42 +0800
+Subject: [PATCH] ENGR00113473 MX51: Bluetooth not work when lp_apm be the parent clk of uart
+
+With lp_apm, the uart_main_clk is 2400000Hz, it's too low for uart to set the
+desired baud rate(921600bps).
+
+Signed-off-by: Katherine Lu <katherine.lu@freescale.com>
+---
+ arch/arm/mach-mx51/clock.c |    9 ++++++++-
+ 1 files changed, 8 insertions(+), 1 deletions(-)
+
+diff --git a/arch/arm/mach-mx51/clock.c b/arch/arm/mach-mx51/clock.c
+index a1f1f57..1e3484d 100644
+--- a/arch/arm/mach-mx51/clock.c
++++ b/arch/arm/mach-mx51/clock.c
+@@ -3692,7 +3692,14 @@ int __init mxc_clocks_init(unsigned long ckil, unsigned long osc, unsigned long
+ 
+ 	clk_set_parent(&arm_axi_clk, &axi_a_clk);
+ 	clk_set_parent(&ipu_clk[0], &axi_b_clk);
+-	clk_set_parent(&uart_main_clk, &lp_apm_clk);
++
++	/* set the UART dividers to divide by 3*/
++	reg = __raw_readl(MXC_CCM_CSCDR1);
++	reg &= ~MXC_CCM_CSCDR1_UART_CLK_PODF_MASK;
++	reg &= ~MXC_CCM_CSCDR1_UART_CLK_PRED_MASK;
++	reg |= 2 << MXC_CCM_CSCDR1_UART_CLK_PRED_OFFSET;
++	__raw_writel(reg, MXC_CCM_CSCDR1);
++	clk_set_parent(&uart_main_clk, &pll3_sw_clk);
+ 
+ 	clk_set_parent(&emi_slow_clk, &ahb_clk);
+ 	clk_set_rate(&emi_slow_clk, clk_round_rate(&emi_slow_clk, 130000000));
+-- 
+1.5.4.4
+

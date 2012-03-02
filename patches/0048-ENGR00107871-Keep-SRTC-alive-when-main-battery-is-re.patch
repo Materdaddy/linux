@@ -1,0 +1,109 @@
+From 6241a07506e670e00c53bf59620c70bd23da7574 Mon Sep 17 00:00:00 2001
+From: Lily Zhang <r58066@freescale.com>
+Date: Mon, 23 Feb 2009 21:47:16 +0800
+Subject: [PATCH] ENGR00107871 Keep SRTC alive when main battery is removed
+
+1. Keep VSRTC and CLK32KMCU on for all states for MC13892
+2. Even if low security mode, allow SRTC move to valid state except MX51 TO1.
+3. When main battery is removed, coincell battery on MX51/MX37 MC13892
+board is used. Please ensure the voltage of coincell battery is enough
+to keep VSRTC alive.
+
+Signed-off-by: Lily Zhang <r58066@freescale.com>
+---
+ arch/arm/mach-mx37/mx37_3stack.c              |   13 +++++++++++--
+ arch/arm/mach-mx51/mx51_3stack_pmic_mc13892.c |    6 ++++++
+ drivers/rtc/rtc-mxc_v2.c                      |    6 +++---
+ 3 files changed, 20 insertions(+), 5 deletions(-)
+
+diff --git a/arch/arm/mach-mx37/mx37_3stack.c b/arch/arm/mach-mx37/mx37_3stack.c
+index 8b6ca09..898aade 100644
+--- a/arch/arm/mach-mx37/mx37_3stack.c
++++ b/arch/arm/mach-mx37/mx37_3stack.c
+@@ -26,6 +26,7 @@
+ #include <linux/i2c.h>
+ #include <linux/ata.h>
+ #include <linux/regulator/consumer.h>
++#include <linux/pmic_external.h>
+ #if defined(CONFIG_MTD) || defined(CONFIG_MTD_MODULE)
+ #include <linux/mtd/mtd.h>
+ #include <linux/mtd/map.h>
+@@ -100,9 +101,10 @@ struct cpu_wp *get_cpu_wp(int *wp)
+ 	return cpu_wp_auto;
+ }
+ 
+-static void mc13892_reg_int(void)
++static int mc13892_reg_int(void)
+ {
+ 	int i = 0;
++	unsigned int value;
+ 	struct regulator *regulator;
+ 	struct cpu_wp *cpu_wp_tbl1;
+ 	int cpu_wp_nr1;
+@@ -138,7 +140,7 @@ static void mc13892_reg_int(void)
+ 
+ 	/* for board v1.1 do nothing*/
+ 	if (!board_is_mx37(BOARD_REV_2))
+-		return;
++		return -EINVAL;
+ 
+ 	for (i = 0; i < ARRAY_SIZE(reg_name); i++) {
+ 		regulator = regulator_get(NULL, reg_name[i]);
+@@ -164,6 +166,13 @@ static void mc13892_reg_int(void)
+ 	cpu_wp_tbl1 = get_cpu_wp(&cpu_wp_nr1);
+ 	for (i = 0; i < cpu_wp_nr1; i++)
+ 		cpu_wp_tbl1[i].cpu_voltage += 50000;
++
++	/* Bit 4 DRM: keep VSRTC and CLK32KMCU on for all states */
++	pmic_read_reg(REG_POWER_CTL0, &value, 0xffffff);
++	value |= 0x000010;
++	pmic_write_reg(REG_POWER_CTL0, value, 0xffffff);
++
++	return 0;
+ }
+ 
+ late_initcall(mc13892_reg_int);
+diff --git a/arch/arm/mach-mx51/mx51_3stack_pmic_mc13892.c b/arch/arm/mach-mx51/mx51_3stack_pmic_mc13892.c
+index 7156327..4422bf7 100644
+--- a/arch/arm/mach-mx51/mx51_3stack_pmic_mc13892.c
++++ b/arch/arm/mach-mx51/mx51_3stack_pmic_mc13892.c
+@@ -226,6 +226,7 @@ static void power_on_evt_handler(void)
+ 
+ static int mc13892_regulator_init(struct mc13892 *mc13892)
+ {
++	unsigned int value;
+ 	pmic_event_callback_t power_key_event;
+ 
+ 	if (mxc_cpu_is_rev(CHIP_REV_2_0) < 0)
+@@ -236,6 +237,11 @@ static int mc13892_regulator_init(struct mc13892 *mc13892)
+ 	power_key_event.func = (void *)power_on_evt_handler;
+ 	pmic_event_subscribe(EVENT_PWRONI, power_key_event);
+ 
++	/* Bit 4 DRM: keep VSRTC and CLK32KMCU on for all states */
++	pmic_read_reg(REG_POWER_CTL0, &value, 0xffffff);
++	value |= 0x000010;
++	pmic_write_reg(REG_POWER_CTL0, value, 0xffffff);
++
+ 	mc13892_register_regulator(mc13892, MC13892_SW1, &sw1_init);
+ 	mc13892_register_regulator(mc13892, MC13892_SW2, &sw2_init);
+ 	mc13892_register_regulator(mc13892, MC13892_SW3, &sw3_init);
+diff --git a/drivers/rtc/rtc-mxc_v2.c b/drivers/rtc/rtc-mxc_v2.c
+index e241a4c..ffa693c 100644
+--- a/drivers/rtc/rtc-mxc_v2.c
++++ b/drivers/rtc/rtc-mxc_v2.c
+@@ -571,9 +571,9 @@ static int mxc_rtc_probe(struct platform_device *pdev)
+ 	srtc_secmode_addr = ioremap(plat_data->srtc_sec_mode_addr, 1);
+ 
+ 	/* Check SRTC security mode */
+-	if ((__raw_readl(srtc_secmode_addr) & SRTC_SECMODE_MASK) ==
+-	    SRTC_SECMODE_LOW) {
+-		/* Low security mode */
++	if (((__raw_readl(srtc_secmode_addr) & SRTC_SECMODE_MASK) ==
++	    SRTC_SECMODE_LOW) && (cpu_is_mx51_rev(CHIP_REV_1_0) == 1)) {
++		/* Workaround for MX51 TO1 due to inaccurate CKIL clock */
+ 		__raw_writel(SRTC_LPCR_EN_LP, ioaddr + SRTC_LPCR);
+ 		rtc_write_sync_lp_no_wait(ioaddr);
+ 	} else {
+-- 
+1.5.4.4
+

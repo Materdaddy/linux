@@ -1,0 +1,39 @@
+From 2c2c8212f7d97ab4aad9614f479dcc13f5da6fe8 Mon Sep 17 00:00:00 2001
+From: Liu Ying <b17645@freescale.com>
+Date: Mon, 4 May 2009 18:21:23 +0800
+Subject: [PATCH] ENGR00111928 Fix a bug when poweroff CLAA WVGA panel
+
+The io regulater needs to be checked before disabling it.
+
+Signed-off-by: Liu Ying <b17645@freescale.com>
+---
+ drivers/video/mxc/mxcfb_claa_wvga.c |    6 ++++--
+ 1 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/video/mxc/mxcfb_claa_wvga.c b/drivers/video/mxc/mxcfb_claa_wvga.c
+index a88dffa..af0e069 100644
+--- a/drivers/video/mxc/mxcfb_claa_wvga.c
++++ b/drivers/video/mxc/mxcfb_claa_wvga.c
+@@ -152,7 +152,8 @@ static int __devexit lcd_remove(struct platform_device *pdev)
+ {
+ 	fb_unregister_client(&nb);
+ 	lcd_poweroff();
+-	regulator_put(io_reg);
++	if (io_reg)
++		regulator_put(io_reg);
+ 	if (core_reg)
+ 		regulator_put(core_reg);
+ 
+@@ -211,7 +212,8 @@ static void lcd_poweroff(void)
+ {
+ 	lcd_on = 0;
+ 	dev_dbg(&plcd_dev->dev, "turning off LCD\n");
+-	regulator_disable(io_reg);
++	if (io_reg)
++		regulator_disable(io_reg);
+ 	if (core_reg)
+ 		regulator_disable(core_reg);
+ }
+-- 
+1.5.4.4
+

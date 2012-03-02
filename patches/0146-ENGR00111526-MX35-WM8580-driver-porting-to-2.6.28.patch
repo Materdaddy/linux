@@ -1,0 +1,1732 @@
+From d426c0fa2e5be91d7eeb85b0db157753515e7341 Mon Sep 17 00:00:00 2001
+From: Wallace Wang <r59996@freescale.com>
+Date: Thu, 23 Apr 2009 19:54:25 +0800
+Subject: [PATCH] ENGR00111526 MX35: WM8580 driver porting to 2.6.28
+
+1. Add SPI interface, machine layer set spi or i2c_address
+   in socdev->codec_data
+2. Fix bug: Change freqmode offset from 4 to 3.
+3. Fix Bug: SOC_WM8580_OUT_DOUBLE_R_TLV private_value should be
+   pointer to structure soc_mixer_control
+4. Add wm8580_set_paif_dai_sysclk
+5. Add ESAI driver in 2.6.28
+6. Add ALSA ASoC machine driver for WM8580
+
+Signed-off-by: Wallace Wang <r59996@freescale.com>
+---
+ arch/arm/mach-mx35/mx35_3stack_gpio.c |   12 +-
+ sound/soc/codecs/wm8580.c             |  178 ++++++-
+ sound/soc/codecs/wm8580.h             |    5 +
+ sound/soc/imx/Kconfig                 |   11 +
+ sound/soc/imx/Makefile                |    4 +
+ sound/soc/imx/imx-3stack-wm8580.c     |  308 +++++++++++
+ sound/soc/imx/imx-esai.c              |  899 +++++++++++++++++++++++++++++++++
+ sound/soc/imx/imx-esai.h              |   25 +
+ sound/soc/imx/imx-pcm.c               |    6 +-
+ 9 files changed, 1411 insertions(+), 37 deletions(-)
+
+diff --git a/arch/arm/mach-mx35/mx35_3stack_gpio.c b/arch/arm/mach-mx35/mx35_3stack_gpio.c
+index 58cd68c..73ffced 100644
+--- a/arch/arm/mach-mx35/mx35_3stack_gpio.c
++++ b/arch/arm/mach-mx35/mx35_3stack_gpio.c
+@@ -1199,12 +1199,12 @@ EXPORT_SYMBOL(gpio_activate_esai_ports);
+ void gpio_deactivate_esai_ports(void)
+ {
+ 
+-	mxc_free_iomux(MX35_PIN_HCKT, MUX_CONFIG_GPIO);
+-	mxc_free_iomux(MX35_PIN_SCKT, MUX_CONFIG_GPIO);
+-	mxc_free_iomux(MX35_PIN_FST, MUX_CONFIG_GPIO);
+-	mxc_free_iomux(MX35_PIN_TX0, MUX_CONFIG_GPIO);
+-	mxc_free_iomux(MX35_PIN_TX1, MUX_CONFIG_GPIO);
+-	mxc_free_iomux(MX35_PIN_TX2_RX3, MUX_CONFIG_GPIO);
++	mxc_free_iomux(MX35_PIN_HCKT, MUX_CONFIG_FUNC);
++	mxc_free_iomux(MX35_PIN_SCKT, MUX_CONFIG_FUNC);
++	mxc_free_iomux(MX35_PIN_FST, MUX_CONFIG_FUNC);
++	mxc_free_iomux(MX35_PIN_TX0, MUX_CONFIG_FUNC);
++	mxc_free_iomux(MX35_PIN_TX1, MUX_CONFIG_FUNC);
++	mxc_free_iomux(MX35_PIN_TX2_RX3, MUX_CONFIG_FUNC);
+ 	/*mxc_free_iomux(MX35_PIN_HCKR, MUX_CONFIG_GPIO);
+ 	mxc_free_iomux(MX35_PIN_SCKR, MUX_CONFIG_GPIO);
+ 	mxc_free_iomux(MX35_PIN_FSR, MUX_CONFIG_GPIO);
+diff --git a/sound/soc/codecs/wm8580.c b/sound/soc/codecs/wm8580.c
+index 627ebfb..5b77a51 100644
+--- a/sound/soc/codecs/wm8580.c
++++ b/sound/soc/codecs/wm8580.c
+@@ -23,6 +23,7 @@
+ #include <linux/delay.h>
+ #include <linux/pm.h>
+ #include <linux/i2c.h>
++#include <linux/spi/spi.h>
+ #include <linux/platform_device.h>
+ #include <sound/core.h>
+ #include <sound/pcm.h>
+@@ -171,6 +172,8 @@ struct wm8580_priv {
+ 
+ #define WM8580_DAC_CONTROL5_MUTEALL 0x10
+ 
++#define WM8580_REG_DATA_LENGTH 9
++
+ /*
+  * wm8580 register cache
+  * We can't read the WM8580 register space when we
+@@ -215,13 +218,18 @@ static inline void wm8580_write_reg_cache(struct snd_soc_codec *codec,
+ 	cache[reg] = value;
+ }
+ 
++static struct snd_soc_device *wm8580_socdev;
++
+ /*
+  * write to the WM8580 register space
+  */
+ static int wm8580_write(struct snd_soc_codec *codec, unsigned int reg,
+ 	unsigned int value)
+ {
++	struct snd_soc_device *socdev = wm8580_socdev;
++	struct wm8580_setup_data *setup = socdev->codec_data;
+ 	u8 data[2];
++	int ret = 0;
+ 
+ 	BUG_ON(reg > ARRAY_SIZE(wm8580_reg));
+ 
+@@ -237,18 +245,20 @@ static int wm8580_write(struct snd_soc_codec *codec, unsigned int reg,
+ 			return 0;
+ 	}
+ 
+-	/* data is
+-	 *   D15..D9 WM8580 register offset
+-	 *   D8...D0 register data
+-	 */
+-	data[0] = (reg << 1) | ((value >> 8) & 0x0001);
+-	data[1] = value & 0x00ff;
+-
+ 	wm8580_write_reg_cache(codec, reg, value);
+-	if (codec->hw_write(codec->control_data, data, 2) == 2)
+-		return 0;
+-	else
+-		return -EIO;
++
++	if (setup->spi) {
++		data[1] = (reg << 1) | ((value >> 8) & 0x0001);
++		data[0] = value & 0x00ff;
++		ret = codec->hw_write(codec->control_data, data, 1);
++	} else if (setup->i2c_address) {
++		data[0] = (reg << 1) | ((value >> 8) & 0x0001);
++		data[1] = value & 0x00ff;
++		ret = codec->hw_write(codec->control_data, data, 2);
++	} else
++		ret = -EIO;
++
++	return ret;
+ }
+ 
+ static inline unsigned int wm8580_read(struct snd_soc_codec *codec,
+@@ -265,9 +275,11 @@ static const DECLARE_TLV_DB_SCALE(dac_tlv, -12750, 50, 1);
+ static int wm8580_out_vu(struct snd_kcontrol *kcontrol,
+ 			 struct snd_ctl_elem_value *ucontrol)
+ {
++	struct soc_mixer_control *mc =
++		(struct soc_mixer_control *)kcontrol->private_value;
+ 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+-	int reg = kcontrol->private_value & 0xff;
+-	int reg2 = (kcontrol->private_value >> 24) & 0xff;
++	unsigned int reg = mc->reg;
++	unsigned int reg2 = mc->rreg;
+ 	int ret;
+ 	u16 val;
+ 
+@@ -289,15 +301,16 @@ static int wm8580_out_vu(struct snd_kcontrol *kcontrol,
+ 	return 0;
+ }
+ 
+-#define SOC_WM8580_OUT_DOUBLE_R_TLV(xname, reg_left, reg_right, shift, max, invert, tlv_array) \
++#define SOC_WM8580_OUT_DOUBLE_R_TLV(xname, reg_left, reg_right, xshift, xmax, xinvert, tlv_array) \
+ {	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = (xname), \
+ 	.access = SNDRV_CTL_ELEM_ACCESS_TLV_READ |\
+ 		SNDRV_CTL_ELEM_ACCESS_READWRITE,  \
+ 	.tlv.p = (tlv_array), \
+ 	.info = snd_soc_info_volsw_2r, \
+ 	.get = snd_soc_get_volsw_2r, .put = wm8580_out_vu, \
+-	.private_value = (reg_left) | ((shift) << 8)  |		\
+-		((max) << 12) | ((invert) << 20) | ((reg_right) << 24) }
++	.private_value = (unsigned long)&(struct soc_mixer_control) \
++		{.reg = reg_left, .rreg = reg_right, .shift = xshift, \
++			.max = xmax, .invert = xinvert}, }
+ 
+ static const struct snd_kcontrol_new wm8580_snd_controls[] = {
+ SOC_WM8580_OUT_DOUBLE_R_TLV("DAC1 Playback Volume",
+@@ -312,7 +325,6 @@ SOC_WM8580_OUT_DOUBLE_R_TLV("DAC3 Playback Volume",
+ 			    WM8580_DIGITAL_ATTENUATION_DACL3,
+ 			    WM8580_DIGITAL_ATTENUATION_DACR3,
+ 			    0, 0xff, 0, dac_tlv),
+-
+ SOC_SINGLE("DAC1 Deemphasis Switch", WM8580_DAC_CONTROL3, 0, 1, 0),
+ SOC_SINGLE("DAC2 Deemphasis Switch", WM8580_DAC_CONTROL3, 1, 1, 0),
+ SOC_SINGLE("DAC3 Deemphasis Switch", WM8580_DAC_CONTROL3, 2, 1, 0),
+@@ -531,9 +543,9 @@ static int wm8580_set_dai_pll(struct snd_soc_dai *codec_dai,
+ 		     (pll_div.k >> 18 & 0xf) | (pll_div.n << 4));
+ 
+ 	reg = wm8580_read(codec, WM8580_PLLA4 + offset);
+-	reg &= ~0x3f;
++	reg &= ~0x3b;
+ 	reg |= pll_div.prescale | pll_div.postscale << 1 |
+-		pll_div.freqmode << 4;
++		pll_div.freqmode << 3;
+ 
+ 	wm8580_write(codec, WM8580_PLLA4 + offset, reg);
+ 
+@@ -707,7 +719,6 @@ static int wm8580_set_dai_clkdiv(struct snd_soc_dai *codec_dai,
+ 		case WM8580_CLKSRC_PLLB:
+ 			reg |= WM8580_CLKSEL_DAC_CLKSEL_PLLB;
+ 			break;
+-
+ 		default:
+ 			return -EINVAL;
+ 		}
+@@ -738,6 +749,33 @@ static int wm8580_set_dai_clkdiv(struct snd_soc_dai *codec_dai,
+ 			return -EINVAL;
+ 		}
+ 		wm8580_write(codec, WM8580_PLLB4, reg);
++			break;
++
++		default:
++		return -EINVAL;
++		}
++
++	return 0;
++}
++
++static int wm8580_set_paif_dai_sysclk(struct snd_soc_dai *codec_dai,
++				 int clk_id, unsigned int freq, int dir)
++{
++	struct snd_soc_codec *codec = codec_dai->codec;
++	unsigned int reg;
++
++	switch (clk_id) {
++	case WM8580_BCLK_CLKDIV:
++		reg = wm8580_read(codec, WM8580_PAIF1) &
++			~WM8580_AIF_BCLKSEL_MASK;
++		wm8580_write(codec, WM8580_PAIF1, reg | freq);
++		reg = wm8580_read(codec, WM8580_PAIF2) &
++			~WM8580_AIF_BCLKSEL_MASK;
++		wm8580_write(codec, WM8580_PAIF2, reg | freq);
++	break;
++	case WM8580_LRCLK_CLKDIV:
++		reg = wm8580_read(codec, WM8580_PAIF1) & ~0x07;
++		wm8580_write(codec, WM8580_PAIF1, reg | freq);
+ 		break;
+ 
+ 	default:
+@@ -801,6 +839,7 @@ struct snd_soc_dai wm8580_dai[] = {
+ 		 },
+ 		.dai_ops = {
+ 			 .set_fmt = wm8580_set_paif_dai_fmt,
++			 .set_sysclk = wm8580_set_paif_dai_sysclk,
+ 			 .set_clkdiv = wm8580_set_dai_clkdiv,
+ 			 .set_pll = wm8580_set_dai_pll,
+ 			 .digital_mute = wm8580_digital_mute,
+@@ -836,6 +875,7 @@ static int wm8580_init(struct snd_soc_device *socdev)
+ {
+ 	struct snd_soc_codec *codec = socdev->codec;
+ 	int ret = 0;
++	u16 data;
+ 
+ 	codec->name = "WM8580";
+ 	codec->owner = THIS_MODULE;
+@@ -851,6 +891,11 @@ static int wm8580_init(struct snd_soc_device *socdev)
+ 	if (codec->reg_cache == NULL)
+ 		return -ENOMEM;
+ 
++	wm8580_write(codec, WM8580_READBACK, 0x10);
++	data = 2 << WM8580_REG_DATA_LENGTH;
++	codec->hw_read(codec->control_data, (char *)&data, 1);
++	pr_info("wm8580device rev:%d\n", data & 0xff);
++
+ 	/* Get the codec into a known state */
+ 	wm8580_write(codec, WM8580_RESET, 0);
+ 
+@@ -888,10 +933,6 @@ pcm_err:
+ 	return ret;
+ }
+ 
+-/* If the i2c layer weren't so broken, we could pass this kind of data
+-   around */
+-static struct snd_soc_device *wm8580_socdev;
+-
+ #if defined(CONFIG_I2C) || defined(CONFIG_I2C_MODULE)
+ 
+ /*
+@@ -981,6 +1022,75 @@ static struct i2c_client client_template = {
+ };
+ #endif
+ 
++#if defined(CONFIG_SPI) || defined(CONFIG_SPI_MODULE)
++
++ /*!
++  * This function is called to transfer data to WM8580 on SPI.
++  *
++  * @param    spi        the SPI slave device(WM8580)
++  * @param    buf        the pointer to the data buffer
++  * @param    len        the length of the data to be transferred
++  *
++  * @return   Returns 0 on success -1 on failure.
++  */
++static inline int spi_rw(void *control_data, char *data, int length)
++{
++	struct spi_transfer t = {
++		.tx_buf = (const void *)data,
++		.rx_buf = (void *)data,
++		.len = length,
++		.cs_change = 0,
++		.delay_usecs = 0,
++	};
++	struct spi_message m;
++
++	spi_message_init(&m);
++	spi_message_add_tail(&t, &m);
++	return spi_sync((struct spi_device *)control_data, &m);
++
++}
++
++/*!
++ * This function is called whenever the SPI slave device is detected.
++ *
++ * @param       spi     the SPI slave device
++ *
++ * @return      Returns 0 on SUCCESS and error on FAILURE.
++ */
++static int __devinit wm8580_spi_probe(struct spi_device *spi)
++{
++	int ret;
++	struct snd_soc_device *socdev = wm8580_socdev;
++	struct snd_soc_codec *codec = socdev->codec;
++	spi->bits_per_word = 16;
++	spi->mode = SPI_MODE_2;
++
++	spi_setup(spi);
++
++	codec->control_data = spi;
++	ret = wm8580_init(socdev);
++	if (ret < 0)
++		pr_err("Failed to initialise WM8580\n");
++
++	return ret;
++}
++
++static int __devinit wm8580_spi_remove(struct spi_device *spi)
++{
++	return 0;
++}
++
++static struct spi_driver wm8580_spi_driver = {
++	.driver = {
++		.name = "wm8580_spi",
++		.bus = &spi_bus_type,
++		.owner = THIS_MODULE,
++	},
++	.probe = wm8580_spi_probe,
++	.remove = __devexit_p(wm8580_spi_remove),
++};
++#endif
++
+ static int wm8580_probe(struct platform_device *pdev)
+ {
+ 	struct snd_soc_device *socdev = platform_get_drvdata(pdev);
+@@ -1017,7 +1127,14 @@ static int wm8580_probe(struct platform_device *pdev)
+ 		if (ret != 0)
+ 			printk(KERN_ERR "can't add i2c driver");
+ 	}
+-#else
++#endif
++
++#if defined(CONFIG_SPI) || defined(CONFIG_SPI_MODULE)
++	if (setup->spi) {
++		codec->hw_write = (hw_write_t) spi_rw;
++		codec->hw_read = (hw_read_t) spi_rw;
++		spi_register_driver(&wm8580_spi_driver);
++	}
+ 		/* Add other interfaces here */
+ #endif
+ 	return ret;
+@@ -1028,13 +1145,22 @@ static int wm8580_remove(struct platform_device *pdev)
+ {
+ 	struct snd_soc_device *socdev = platform_get_drvdata(pdev);
+ 	struct snd_soc_codec *codec = socdev->codec;
++	struct wm8580_setup_data *setup;
+ 
+ 	if (codec->control_data)
+ 		wm8580_set_bias_level(codec, SND_SOC_BIAS_OFF);
+ 	snd_soc_free_pcms(socdev);
+ 	snd_soc_dapm_free(socdev);
++
++	setup = socdev->codec_data;
+ #if defined(CONFIG_I2C) || defined(CONFIG_I2C_MODULE)
+-	i2c_del_driver(&wm8580_i2c_driver);
++	if (setup->i2c_address)
++		i2c_del_driver(&wm8580_i2c_driver);
++#endif
++
++#if defined(CONFIG_SPI) || defined(CONFIG_SPI_MODULE)
++	if (setup->spi)
++		spi_unregister_driver(&wm8580_spi_driver);
+ #endif
+ 	kfree(codec->private_data);
+ 	kfree(codec);
+diff --git a/sound/soc/codecs/wm8580.h b/sound/soc/codecs/wm8580.h
+index 589ddab..0c51ede 100644
+--- a/sound/soc/codecs/wm8580.h
++++ b/sound/soc/codecs/wm8580.h
+@@ -28,7 +28,12 @@
+ #define WM8580_CLKSRC_OSC  4
+ #define WM8580_CLKSRC_NONE 5
+ 
++/*clock divider id's */
++#define WM8580_BCLK_CLKDIV   0
++#define WM8580_LRCLK_CLKDIV  1
++
+ struct wm8580_setup_data {
++	unsigned short spi;
+ 	unsigned short i2c_address;
+ };
+ 
+diff --git a/sound/soc/imx/Kconfig b/sound/soc/imx/Kconfig
+index 816e003..e5c59dd 100644
+--- a/sound/soc/imx/Kconfig
++++ b/sound/soc/imx/Kconfig
+@@ -12,6 +12,9 @@ if SND_MXC_SOC
+ config SND_MXC_SOC_SSI
+  tristate
+ 
++config SND_MXC_SOC_ESAI
++ tristate
++
+ config SND_MXC_SOC_IRAM
+  bool "Locate Audio DMA playback buffers in IRAM"
+  help
+@@ -33,5 +36,13 @@ config SND_SOC_IMX_3STACK_AK4647
+    Say Y if you want to add support for SoC audio on IMX 3STACK
+    with the AK4647.
+ 
++config SND_SOC_IMX_3STACK_WM8580
++ tristate "SoC Audio support for IMX - WM8580"
++ select SND_MXC_SOC_ESAI
++ select SND_SOC_WM8580
++ help
++   Say Y if you want to add support for Soc audio on IMX 3STACK
++   with the WM8580
++
+ endif
+ 
+diff --git a/sound/soc/imx/Makefile b/sound/soc/imx/Makefile
+index b8662c9..2e4cf2d 100644
+--- a/sound/soc/imx/Makefile
++++ b/sound/soc/imx/Makefile
+@@ -1,13 +1,17 @@
+ # i.MX Platform Support
+ snd-soc-imx-objs := imx-pcm.o
+ snd-soc-imx-ssi-objs := imx-ssi.o
++snd-soc-imx-esai-objs := imx-esai.o
+ 
+ obj-$(CONFIG_SND_MXC_SOC) += snd-soc-imx.o
+ obj-$(CONFIG_SND_MXC_SOC_SSI) += snd-soc-imx-ssi.o
++obj-$(CONFIG_SND_MXC_SOC_ESAI) += snd-soc-imx-esai.o
+ 
+ # i.MX Machine Support
+ snd-soc-imx-3stack-sgtl5000-objs := imx-3stack-sgtl5000.o
+ obj-$(CONFIG_SND_SOC_IMX_3STACK_SGTL5000) += snd-soc-imx-3stack-sgtl5000.o
+ snd-soc-imx-3stack-ak4647-objs := imx-3stack-ak4647.o
+ obj-$(CONFIG_SND_SOC_IMX_3STACK_AK4647) += snd-soc-imx-3stack-ak4647.o
++snd-soc-imx-3stack-wm8580-objs := imx-3stack-wm8580.o
++obj-$(CONFIG_SND_SOC_IMX_3STACK_WM8580) += snd-soc-imx-3stack-wm8580.o
+ 
+diff --git a/sound/soc/imx/imx-3stack-wm8580.c b/sound/soc/imx/imx-3stack-wm8580.c
+new file mode 100644
+index 0000000..4d24b48
+--- /dev/null
++++ b/sound/soc/imx/imx-3stack-wm8580.c
+@@ -0,0 +1,308 @@
++/*
++ * imx-3stack-wm8580.c  --  SoC 5.1 audio for imx_3stack
++ *
++ * Copyright 2008-2009 Freescale  Semiconductor, Inc. All Rights Reserved.
++ */
++
++/*
++ * The code contained herein is licensed under the GNU General Public
++ * License. You may obtain a copy of the GNU General Public License
++ * Version 2 or later at the following locations:
++ *
++ * http://www.opensource.org/licenses/gpl-license.html
++ * http://www.gnu.org/copyleft/gpl.html
++ */
++
++#include <linux/module.h>
++#include <linux/moduleparam.h>
++#include <linux/device.h>
++#include <linux/i2c.h>
++#include <linux/clk.h>
++#include <linux/delay.h>
++#include <linux/regulator/consumer.h>
++#include <sound/core.h>
++#include <sound/pcm.h>
++#include <sound/soc.h>
++#include <sound/soc-dapm.h>
++#include <sound/initval.h>
++
++#include <mach/hardware.h>
++#include <mach/clock.h>
++#include <mach/mxc.h>
++
++#include "imx-pcm.h"
++#include "imx-esai.h"
++#include "../codecs/wm8580.h"
++
++struct imx_3stack_pcm_state {
++	int lr_clk_active;
++};
++
++extern void gpio_activate_esai_ports(void);
++extern void gpio_deactivate_esai_ports(void);
++
++static struct imx_3stack_pcm_state clk_state;
++
++static int imx_3stack_startup(struct snd_pcm_substream *substream)
++{
++	clk_state.lr_clk_active++;
++
++	return 0;
++}
++
++static void imx_3stack_shutdown(struct snd_pcm_substream *substream)
++{
++	struct snd_soc_pcm_runtime *rtd = substream->private_data;
++	struct snd_soc_dai_link *pcm_link = rtd->dai;
++	struct snd_soc_dai *codec_dai = pcm_link->codec_dai;
++
++	/* disable the PLL if there are no active Tx or Rx channels */
++	if (!codec_dai->active)
++		snd_soc_dai_set_pll(codec_dai, 0, 0, 0);
++	clk_state.lr_clk_active--;
++}
++
++static int imx_3stack_surround_hw_params(struct snd_pcm_substream *substream,
++					 struct snd_pcm_hw_params *params)
++{
++	struct snd_soc_pcm_runtime *rtd = substream->private_data;
++	struct snd_soc_dai_link *pcm_link = rtd->dai;
++	struct snd_soc_dai *cpu_dai = pcm_link->cpu_dai;
++	struct snd_soc_dai *codec_dai = pcm_link->codec_dai;
++	unsigned int rate = params_rate(params);
++	u32 dai_format;
++	unsigned int pll_out = 0, lrclk_ratio = 0;
++
++	if (clk_state.lr_clk_active > 1)
++		return 0;
++
++	switch (rate) {
++	case 8000:
++		lrclk_ratio = 5;
++		pll_out = 6144000;
++		break;
++	case 11025:
++		lrclk_ratio = 4;
++		pll_out = 5644800;
++		break;
++	case 16000:
++		lrclk_ratio = 3;
++		pll_out = 6144000;
++		break;
++	case 32000:
++		lrclk_ratio = 3;
++		pll_out = 12288000;
++		break;
++	case 48000:
++		lrclk_ratio = 2;
++		pll_out = 12288000;
++		break;
++	case 64000:
++		lrclk_ratio = 1;
++		pll_out = 12288000;
++		break;
++	case 96000:
++		lrclk_ratio = 2;
++		pll_out = 24576000;
++		break;
++	case 128000:
++		lrclk_ratio = 1;
++		pll_out = 24576000;
++		break;
++	case 22050:
++		lrclk_ratio = 4;
++		pll_out = 11289600;
++		break;
++	case 44100:
++		lrclk_ratio = 2;
++		pll_out = 11289600;
++		break;
++	case 88200:
++		lrclk_ratio = 0;
++		pll_out = 11289600;
++		break;
++	case 176400:
++		lrclk_ratio = 0;
++		pll_out = 22579200;
++		break;
++	case 192000:
++		lrclk_ratio = 0;
++		pll_out = 24576000;
++		break;
++	default:
++		pr_info("Rate not support.\n");
++		return -EINVAL;;
++	}
++
++	dai_format = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
++	    SND_SOC_DAIFMT_CBM_CFM | SND_SOC_DAIFMT_ASYNC;
++
++	dai_format |= SND_SOC_DAIFMT_TDM;
++
++	/* set codec DAI configuration */
++	snd_soc_dai_set_fmt(codec_dai, dai_format);
++
++	/* set cpu DAI configuration */
++	snd_soc_dai_set_fmt(cpu_dai, dai_format);
++
++	/* set i.MX active slot mask */
++	snd_soc_dai_set_tdm_slot(cpu_dai, 0xffffffff, 32);
++
++	/* set the ESAI system clock as input (unused) */
++	snd_soc_dai_set_sysclk(cpu_dai, 0, 0, SND_SOC_CLOCK_IN);
++
++	snd_soc_dai_set_clkdiv(codec_dai, WM8580_MCLK, WM8580_CLKSRC_PLLA);
++	snd_soc_dai_set_clkdiv(codec_dai, WM8580_DAC_CLKSEL,
++			       WM8580_CLKSRC_PLLA);
++
++	/* set codec LRCLK and BCLK */
++	snd_soc_dai_set_sysclk(codec_dai, WM8580_BCLK_CLKDIV, 0,
++			       SND_SOC_CLOCK_OUT);
++	snd_soc_dai_set_sysclk(codec_dai, WM8580_LRCLK_CLKDIV, lrclk_ratio,
++			       SND_SOC_CLOCK_OUT);
++
++	snd_soc_dai_set_pll(codec_dai, 1, 12000000, pll_out);
++	return 0;
++}
++
++/*
++ * imx_3stack wm8580 HiFi DAI opserations.
++ */
++static struct snd_soc_ops imx_3stack_surround_ops = {
++	.startup = imx_3stack_startup,
++	.shutdown = imx_3stack_shutdown,
++	.hw_params = imx_3stack_surround_hw_params,
++};
++
++/* imx_3stack machine dapm widgets */
++static const struct snd_soc_dapm_widget imx_3stack_dapm_widgets[] = {
++	SND_SOC_DAPM_LINE("Line Out Jack", NULL),
++};
++
++/* example machine audio_mapnections */
++static const struct snd_soc_dapm_route audio_map[] = {
++
++	/* Line out jack */
++	{"Line Out Jack", NULL, "VOUT1L"},
++	{"Line Out Jack", NULL, "VOUT1R"},
++	{"Line Out Jack", NULL, "VOUT2L"},
++	{"Line Out Jack", NULL, "VOUT2R"},
++	{"Line Out Jack", NULL, "VOUT3L"},
++	{"Line Out Jack", NULL, "VOUT3R"},
++
++};
++
++static int imx_3stack_wm8580_init(struct snd_soc_codec *codec)
++{
++
++	snd_soc_dapm_new_controls(codec, imx_3stack_dapm_widgets,
++				  ARRAY_SIZE(imx_3stack_dapm_widgets));
++
++	snd_soc_dapm_add_routes(codec, audio_map, ARRAY_SIZE(audio_map));
++
++	snd_soc_dapm_sync(codec);
++
++	return 0;
++}
++
++static struct snd_soc_dai_link imx_3stack_dai = {
++	.name = "wm8580",
++	.stream_name = "wm8580",
++	.cpu_dai = &imx_esai_dai,
++	.codec_dai = wm8580_dai,
++	.init = imx_3stack_wm8580_init,
++	.ops = &imx_3stack_surround_ops,
++};
++
++static int imx_3stack_machine_remove(struct platform_device *pdev)
++{
++	struct snd_soc_device *socdev = platform_get_drvdata(pdev);
++
++	kfree(socdev->codec_data);
++	return 0;
++}
++
++static struct snd_soc_machine snd_soc_machine_imx_3stack = {
++	.name = "imx-3stack",
++	.dai_link = &imx_3stack_dai,
++	.num_links = 1,
++	.remove = imx_3stack_machine_remove,
++};
++
++static struct snd_soc_device imx_3stack_snd_devdata = {
++	.machine = &snd_soc_machine_imx_3stack,
++	.platform = &imx_soc_platform,
++	.codec_dev = &soc_codec_dev_wm8580,
++};
++
++/*
++ * This function will register the snd_soc_pcm_link drivers.
++ */
++static int __devinit imx_3stack_wm8580_probe(struct platform_device *pdev)
++{
++	struct wm8580_setup_data *setup;
++
++	imx_esai_dai.name = "imx-esai-tx";
++
++	setup = kzalloc(sizeof(struct wm8580_setup_data), GFP_KERNEL);
++	setup->spi = 1;
++	imx_3stack_snd_devdata.codec_data = setup;
++
++	/* Configure audio port 3 */
++	gpio_activate_esai_ports();
++
++	return 0;
++}
++
++static int __devexit imx_3stack_wm8580_remove(struct platform_device *pdev)
++{
++	gpio_deactivate_esai_ports();
++	return 0;
++}
++
++static struct platform_driver imx_3stack_wm8580_driver = {
++	.probe = imx_3stack_wm8580_probe,
++	.remove = __devexit_p(imx_3stack_wm8580_remove),
++	.driver = {
++		   .name = "imx-3stack-wm8580",
++		   .owner = THIS_MODULE,
++		   },
++};
++
++static struct platform_device *imx_3stack_snd_device;
++
++static int __init imx_3stack_asoc_init(void)
++{
++	int ret;
++
++	ret = platform_driver_register(&imx_3stack_wm8580_driver);
++	if (ret < 0)
++		goto exit;
++	imx_3stack_snd_device = platform_device_alloc("soc-audio", 1);
++	if (!imx_3stack_snd_device)
++		goto err_device_alloc;
++	platform_set_drvdata(imx_3stack_snd_device, &imx_3stack_snd_devdata);
++	imx_3stack_snd_devdata.dev = &imx_3stack_snd_device->dev;
++	ret = platform_device_add(imx_3stack_snd_device);
++	if (0 == ret)
++		goto exit;
++
++	platform_device_put(imx_3stack_snd_device);
++      err_device_alloc:
++	platform_driver_unregister(&imx_3stack_wm8580_driver);
++      exit:
++	return ret;
++}
++
++static void __exit imx_3stack_asoc_exit(void)
++{
++	platform_driver_unregister(&imx_3stack_wm8580_driver);
++	platform_device_unregister(imx_3stack_snd_device);
++}
++
++module_init(imx_3stack_asoc_init);
++module_exit(imx_3stack_asoc_exit);
++
++/* Module information */
++MODULE_DESCRIPTION("ALSA SoC wm8580 imx_3stack");
++MODULE_LICENSE("GPL");
+diff --git a/sound/soc/imx/imx-esai.c b/sound/soc/imx/imx-esai.c
+new file mode 100644
+index 0000000..9b4d1ac
+--- /dev/null
++++ b/sound/soc/imx/imx-esai.c
+@@ -0,0 +1,899 @@
++/*
++ * Copyright 2008-2009 Freescale Semiconductor, Inc. All Rights Reserved.
++ */
++
++/*
++ * The code contained herein is licensed under the GNU General Public
++ * License. You may obtain a copy of the GNU General Public License
++ * Version 2 or later at the following locations:
++ *
++ * http://www.opensource.org/licenses/gpl-license.html
++ * http://www.gnu.org/copyleft/gpl.html
++ */
++
++ /*!
++  * @file       imx-esai.c
++  * @brief      this file implements the esai interface
++  *             in according to ASoC architeture
++  */
++
++#include <linux/module.h>
++#include <linux/init.h>
++#include <linux/platform_device.h>
++#include <linux/slab.h>
++#include <linux/dma-mapping.h>
++#include <linux/clk.h>
++#include <sound/core.h>
++#include <sound/pcm.h>
++#include <sound/pcm_params.h>
++#include <sound/soc.h>
++#include <mach/dma.h>
++#include <mach/clock.h>
++#include <asm/mach-types.h>
++#include <mach/hardware.h>
++
++#include "imx-esai.h"
++#include "imx-pcm.h"
++
++/*#define IMX_ESAI_DUMP 1*/
++
++#ifdef IMX_ESAI_DUMP
++#define ESAI_DUMP() \
++	do {pr_info("dump @ %s\n", __func__); \
++	pr_info("ecr %x\n", __raw_readl(ESAI_ECR)); \
++	pr_info("esr %x\n", __raw_readl(ESAI_ESR)); \
++	pr_info("tfcr %x\n", __raw_readl(ESAI_TFCR)); \
++	pr_info("tfsr %x\n", __raw_readl(ESAI_TFSR)); \
++	pr_info("rfcr %x\n", __raw_readl(ESAI_RFCR)); \
++	pr_info("rfsr %x\n", __raw_readl(ESAI_RFSR)); \
++	pr_info("tsr %x\n", __raw_readl(ESAI_TSR)); \
++	pr_info("saisr %x\n", __raw_readl(ESAI_SAISR)); \
++	pr_info("saicr %x\n", __raw_readl(ESAI_SAICR)); \
++	pr_info("tcr %x\n", __raw_readl(ESAI_TCR)); \
++	pr_info("tccr %x\n", __raw_readl(ESAI_TCCR)); \
++	pr_info("rcr %x\n", __raw_readl(ESAI_RCR)); \
++	pr_info("rccr %x\n", __raw_readl(ESAI_RCCR)); \
++	pr_info("tsma %x\n", __raw_readl(ESAI_TSMA)); \
++	pr_info("tsmb %x\n", __raw_readl(ESAI_TSMB)); \
++	pr_info("rsma %x\n", __raw_readl(ESAI_RSMA)); \
++	pr_info("rsmb %x\n", __raw_readl(ESAI_RSMB)); \
++	pr_info("prrc %x\n", __raw_readl(ESAI_PRRC)); \
++	pr_info("pcrc %x\n", __raw_readl(ESAI_PCRC)); } while (0);
++#else
++#define ESAI_DUMP()
++#endif
++
++#define ESAI_IO_BASE_ADDR	IO_ADDRESS(ESAI_BASE_ADDR)
++
++#define ESAI_ETDR	(ESAI_IO_BASE_ADDR + 0x00)
++#define ESAI_ERDR	(ESAI_IO_BASE_ADDR + 0x04)
++#define ESAI_ECR	(ESAI_IO_BASE_ADDR + 0x08)
++#define ESAI_ESR	(ESAI_IO_BASE_ADDR + 0x0C)
++#define ESAI_TFCR	(ESAI_IO_BASE_ADDR + 0x10)
++#define ESAI_TFSR	(ESAI_IO_BASE_ADDR + 0x14)
++#define ESAI_RFCR	(ESAI_IO_BASE_ADDR + 0x18)
++#define ESAI_RFSR	(ESAI_IO_BASE_ADDR + 0x1C)
++#define ESAI_TX0	(ESAI_IO_BASE_ADDR + 0x80)
++#define ESAI_TX1	(ESAI_IO_BASE_ADDR + 0x84)
++#define ESAI_TX2	(ESAI_IO_BASE_ADDR + 0x88)
++#define ESAI_TX3	(ESAI_IO_BASE_ADDR + 0x8C)
++#define ESAI_TX4	(ESAI_IO_BASE_ADDR + 0x90)
++#define ESAI_TX5	(ESAI_IO_BASE_ADDR + 0x94)
++#define ESAI_TSR	(ESAI_IO_BASE_ADDR + 0x98)
++#define ESAI_RX0	(ESAI_IO_BASE_ADDR + 0xA0)
++#define ESAI_RX1	(ESAI_IO_BASE_ADDR + 0xA4)
++#define ESAI_RX2	(ESAI_IO_BASE_ADDR + 0xA8)
++#define ESAI_RX3	(ESAI_IO_BASE_ADDR + 0xAC)
++#define ESAI_SAISR	(ESAI_IO_BASE_ADDR + 0xCC)
++#define ESAI_SAICR	(ESAI_IO_BASE_ADDR + 0xD0)
++#define ESAI_TCR	(ESAI_IO_BASE_ADDR + 0xD4)
++#define ESAI_TCCR	(ESAI_IO_BASE_ADDR + 0xD8)
++#define ESAI_RCR	(ESAI_IO_BASE_ADDR + 0xDC)
++#define ESAI_RCCR	(ESAI_IO_BASE_ADDR + 0xE0)
++#define ESAI_TSMA	(ESAI_IO_BASE_ADDR + 0xE4)
++#define ESAI_TSMB	(ESAI_IO_BASE_ADDR + 0xE8)
++#define ESAI_RSMA	(ESAI_IO_BASE_ADDR + 0xEC)
++#define ESAI_RSMB	(ESAI_IO_BASE_ADDR + 0xF0)
++#define ESAI_PRRC	(ESAI_IO_BASE_ADDR + 0xF8)
++#define ESAI_PCRC	(ESAI_IO_BASE_ADDR + 0xFC)
++
++#define ESAI_ECR_ETI	(1 << 19)
++#define ESAI_ECR_ETO	(1 << 18)
++#define ESAI_ECR_ERI	(1 << 17)
++#define ESAI_ECR_ERO	(1 << 16)
++#define ESAI_ECR_ERST	(1 << 1)
++#define ESAI_ECR_ESAIEN	(1 << 0)
++
++#define ESAI_ESR_TINIT	(1 << 10)
++#define ESAI_ESR_RFF	(1 << 9)
++#define ESAI_ESR_TFE	(1 << 8)
++#define ESAI_ESR_TLS	(1 << 7)
++#define ESAI_ESR_TDE	(1 << 6)
++#define ESAI_ESR_TED	(1 << 5)
++#define ESAI_ESR_TD	(1 << 4)
++#define ESAI_ESR_RLS	(1 << 3)
++#define ESAI_ESR_RDE	(1 << 2)
++#define ESAI_ESR_RED	(1 << 1)
++#define ESAI_ESR_RD	(1 << 0)
++
++#define ESAI_TFCR_TIEN	(1 << 19)
++#define ESAI_TFCR_TE5	(1 << 7)
++#define ESAI_TFCR_TE4	(1 << 6)
++#define ESAI_TFCR_TE3	(1 << 5)
++#define ESAI_TFCR_TE2	(1 << 4)
++#define ESAI_TFCR_TE1	(1 << 3)
++#define ESAI_TFCR_TE0	(1 << 2)
++#define ESAI_TFCR_TFR	(1 << 1)
++#define ESAI_TFCR_TFEN	(1 << 0)
++#define ESAI_TFCR_TE(x) ((0x3f >> (6 - ((x + 1) >> 1))) << 2)
++#define ESAI_TFCR_TE_MASK	0xfff03
++#define ESAI_TFCR_TFWM(x)	((x - 1) << 8)
++#define ESAI_TFCR_TWA_MASK	0xf8ffff
++
++#define ESAI_RFCR_REXT	(1 << 19)
++#define ESAI_RFCR_RE3	(1 << 5)
++#define ESAI_RFCR_RE2	(1 << 4)
++#define ESAI_RFCR_RE1	(1 << 3)
++#define ESAI_RFCR_RE0	(1 << 2)
++#define ESAI_RFCR_RFR	(1 << 1)
++#define ESAI_RFCR_RFEN	(1 << 0)
++#define ESAI_RFCR_RE(x) ((0xf >> (4 - ((x + 1) >> 1))) << 2)
++#define ESAI_RFCR_RE_MASK	0xfffc3
++#define ESAI_RFCR_RFWM(x)       ((x-1) << 8)
++#define ESAI_RFCR_RWA_MASK	0xf8ffff
++
++#define ESAI_WORD_LEN_32	(0x00 << 16)
++#define ESAI_WORD_LEN_28	(0x01 << 16)
++#define ESAI_WORD_LEN_24	(0x02 << 16)
++#define ESAI_WORD_LEN_20	(0x03 << 16)
++#define ESAI_WORD_LEN_16	(0x04 << 16)
++#define ESAI_WORD_LEN_12	(0x05 << 16)
++#define ESAI_WORD_LEN_8	(0x06 << 16)
++#define ESAI_WORD_LEN_4	(0x07 << 16)
++
++#define ESAI_SAISR_TODFE	(1 << 17)
++#define ESAI_SAISR_TEDE	(1 << 16)
++#define ESAI_SAISR_TDE	(1 << 15)
++#define ESAI_SAISR_TUE	(1 << 14)
++#define ESAI_SAISR_TFS	(1 << 13)
++#define ESAI_SAISR_RODF	(1 << 10)
++#define ESAI_SAISR_REDF	(1 << 9)
++#define ESAI_SAISR_RDF	(1 << 8)
++#define ESAI_SAISR_ROE	(1 << 7)
++#define ESAI_SAISR_RFS	(1 << 6)
++#define ESAI_SAISR_IF2	(1 << 2)
++#define ESAI_SAISR_IF1	(1 << 1)
++#define ESAI_SAISR_IF0	(1 << 0)
++
++#define ESAI_SAICR_ALC	(1 << 8)
++#define ESAI_SAICR_TEBE	(1 << 7)
++#define ESAI_SAICR_SYNC	(1 << 6)
++#define ESAI_SAICR_OF2	(1 << 2)
++#define ESAI_SAICR_OF1	(1 << 1)
++#define ESAI_SAICR_OF0	(1 << 0)
++
++#define ESAI_TCR_TLIE	(1 << 23)
++#define ESAI_TCR_TIE	(1 << 22)
++#define ESAI_TCR_TEDIE	(1 << 21)
++#define ESAI_TCR_TEIE	(1 << 20)
++#define ESAI_TCR_TPR	(1 << 19)
++#define ESAI_TCR_PADC	(1 << 17)
++#define ESAI_TCR_TFSR	(1 << 16)
++#define ESAI_TCR_TFSL	(1 << 15)
++#define ESAI_TCR_TWA	(1 << 7)
++#define ESAI_TCR_TSHFD_MSB	(0 << 6)
++#define ESAI_TCR_TSHFD_LSB	(1 << 6)
++#define ESAI_TCR_TE5	(1 << 5)
++#define ESAI_TCR_TE4	(1 << 4)
++#define ESAI_TCR_TE3	(1 << 3)
++#define ESAI_TCR_TE2	(1 << 2)
++#define ESAI_TCR_TE1	(1 << 1)
++#define ESAI_TCR_TE0	(1 << 0)
++#define ESAI_TCR_TE(x) (0x3f >> (6 - ((x + 1) >> 1)))
++
++#define ESAI_TCR_TSWS_MASK	0xff83ff
++#define ESAI_TCR_TSWS_STL8_WDL8	(0x00 << 10)
++#define ESAI_TCR_TSWS_STL12_WDL8	(0x04 << 10)
++#define ESAI_TCR_TSWS_STL12_WDL12	(0x01 << 10)
++#define ESAI_TCR_TSWS_STL16_WDL8	(0x08 << 10)
++#define ESAI_TCR_TSWS_STL16_WDL12	(0x05 << 10)
++#define ESAI_TCR_TSWS_STL16_WDL16	(0x02 << 10)
++#define ESAI_TCR_TSWS_STL20_WDL8	(0x0c << 10)
++#define ESAI_TCR_TSWS_STL20_WDL12	(0x09 << 10)
++#define ESAI_TCR_TSWS_STL20_WDL16	(0x06 << 10)
++#define ESAI_TCR_TSWS_STL20_WDL20	(0x03 << 10)
++#define ESAI_TCR_TSWS_STL24_WDL8	(0x10 << 10)
++#define ESAI_TCR_TSWS_STL24_WDL12	(0x0d << 10)
++#define ESAI_TCR_TSWS_STL24_WDL16	(0x0a << 10)
++#define ESAI_TCR_TSWS_STL24_WDL20	(0x07 << 10)
++#define ESAI_TCR_TSWS_STL24_WDL24	(0x1e << 10)
++#define ESAI_TCR_TSWS_STL32_WDL8	(0x18 << 10)
++#define ESAI_TCR_TSWS_STL32_WDL12	(0x15 << 10)
++#define ESAI_TCR_TSWS_STL32_WDL16	(0x12 << 10)
++#define ESAI_TCR_TSWS_STL32_WDL20	(0x0f << 10)
++#define ESAI_TCR_TSWS_STL32_WDL24	(0x1f << 10)
++
++#define ESAI_TCR_TMOD_MASK	0xfffcff
++#define ESAI_TCR_TMOD_NORMAL	(0x00 << 8)
++#define ESAI_TCR_TMOD_ONDEMAND	(0x01 << 8)
++#define ESAI_TCR_TMOD_NETWORK	(0x01 << 8)
++#define ESAI_TCR_TMOD_RESERVED (0x02 << 8)
++#define ESAI_TCR_TMOD_AC97	(0x03 << 8)
++
++#define ESAI_TCCR_THCKD	(1 << 23)
++#define ESAI_TCCR_TFSD	(1 << 22)
++#define ESAI_TCCR_TCKD	(1 << 21)
++#define ESAI_TCCR_THCKP	(1 << 20)
++#define ESAI_TCCR_TFSP	(1 << 19)
++#define ESAI_TCCR_TCKP	(1 << 18)
++
++#define ESAI_TCCR_TPSR_MASK 0xfffeff
++#define ESAI_TCCR_TPSR_BYPASS (1 << 8)
++#define ESAI_TCCR_TPSR_DIV8 (0 << 8)
++
++#define ESAI_TCCR_TFP_MASK	0xfc3fff
++#define ESAI_TCCR_TFP(x)	((x & 0xf) << 14)
++
++#define ESAI_TCCR_TDC_MASK	0xffc1ff
++#define ESAI_TCCR_TDC(x)	(((x) & 0x1f) << 9)
++
++#define ESAI_TCCR_TPM_MASK	0xffff00
++#define ESAI_TCCR_TPM(x)	(x & 0xff)
++
++#define ESAI_RCR_RLIE	(1 << 23)
++#define ESAI_RCR_RIE	(1 << 22)
++#define ESAI_RCR_REDIE	(1 << 21)
++#define ESAI_RCR_REIE	(1 << 20)
++#define ESAI_RCR_RPR	(1 << 19)
++#define ESAI_RCR_RFSR	(1 << 16)
++#define ESAI_RCR_RFSL	(1 << 15)
++#define ESAI_RCR_RWA	(1 << 7)
++#define ESAI_RCR_RSHFD_MSB (0 << 6)
++#define ESAI_RCR_RSHFD_LSB (1 << 6)
++#define ESAI_RCR_RE3	(1 << 3)
++#define ESAI_RCR_RE2	(1 << 2)
++#define ESAI_RCR_RE1	(1 << 1)
++#define ESAI_RCR_RE0	(1 << 0)
++#define ESAI_RCR_RE(x) (0xf >> (4 - ((x + 1) >> 1)))
++
++#define ESAI_TCR_RSWS_MASK	0xff83ff
++#define ESAI_RCR_RSWS_STL8_WDL8	(0x00 << 10)
++#define ESAI_RCR_RSWS_STL12_WDL8	(0x04 << 10)
++#define ESAI_RCR_RSWS_STL12_WDL12	(0x01 << 10)
++#define ESAI_RCR_RSWS_STL16_WDL8	(0x08 << 10)
++#define ESAI_RCR_RSWS_STL16_WDL12	(0x05 << 10)
++#define ESAI_RCR_RSWS_STL16_WDL16	(0x02 << 10)
++#define ESAI_RCR_RSWS_STL20_WDL8	(0x0c << 10)
++#define ESAI_RCR_RSWS_STL20_WDL12	(0x09 << 10)
++#define ESAI_RCR_RSWS_STL20_WDL16	(0x06 << 10)
++#define ESAI_RCR_RSWS_STL20_WDL20	(0x03 << 10)
++#define ESAI_RCR_RSWS_STL24_WDL8	(0x10 << 10)
++#define ESAI_RCR_RSWS_STL24_WDL12	(0x0d << 10)
++#define ESAI_RCR_RSWS_STL24_WDL16	(0x0a << 10)
++#define ESAI_RCR_RSWS_STL24_WDL20	(0x07 << 10)
++#define ESAI_RCR_RSWS_STL24_WDL24	(0x1e << 10)
++#define ESAI_RCR_RSWS_STL32_WDL8	(0x18 << 10)
++#define ESAI_RCR_RSWS_STL32_WDL12	(0x15 << 10)
++#define ESAI_RCR_RSWS_STL32_WDL16	(0x12 << 10)
++#define ESAI_RCR_RSWS_STL32_WDL20	(0x0f << 10)
++#define ESAI_RCR_RSWS_STL32_WDL24	(0x1f << 10)
++
++#define ESAI_RCR_RMOD_MASK	0xfffcff
++#define ESAI_RCR_RMOD_NORMAL	(0x00 << 8)
++#define ESAI_RCR_RMOD_ONDEMAND	(0x01 << 8)
++#define ESAI_RCR_RMOD_NETWORK	(0x01 << 8)
++#define ESAI_RCR_RMOD_RESERVED (0x02 << 8)
++#define ESAI_RCR_RMOD_AC97	(0x03 << 8)
++
++#define ESAI_RCCR_RHCKD	(1 << 23)
++#define ESAI_RCCR_RFSD	(1 << 22)
++#define ESAI_RCCR_RCKD	(1 << 21)
++#define ESAI_RCCR_RHCKP	(1 << 20)
++#define ESAI_RCCR_RFSP	(1 << 19)
++#define ESAI_RCCR_RCKP	(1 << 18)
++
++#define ESAI_RCCR_RPSR_MASK 0xfffeff
++#define ESAI_RCCR_RPSR_BYPASS (1 << 8)
++#define ESAI_RCCR_RPSR_DIV8 (0 << 8)
++
++#define ESAI_RCCR_RFP_MASK	0xfc3fff
++#define ESAI_RCCR_RFP(x)	((x & 0xf) << 14)
++
++#define ESAI_RCCR_RDC_MASK	0xffc1ff
++#define ESAI_RCCR_RDC(x)	(((x) & 0x1f) << 9)
++
++#define ESAI_RCCR_RPM_MASK	0xffff00
++#define ESAI_RCCR_RPM(x)	(x & 0xff)
++
++#define ESAI_GPIO_ESAI	0xfff
++
++/* ESAI clock source */
++#define ESAI_CLK_FSYS	0
++#define ESAI_CLK_EXTAL 1
++
++/* ESAI clock divider */
++#define ESAI_TX_DIV_PSR	0
++#define ESAI_TX_DIV_PM 1
++#define ESAI_TX_DIV_FP	2
++#define ESAI_RX_DIV_PSR	3
++#define ESAI_RX_DIV_PM	4
++#define ESAI_RX_DIV_FP	5
++
++static int imx_esai_txrx_state;
++
++static int imx_esai_set_dai_sysclk(struct snd_soc_dai *cpu_dai,
++				   int clk_id, unsigned int freq, int dir)
++{
++	u32 ecr, tccr, rccr;
++
++	ecr = __raw_readl(ESAI_ECR);
++	tccr = __raw_readl(ESAI_TCCR);
++	rccr = __raw_readl(ESAI_RCCR);
++
++	if (dir == SND_SOC_CLOCK_IN) {
++		if (cpu_dai->id & IMX_DAI_ESAI_TX)
++			tccr &=
++			    ~(ESAI_TCCR_THCKD | ESAI_TCCR_TCKD |
++			      ESAI_TCCR_TFSD);
++		if (cpu_dai->id & IMX_DAI_ESAI_RX)
++			rccr &=
++			    ~(ESAI_RCCR_RHCKD | ESAI_RCCR_RCKD |
++			      ESAI_RCCR_RFSD);
++	} else {
++		if (cpu_dai->id & IMX_DAI_ESAI_TX)
++			tccr |=
++			    ESAI_TCCR_THCKD | ESAI_TCCR_TCKD | ESAI_TCCR_TFSD;
++		if (cpu_dai->id & IMX_DAI_ESAI_RX)
++			rccr |=
++			    ESAI_RCCR_RHCKD | ESAI_RCCR_RCKD | ESAI_RCCR_RFSD;
++		if (clk_id == ESAI_CLK_FSYS) {
++			if (cpu_dai->id & IMX_DAI_ESAI_TX)
++				ecr &= ~(ESAI_ECR_ETI | ESAI_ECR_ETO);
++			if (cpu_dai->id & IMX_DAI_ESAI_RX)
++				ecr &= ~(ESAI_ECR_ERI | ESAI_ECR_ERO);
++		} else if (clk_id == ESAI_CLK_EXTAL) {
++			if (cpu_dai->id & IMX_DAI_ESAI_TX) {
++				ecr |= ESAI_ECR_ETI;
++				ecr &= ~ESAI_ECR_ETO;
++			}
++			if (cpu_dai->id & IMX_DAI_ESAI_RX) {
++				ecr |= ESAI_ECR_ERI;
++				ecr &= ~ESAI_ECR_ERO;
++			}
++		}
++	}
++
++	__raw_writel(ecr, ESAI_ECR);
++	if (cpu_dai->id & IMX_DAI_ESAI_TX)
++		__raw_writel(tccr, ESAI_TCCR);
++	if (cpu_dai->id & IMX_DAI_ESAI_RX)
++		__raw_writel(rccr, ESAI_RCCR);
++
++	ESAI_DUMP();
++
++	return 0;
++}
++
++static int imx_esai_set_dai_clkdiv(struct snd_soc_dai *cpu_dai,
++				   int div_id, int div)
++{
++	u32 tccr, rccr;
++
++	tccr = __raw_readl(ESAI_TCCR);
++	rccr = __raw_readl(ESAI_RCCR);
++
++	switch (div_id) {
++	case ESAI_TX_DIV_PSR:
++		tccr &= ESAI_TCCR_TPSR_MASK;
++		tccr |= div;
++		break;
++	case ESAI_TX_DIV_PM:
++		tccr &= ESAI_TCCR_TPM_MASK;
++		tccr |= ESAI_TCCR_TPM(div);
++		break;
++	case ESAI_TX_DIV_FP:
++		tccr &= ESAI_TCCR_TFP_MASK;
++		tccr |= ESAI_TCCR_TFP(div);
++		break;
++	case ESAI_RX_DIV_PSR:
++		rccr &= ESAI_RCCR_RPSR_MASK;
++		rccr |= div;
++		break;
++	case ESAI_RX_DIV_PM:
++		rccr &= ESAI_RCCR_RPM_MASK;
++		rccr |= ESAI_RCCR_RPM(div);
++		break;
++	case ESAI_RX_DIV_FP:
++		rccr &= ESAI_RCCR_RFP_MASK;
++		rccr |= ESAI_RCCR_RFP(div);
++		break;
++		return -EINVAL;
++	}
++	if (cpu_dai->id & IMX_DAI_ESAI_TX)
++		__raw_writel(tccr, ESAI_TCCR);
++	if (cpu_dai->id & IMX_DAI_ESAI_RX)
++		__raw_writel(rccr, ESAI_RCCR);
++	return 0;
++}
++
++/*
++ * ESAI Network Mode or TDM slots configuration.
++ */
++static int imx_esai_set_dai_tdm_slot(struct snd_soc_dai *cpu_dai,
++				     unsigned int mask, int slots)
++{
++	u32 tccr, rccr;
++
++	if (cpu_dai->id & IMX_DAI_ESAI_TX) {
++		tccr = __raw_readl(ESAI_TCCR);
++
++		tccr &= ESAI_TCCR_TDC_MASK;
++		tccr |= ESAI_TCCR_TDC(slots - 1);
++
++		__raw_writel(tccr, ESAI_TCCR);
++		__raw_writel((mask & 0xffff), ESAI_TSMA);
++		__raw_writel(((mask >> 16) & 0xffff), ESAI_TSMB);
++	}
++
++	if (cpu_dai->id & IMX_DAI_ESAI_RX) {
++		rccr = __raw_readl(ESAI_RCCR);
++
++		rccr &= ESAI_RCCR_RDC_MASK;
++		rccr |= ESAI_RCCR_RDC(slots - 1);
++
++		__raw_writel(rccr, ESAI_RCCR);
++		__raw_writel((mask & 0xffff), ESAI_RSMA);
++		__raw_writel(((mask >> 16) & 0xffff), ESAI_RSMB);
++	}
++
++	ESAI_DUMP();
++
++	return 0;
++}
++
++/*
++ * ESAI DAI format configuration.
++ */
++static int imx_esai_set_dai_fmt(struct snd_soc_dai *cpu_dai, unsigned int fmt)
++{
++	u32 tcr, tccr, rcr, rccr, saicr;
++
++	tcr = __raw_readl(ESAI_TCR);
++	tccr = __raw_readl(ESAI_TCCR);
++	rcr = __raw_readl(ESAI_RCR);
++	rccr = __raw_readl(ESAI_RCCR);
++	saicr = __raw_readl(ESAI_SAICR);
++
++	/* DAI mode */
++	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
++	case SND_SOC_DAIFMT_I2S:
++		/* data on rising edge of bclk, frame low 1clk before data */
++		tcr &= ~ESAI_TCR_TFSL;
++		tcr |= ESAI_TCR_TFSR;
++		rcr &= ~ESAI_RCR_RFSL;
++		rcr |= ESAI_RCR_RFSR;
++		break;
++	case SND_SOC_DAIFMT_LEFT_J:
++		/* data on rising edge of bclk, frame high with data */
++		tcr &= ~(ESAI_TCR_TFSL | ESAI_TCR_TFSR);
++		rcr &= ~(ESAI_RCR_RFSL | ESAI_RCR_RFSR);
++		break;
++	case SND_SOC_DAIFMT_DSP_B:
++		/* data on rising edge of bclk, frame high with data */
++		tcr |= ESAI_TCR_TFSL;
++		rcr |= ESAI_RCR_RFSL;
++		break;
++	case SND_SOC_DAIFMT_DSP_A:
++		/* data on rising edge of bclk, frame high 1clk before data */
++		tcr |= ESAI_TCR_TFSL;
++		rcr |= ESAI_RCR_RFSL;
++		break;
++	}
++
++	/* DAI clock inversion */
++	switch (fmt & SND_SOC_DAIFMT_INV_MASK) {
++	case SND_SOC_DAIFMT_IB_IF:
++		tccr |= ESAI_TCCR_TFSP;
++		tccr &= ~(ESAI_TCCR_TCKP | ESAI_TCCR_THCKP);
++		rccr &= ~(ESAI_RCCR_RCKP | ESAI_RCCR_RHCKP);
++		rccr |= ESAI_RCCR_RFSP;
++		break;
++	case SND_SOC_DAIFMT_IB_NF:
++		tccr &= ~(ESAI_TCCR_TCKP | ESAI_TCCR_THCKP | ESAI_TCCR_TFSP);
++		rccr &= ~(ESAI_RCCR_RCKP | ESAI_RCCR_RHCKP | ESAI_RCCR_RFSP);
++		break;
++	case SND_SOC_DAIFMT_NB_IF:
++		tccr |= ESAI_TCCR_TCKP | ESAI_TCCR_THCKP | ESAI_TCCR_TFSP;
++		rccr |= ESAI_RCCR_RCKP | ESAI_RCCR_RHCKP | ESAI_RCCR_RFSP;
++		break;
++	case SND_SOC_DAIFMT_NB_NF:
++		tccr &= ~ESAI_TCCR_TFSP;
++		tccr |= ESAI_TCCR_TCKP | ESAI_TCCR_THCKP;
++		rccr &= ~ESAI_RCCR_RFSP;
++		rccr |= ESAI_RCCR_RCKP | ESAI_RCCR_RHCKP;
++		break;
++	}
++
++	/* DAI clock master masks */
++	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
++	case SND_SOC_DAIFMT_CBM_CFM:
++		tccr &= ~(ESAI_TCCR_TFSD | ESAI_TCCR_TCKD);
++		rccr &= ~(ESAI_RCCR_RFSD | ESAI_RCCR_RCKD);
++		break;
++	case SND_SOC_DAIFMT_CBS_CFM:
++		tccr &= ~ESAI_TCCR_TFSD;
++		tccr |= ESAI_TCCR_TCKD;
++		rccr &= ~ESAI_RCCR_RFSD;
++		rccr |= ESAI_RCCR_RCKD;
++		break;
++	case SND_SOC_DAIFMT_CBM_CFS:
++		tccr &= ~ESAI_TCCR_TCKD;
++		tccr |= ESAI_TCCR_TFSD;
++		rccr &= ~ESAI_RCCR_RCKD;
++		rccr |= ESAI_RCCR_RFSD;
++		break;
++	case SND_SOC_DAIFMT_CBS_CFS:
++		tccr |= (ESAI_TCCR_TFSD | ESAI_TCCR_TCKD);
++		rccr |= (ESAI_RCCR_RFSD | ESAI_RCCR_RCKD);
++	}
++
++	/* sync */
++	if (fmt & SND_SOC_DAIFMT_ASYNC)
++		saicr &= ~ESAI_SAICR_SYNC;
++	else
++		saicr |= ESAI_SAICR_SYNC;
++
++	tcr &= ESAI_TCR_TMOD_MASK;
++	/* tdm - only for stereo atm */
++	if (fmt & SND_SOC_DAIFMT_TDM)
++		tcr |= ESAI_TCR_TMOD_NETWORK;
++	else
++		tcr |= ESAI_TCR_TMOD_NORMAL;
++
++	if (cpu_dai->id & IMX_DAI_ESAI_TX) {
++		__raw_writel(tcr, ESAI_TCR);
++		__raw_writel(tccr, ESAI_TCCR);
++	}
++	if (cpu_dai->id & IMX_DAI_ESAI_RX) {
++		__raw_writel(rcr, ESAI_RCR);
++		__raw_writel(rccr, ESAI_RCCR);
++	}
++
++	__raw_writel(saicr, ESAI_SAICR);
++
++	ESAI_DUMP();
++	return 0;
++}
++
++static struct clk *esai_clk;
++
++static int fifo_err_counter;
++
++static irqreturn_t esai_irq(int irq, void *dev_id)
++{
++	if (fifo_err_counter++ % 1000 == 0)
++		printk(KERN_ERR
++		       "esai_irq SAISR %x fifo_errs=%d\n",
++		       __raw_readl(ESAI_SAISR), fifo_err_counter);
++	return IRQ_HANDLED;
++}
++
++static int imx_esai_startup(struct snd_pcm_substream *substream)
++{
++	struct snd_soc_pcm_runtime *rtd = substream->private_data;
++	struct snd_soc_dai *cpu_dai = rtd->dai->cpu_dai;
++
++	if (cpu_dai->playback.active && (cpu_dai->id & IMX_DAI_ESAI_TX))
++		return 0;
++	if (cpu_dai->capture.active && (cpu_dai->id & IMX_DAI_ESAI_RX))
++		return 0;
++
++	if (!(imx_esai_txrx_state & IMX_DAI_ESAI_TXRX)) {
++		if (request_irq(MXC_INT_ESAI, esai_irq, 0, "esai", NULL)) {
++			pr_err("%s: failure requesting esai irq\n", __func__);
++			return -EBUSY;
++		}
++		clk_enable(esai_clk);
++		__raw_writel(ESAI_ECR_ERST, ESAI_ECR);
++		__raw_writel(ESAI_ECR_ESAIEN, ESAI_ECR);
++
++		__raw_writel(ESAI_GPIO_ESAI, ESAI_PRRC);
++		__raw_writel(ESAI_GPIO_ESAI, ESAI_PCRC);
++	}
++
++	if (cpu_dai->id & IMX_DAI_ESAI_TX) {
++		imx_esai_txrx_state |= IMX_DAI_ESAI_TX;
++		__raw_writel(ESAI_TCR_TPR, ESAI_TCR);
++	}
++	if (cpu_dai->id & IMX_DAI_ESAI_RX) {
++		imx_esai_txrx_state |= IMX_DAI_ESAI_RX;
++		__raw_writel(ESAI_RCR_RPR, ESAI_RCR);
++	}
++
++	ESAI_DUMP();
++	return 0;
++}
++
++/*
++ * This function is called to initialize the TX port before enable
++ * the tx port.
++ */
++static int imx_esai_hw_tx_params(struct snd_pcm_substream
++				 *substream, struct snd_pcm_hw_params
++				 *params)
++{
++	u32 tcr, tfcr;
++	unsigned int channels;
++
++	tcr = __raw_readl(ESAI_TCR);
++	tfcr = __raw_readl(ESAI_TFCR);
++
++	tfcr |= ESAI_TFCR_TFR;
++	__raw_writel(tfcr, ESAI_TFCR);
++	tfcr &= ~ESAI_TFCR_TFR;
++	/* DAI data (word) size */
++	tfcr &= ESAI_TFCR_TWA_MASK;
++	tcr &= ESAI_TCR_TSWS_MASK;
++	switch (params_format(params)) {
++	case SNDRV_PCM_FORMAT_S16_LE:
++		tfcr |= ESAI_WORD_LEN_16;
++		tcr |= ESAI_TCR_TSHFD_MSB | ESAI_TCR_TSWS_STL32_WDL16;
++		break;
++	case SNDRV_PCM_FORMAT_S20_3LE:
++		tfcr |= ESAI_WORD_LEN_20;
++		tcr |= ESAI_TCR_TSHFD_MSB | ESAI_TCR_TSWS_STL32_WDL20;
++		break;
++	case SNDRV_PCM_FORMAT_S24_LE:
++		tfcr |= ESAI_WORD_LEN_24;
++		tcr |= ESAI_TCR_TSHFD_MSB | ESAI_TCR_TSWS_STL32_WDL24;
++		break;
++	}
++
++	channels = params_channels(params);
++	tfcr &= ESAI_TFCR_TE_MASK;
++	tfcr |= ESAI_TFCR_TE(channels);
++
++	tfcr |= ESAI_TFCR_TFWM(64);
++
++	/* Left aligned, Zero padding */
++	tcr |= ESAI_TCR_PADC;
++
++	__raw_writel(tcr, ESAI_TCR);
++	__raw_writel(tfcr, ESAI_TFCR);
++
++	ESAI_DUMP();
++	return 0;
++}
++
++/*
++ * This function is called to initialize the RX port before enable
++ * the rx port.
++ */
++static int imx_esai_hw_rx_params(struct snd_pcm_substream
++				 *substream, struct snd_pcm_hw_params
++				 *params)
++{
++	u32 rcr, rfcr;
++	unsigned int channels;
++
++	rcr = __raw_readl(ESAI_RCR);
++	rfcr = __raw_readl(ESAI_RFCR);
++
++	rfcr |= ESAI_RFCR_RFR;
++	__raw_writel(rfcr, ESAI_RFCR);
++	rfcr &= ~ESAI_RFCR_RFR;
++
++	rfcr &= ESAI_RFCR_RWA_MASK;
++	rcr &= ESAI_TCR_RSWS_MASK;
++	switch (params_format(params)) {
++	case SNDRV_PCM_FORMAT_S16_LE:
++		rfcr |= ESAI_WORD_LEN_16;
++		rcr |= ESAI_RCR_RSHFD_MSB | ESAI_RCR_RSWS_STL32_WDL16;
++		break;
++	case SNDRV_PCM_FORMAT_S20_3LE:
++		rfcr |= ESAI_WORD_LEN_20;
++		rcr |= ESAI_RCR_RSHFD_MSB | ESAI_RCR_RSWS_STL32_WDL20;
++		break;
++	case SNDRV_PCM_FORMAT_S24_LE:
++		rfcr |= ESAI_WORD_LEN_24;
++		rcr |= ESAI_RCR_RSHFD_MSB | ESAI_RCR_RSWS_STL32_WDL24;
++		break;
++	}
++
++	channels = params_channels(params);
++	rfcr &= ESAI_RFCR_RE_MASK;
++	rfcr |= ESAI_RFCR_RE(channels);
++	rfcr |= ESAI_RFCR_RFEN;
++
++	rfcr |= ESAI_RFCR_RFWM(64);
++
++	__raw_writel(rcr, ESAI_RCR);
++	__raw_writel(rfcr, ESAI_RFCR);
++	return 0;
++}
++
++/*
++ * This function is called to initialize the TX or RX port,
++ */
++static int imx_esai_hw_params(struct snd_pcm_substream
++			      *substream, struct snd_pcm_hw_params *params)
++{
++	/* Tx/Rx config */
++	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
++		if (__raw_readl(ESAI_TCR) & ESAI_TCR_TE0)
++			return 0;
++		return imx_esai_hw_tx_params(substream, params);
++	} else {
++		if (__raw_readl(ESAI_RCR) & ESAI_RCR_RE0)
++			return 0;
++		return imx_esai_hw_rx_params(substream, params);
++	}
++}
++
++static int imx_esai_trigger(struct snd_pcm_substream *substream, int cmd)
++{
++	u32 reg, tfcr = 0;
++
++	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
++		tfcr = __raw_readl(ESAI_TFCR);
++		reg = __raw_readl(ESAI_TCR);
++	} else {
++		reg = __raw_readl(ESAI_RCR);
++	}
++	switch (cmd) {
++	case SNDRV_PCM_TRIGGER_START:
++	case SNDRV_PCM_TRIGGER_RESUME:
++	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
++		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
++			tfcr |= ESAI_TFCR_TFEN;
++			__raw_writel(tfcr, ESAI_TFCR);
++			reg &= ~ESAI_TCR_TPR;
++			reg |= ESAI_TCR_TE(substream->runtime->channels);
++			__raw_writel(reg, ESAI_TCR);
++		} else {
++			reg &= ~ESAI_RCR_RPR;
++			reg |= ESAI_RCR_RE(substream->runtime->channels);
++			__raw_writel(reg, ESAI_RCR);
++		}
++		break;
++	case SNDRV_PCM_TRIGGER_SUSPEND:
++	case SNDRV_PCM_TRIGGER_STOP:
++	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
++		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
++			reg &= ~ESAI_TCR_TE(substream->runtime->channels);
++			__raw_writel(reg, ESAI_TCR);
++			reg |= ESAI_TCR_TPR;
++			__raw_writel(reg, ESAI_TCR);
++			tfcr |= ESAI_TFCR_TFR;
++			tfcr &= ~ESAI_TFCR_TFEN;
++			__raw_writel(tfcr, ESAI_TFCR);
++			tfcr &= ~ESAI_TFCR_TFR;
++			__raw_writel(tfcr, ESAI_TFCR);
++		} else {
++			reg &= ~ESAI_RCR_RE(substream->runtime->channels);
++			__raw_writel(reg, ESAI_RCR);
++		}
++		break;
++	default:
++		return -EINVAL;
++	}
++
++	ESAI_DUMP();
++	return 0;
++}
++
++static void imx_esai_shutdown(struct snd_pcm_substream
++			      *substream)
++{
++	struct snd_soc_pcm_runtime *rtd = substream->private_data;
++	struct snd_soc_dai *cpu_dai = rtd->dai->cpu_dai;
++
++	if (cpu_dai->id & IMX_DAI_ESAI_TX)
++		imx_esai_txrx_state &= ~IMX_DAI_ESAI_TX;
++	if (cpu_dai->id & IMX_DAI_ESAI_RX)
++		imx_esai_txrx_state &= ~IMX_DAI_ESAI_RX;
++
++	/* shutdown ESAI if neither Tx or Rx is active */
++	if (!(imx_esai_txrx_state & IMX_DAI_ESAI_TXRX)) {
++		free_irq(MXC_INT_ESAI, NULL);
++		clk_disable(esai_clk);
++	}
++}
++
++#ifdef CONFIG_PM
++static int imx_esai_suspend(struct platform_device *dev,
++			    struct snd_soc_dai *dai)
++{
++	if (!dai->active)
++		return 0;
++
++	/*do we need to disable any clocks */
++	return 0;
++}
++
++static int imx_esai_resume(struct platform_device *dev, struct snd_soc_dai *dai)
++{
++	if (!dai->active)
++		return 0;
++
++	/* do we need to enable any clocks */
++	return 0;
++}
++
++#else
++#define imx_esai_suspend	NULL
++#define imx_esai_resume	NULL
++#endif
++
++static int imx_esai_probe(struct platform_device *pdev, struct snd_soc_dai *dai)
++{
++	if (!strcmp("imx-esai-tx", dai->name))
++		dai->id = IMX_DAI_ESAI_TX;
++	else if (!strcmp("imx-esai-rx", dai->name))
++		dai->id = IMX_DAI_ESAI_RX;
++	else if (!strcmp("imx-esai-txrx", dai->name))
++		dai->id = IMX_DAI_ESAI_TXRX;
++	else {
++		pr_err("%s: invalid device %s\n", __func__, dai->name);
++		return -ENODEV;
++	}
++
++	imx_esai_txrx_state = 0;
++
++	esai_clk = clk_get(NULL, "esai_clk");
++
++	return 0;
++}
++
++static void imx_esai_remove(struct platform_device *pdev,
++			    struct snd_soc_dai *dai)
++{
++
++	clk_put(esai_clk);
++}
++
++#define IMX_ESAI_RATES  SNDRV_PCM_RATE_8000_192000
++
++#define IMX_ESAI_FORMATS \
++	(SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S20_3LE | \
++	SNDRV_PCM_FMTBIT_S24_LE)
++
++struct snd_soc_dai imx_esai_dai = {
++	.name = "imx-esai",
++	.id = 0,
++	.type = SND_SOC_DAI_PCM,
++	.probe = imx_esai_probe,
++	.remove = imx_esai_remove,
++	.suspend = imx_esai_suspend,
++	.resume = imx_esai_resume,
++	.playback = {
++		     .channels_min = 1,
++		     .channels_max = 6,
++		     .rates = IMX_ESAI_RATES,
++		     .formats = IMX_ESAI_FORMATS,
++		     },
++	.capture = {
++		    .channels_min = 1,
++		    .channels_max = 4,
++		    .rates = IMX_ESAI_RATES,
++		    .formats = IMX_ESAI_FORMATS,
++		    },
++	.ops = {
++		.startup = imx_esai_startup,
++		.shutdown = imx_esai_shutdown,
++		.trigger = imx_esai_trigger,
++		.hw_params = imx_esai_hw_params,
++		},
++	.dai_ops = {
++		    .set_sysclk = imx_esai_set_dai_sysclk,
++		    .set_clkdiv = imx_esai_set_dai_clkdiv,
++		    .set_fmt = imx_esai_set_dai_fmt,
++		    .set_tdm_slot = imx_esai_set_dai_tdm_slot,
++		    },
++};
++
++EXPORT_SYMBOL_GPL(imx_esai_dai);
++
++MODULE_AUTHOR("Freescale Semiconductor, Inc.");
++MODULE_DESCRIPTION("i.MX ASoC ESAI driver");
++MODULE_LICENSE("GPL");
+diff --git a/sound/soc/imx/imx-esai.h b/sound/soc/imx/imx-esai.h
+new file mode 100644
+index 0000000..8ac2e3f
+--- /dev/null
++++ b/sound/soc/imx/imx-esai.h
+@@ -0,0 +1,25 @@
++/*
++ * imx-esai.h  --  ESAI driver header file for Freescale IMX
++ *
++ * Copyright 2008-2009 Freescale  Semiconductor, Inc. All Rights Reserved.
++ */
++
++/*
++ * The code contained herein is licensed under the GNU General Public
++ * License. You may obtain a copy of the GNU General Public License
++ * Version 2 or later at the following locations:
++ *
++ * http://www.opensource.org/licenses/gpl-license.html
++ * http://www.gnu.org/copyleft/gpl.html
++ */
++
++#ifndef _MXC_ESAI_H
++#define _MXC_ESAI_H
++
++#define IMX_DAI_ESAI_TX 0x04
++#define IMX_DAI_ESAI_RX 0x08
++#define IMX_DAI_ESAI_TXRX (IMX_DAI_ESAI_TX | IMX_DAI_ESAI_RX)
++
++extern struct snd_soc_dai imx_esai_dai;
++
++#endif
+diff --git a/sound/soc/imx/imx-pcm.c b/sound/soc/imx/imx-pcm.c
+index 8789c0a..1f4ddc9 100644
+--- a/sound/soc/imx/imx-pcm.c
++++ b/sound/soc/imx/imx-pcm.c
+@@ -6,7 +6,7 @@
+  *         liam.girdwood@wolfsonmicro.com or linux@wolfsonmicro.com
+  *
+  * Based on imx31-pcm.c by Nicolas Pitre, (C) 2004 MontaVista Software, Inc.
+- * and on mxc-alsa-mc13783 (C) 2006-2008 Freescale.
++ * and on mxc-alsa-mc13783 (C) 2006-2009 Freescale.
+  *
+  * This program is free software; you can redistribute it and/or modify
+  * it under the terms of the GNU General Public License version 2 as
+@@ -32,9 +32,7 @@
+ 
+ #include "imx-pcm.h"
+ #include "imx-ssi.h"
+-#if 0
+ #include "imx-esai.h"
+-#endif
+ 
+ #ifdef CONFIG_SND_MXC_SOC_IRAM
+ static bool UseIram = 1;
+@@ -216,7 +214,6 @@ static int imx_get_sdma_transfer(int format, int dai_port, int stream_type)
+ 			else if (format == SNDRV_PCM_FORMAT_S20_3LE)
+ 				transfer = MXC_DMA_SSI2_24BIT_RX1;
+ 		}
+-#if 0
+ 	} else if ((dai_port & IMX_DAI_ESAI_TX)
+ 		   || (dai_port & IMX_DAI_ESAI_RX)) {
+ 		if (stream_type == SNDRV_PCM_STREAM_PLAYBACK) {
+@@ -234,7 +231,6 @@ static int imx_get_sdma_transfer(int format, int dai_port, int stream_type)
+ 			else if (format == SNDRV_PCM_FORMAT_S20_3LE)
+ 				transfer = MXC_DMA_ESAI_24BIT_RX;
+ 		}
+-#endif
+ 	}
+ 
+ 	return transfer;
+-- 
+1.5.4.4
+

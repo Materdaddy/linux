@@ -1,0 +1,67 @@
+From 6c581910b43fa9ef09315b42025bc3b2748c5ef3 Mon Sep 17 00:00:00 2001
+From: Zhou Jingyu <b02241@freescale.com>
+Date: Thu, 7 May 2009 14:18:11 +0800
+Subject: [PATCH] ENGR00111738 Add regulator PWGT1,2
+
+Add regulator PWGT1,2
+
+Signed-off-by: Zhou Jingyu <Jingyu.Zhou@freescale.com>
+---
+ arch/arm/mach-mx35/mx35_3stack_pmic_mc13892.c |   14 ++++++++++++++
+ drivers/regulator/reg-mc13892.c               |    8 ++++++++
+ 2 files changed, 22 insertions(+), 0 deletions(-)
+
+diff --git a/arch/arm/mach-mx35/mx35_3stack_pmic_mc13892.c b/arch/arm/mach-mx35/mx35_3stack_pmic_mc13892.c
+index 0cbe95d..deb5e4a 100644
+--- a/arch/arm/mach-mx35/mx35_3stack_pmic_mc13892.c
++++ b/arch/arm/mach-mx35/mx35_3stack_pmic_mc13892.c
+@@ -249,6 +249,18 @@ static struct regulator_init_data gpo4_init = {
+ 	}
+ };
+ 
++static struct regulator_init_data pwg1_init = {
++	.constraints = {
++		.name = "PWG1",
++	}
++};
++
++static struct regulator_init_data pwg2_init = {
++	.constraints = {
++		.name = "PWG2",
++	}
++};
++
+ /*!
+  * the event handler for power on event
+  */
+@@ -309,6 +321,8 @@ static int mc13892_regulator_init(struct mc13892 *mc13892)
+ 	mc13892_register_regulator(mc13892, MC13892_GPO2, &gpo2_init);
+ 	mc13892_register_regulator(mc13892, MC13892_GPO3, &gpo3_init);
+ 	mc13892_register_regulator(mc13892, MC13892_GPO4, &gpo4_init);
++	mc13892_register_regulator(mc13892, MC13892_PWGT1, &pwg1_init);
++	mc13892_register_regulator(mc13892, MC13892_PWGT2, &pwg2_init);
+ 
+ 	init_mc13892();
+ 	return 0;
+diff --git a/drivers/regulator/reg-mc13892.c b/drivers/regulator/reg-mc13892.c
+index 68f672a..70b0d52 100644
+--- a/drivers/regulator/reg-mc13892.c
++++ b/drivers/regulator/reg-mc13892.c
+@@ -1754,6 +1754,14 @@ static struct regulator_desc mc13892_reg[] = {
+ 		.type = REGULATOR_VOLTAGE,
+ 		.owner = THIS_MODULE
+ 	},
++	{
++		.name = "PWGT2",
++		.id = MC13892_PWGT2,
++		.ops = &mc13892_power_gating_ops,
++		.irq = 0,
++		.type = REGULATOR_VOLTAGE,
++		.owner = THIS_MODULE
++	},
+ };
+ 
+ static int mc13892_regulator_probe(struct platform_device *pdev)
+-- 
+1.5.4.4
+

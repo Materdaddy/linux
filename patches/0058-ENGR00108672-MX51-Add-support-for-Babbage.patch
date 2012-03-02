@@ -1,0 +1,3669 @@
+From 3c5940441015ee76a7dd27059a8c16661940dd1a Mon Sep 17 00:00:00 2001
+From: Dinh Nguyen <Dinh.Nguyen@freescale.com>
+Date: Mon, 2 Mar 2009 13:40:13 -0600
+Subject: [PATCH] ENGR00108672 MX51: Add support for Babbage
+
+MX51: Add support for the MX51 Babbage board.
+
+Signed-off-by: Dinh Nguyen <Dinh.Nguyen@freescale.com>
+---
+ arch/arm/configs/imx51_defconfig               | 1814 ++++++++++++++++++++++++
+ arch/arm/mach-mx51/Kconfig                     |    6 +
+ arch/arm/mach-mx51/Makefile                    |    1 +
+ arch/arm/mach-mx51/board-mx51_babbage.h        |   85 ++
+ arch/arm/mach-mx51/mx51_babbage.c              |  622 ++++++++
+ arch/arm/mach-mx51/mx51_babbage_gpio.c         |  464 ++++++
+ arch/arm/mach-mx51/mx51_babbage_pmic_mc13892.c |  265 ++++
+ arch/arm/plat-mxc/include/mach/memory.h        |    2 +-
+ arch/arm/tools/mach-types                      |  222 +++-
+ drivers/usb/host/ehci-arc.c                    |   28 +-
+ 10 files changed, 3501 insertions(+), 8 deletions(-)
+
+diff --git a/arch/arm/configs/imx51_defconfig b/arch/arm/configs/imx51_defconfig
+new file mode 100644
+index 0000000..0ec474f
+--- /dev/null
++++ b/arch/arm/configs/imx51_defconfig
+@@ -0,0 +1,1814 @@
++#
++# Automatically generated make config: don't edit
++# Linux kernel version: 2.6.26
++#
++CONFIG_ARM=y
++CONFIG_SYS_SUPPORTS_APM_EMULATION=y
++# CONFIG_GENERIC_GPIO is not set
++CONFIG_GENERIC_TIME=y
++CONFIG_GENERIC_CLOCKEVENTS=y
++CONFIG_MMU=y
++# CONFIG_NO_IOPORT is not set
++CONFIG_GENERIC_HARDIRQS=y
++CONFIG_STACKTRACE_SUPPORT=y
++CONFIG_LOCKDEP_SUPPORT=y
++CONFIG_TRACE_IRQFLAGS_SUPPORT=y
++CONFIG_HARDIRQS_SW_RESEND=y
++CONFIG_GENERIC_IRQ_PROBE=y
++CONFIG_RWSEM_GENERIC_SPINLOCK=y
++# CONFIG_ARCH_HAS_ILOG2_U32 is not set
++# CONFIG_ARCH_HAS_ILOG2_U64 is not set
++CONFIG_GENERIC_HWEIGHT=y
++CONFIG_GENERIC_CALIBRATE_DELAY=y
++CONFIG_ARCH_SUPPORTS_AOUT=y
++CONFIG_ZONE_DMA=y
++CONFIG_ARCH_MTD_XIP=y
++CONFIG_VECTORS_BASE=0xffff0000
++CONFIG_DEFCONFIG_LIST="/lib/modules/$UNAME_RELEASE/.config"
++
++#
++# General setup
++#
++CONFIG_EXPERIMENTAL=y
++CONFIG_BROKEN_ON_SMP=y
++CONFIG_LOCK_KERNEL=y
++CONFIG_INIT_ENV_ARG_LIMIT=32
++CONFIG_LOCALVERSION=""
++CONFIG_LOCALVERSION_AUTO=y
++CONFIG_SWAP=y
++CONFIG_SYSVIPC=y
++CONFIG_SYSVIPC_SYSCTL=y
++# CONFIG_POSIX_MQUEUE is not set
++# CONFIG_BSD_PROCESS_ACCT is not set
++# CONFIG_TASKSTATS is not set
++# CONFIG_AUDIT is not set
++CONFIG_IKCONFIG=y
++CONFIG_IKCONFIG_PROC=y
++CONFIG_LOG_BUF_SHIFT=14
++# CONFIG_CGROUPS is not set
++# CONFIG_GROUP_SCHED is not set
++CONFIG_SYSFS_DEPRECATED=y
++CONFIG_SYSFS_DEPRECATED_V2=y
++# CONFIG_RELAY is not set
++# CONFIG_NAMESPACES is not set
++# CONFIG_BLK_DEV_INITRD is not set
++CONFIG_CC_OPTIMIZE_FOR_SIZE=y
++CONFIG_SYSCTL=y
++CONFIG_EMBEDDED=y
++CONFIG_UID16=y
++CONFIG_SYSCTL_SYSCALL=y
++CONFIG_SYSCTL_SYSCALL_CHECK=y
++CONFIG_KALLSYMS=y
++# CONFIG_KALLSYMS_EXTRA_PASS is not set
++CONFIG_HOTPLUG=y
++CONFIG_PRINTK=y
++CONFIG_BUG=y
++CONFIG_ELF_CORE=y
++CONFIG_COMPAT_BRK=y
++CONFIG_BASE_FULL=y
++CONFIG_FUTEX=y
++CONFIG_ANON_INODES=y
++CONFIG_EPOLL=y
++CONFIG_SIGNALFD=y
++CONFIG_TIMERFD=y
++CONFIG_EVENTFD=y
++CONFIG_SHMEM=y
++CONFIG_VM_EVENT_COUNTERS=y
++CONFIG_SLUB_DEBUG=y
++# CONFIG_SLAB is not set
++CONFIG_SLUB=y
++# CONFIG_SLOB is not set
++# CONFIG_PROFILING is not set
++# CONFIG_MARKERS is not set
++CONFIG_HAVE_OPROFILE=y
++# CONFIG_KPROBES is not set
++CONFIG_HAVE_KPROBES=y
++CONFIG_HAVE_KRETPROBES=y
++# CONFIG_HAVE_DMA_ATTRS is not set
++CONFIG_PROC_PAGE_MONITOR=y
++CONFIG_SLABINFO=y
++CONFIG_RT_MUTEXES=y
++# CONFIG_TINY_SHMEM is not set
++CONFIG_BASE_SMALL=0
++CONFIG_MODULES=y
++# CONFIG_MODULE_FORCE_LOAD is not set
++CONFIG_MODULE_UNLOAD=y
++CONFIG_MODULE_FORCE_UNLOAD=y
++CONFIG_MODVERSIONS=y
++# CONFIG_MODULE_SRCVERSION_ALL is not set
++CONFIG_KMOD=y
++CONFIG_BLOCK=y
++# CONFIG_LBD is not set
++# CONFIG_BLK_DEV_IO_TRACE is not set
++# CONFIG_LSF is not set
++# CONFIG_BLK_DEV_BSG is not set
++
++#
++# IO Schedulers
++#
++CONFIG_IOSCHED_NOOP=y
++CONFIG_IOSCHED_AS=y
++CONFIG_IOSCHED_DEADLINE=y
++CONFIG_IOSCHED_CFQ=y
++# CONFIG_DEFAULT_AS is not set
++# CONFIG_DEFAULT_DEADLINE is not set
++CONFIG_DEFAULT_CFQ=y
++# CONFIG_DEFAULT_NOOP is not set
++CONFIG_DEFAULT_IOSCHED="cfq"
++CONFIG_CLASSIC_RCU=y
++
++#
++# System Type
++#
++# CONFIG_ARCH_AAEC2000 is not set
++# CONFIG_ARCH_INTEGRATOR is not set
++# CONFIG_ARCH_REALVIEW is not set
++# CONFIG_ARCH_VERSATILE is not set
++# CONFIG_ARCH_AT91 is not set
++# CONFIG_ARCH_CLPS7500 is not set
++# CONFIG_ARCH_CLPS711X is not set
++# CONFIG_ARCH_CO285 is not set
++# CONFIG_ARCH_EBSA110 is not set
++# CONFIG_ARCH_EP93XX is not set
++# CONFIG_ARCH_FOOTBRIDGE is not set
++# CONFIG_ARCH_NETX is not set
++# CONFIG_ARCH_H720X is not set
++# CONFIG_ARCH_IMX is not set
++# CONFIG_ARCH_IOP13XX is not set
++# CONFIG_ARCH_IOP32X is not set
++# CONFIG_ARCH_IOP33X is not set
++# CONFIG_ARCH_IXP23XX is not set
++# CONFIG_ARCH_IXP2000 is not set
++# CONFIG_ARCH_IXP4XX is not set
++# CONFIG_ARCH_L7200 is not set
++# CONFIG_ARCH_KS8695 is not set
++# CONFIG_ARCH_NS9XXX is not set
++CONFIG_ARCH_MXC=y
++# CONFIG_ARCH_ORION5X is not set
++# CONFIG_ARCH_PNX4008 is not set
++# CONFIG_ARCH_PXA is not set
++# CONFIG_ARCH_RPC is not set
++# CONFIG_ARCH_SA1100 is not set
++# CONFIG_ARCH_S3C2410 is not set
++# CONFIG_ARCH_SHARK is not set
++# CONFIG_ARCH_LH7A40X is not set
++# CONFIG_ARCH_DAVINCI is not set
++# CONFIG_ARCH_OMAP is not set
++# CONFIG_ARCH_MSM7X00A is not set
++
++#
++# Boot options
++#
++
++#
++# Power management
++#
++
++#
++# Freescale MXC Implementations
++#
++# CONFIG_ARCH_MX37 is not set
++# CONFIG_ARCH_MX35 is not set
++CONFIG_ARCH_MX51=y
++# CONFIG_ARCH_MX3 is not set
++# CONFIG_ARCH_MX27 is not set
++# CONFIG_ARCH_MX25 is not set
++# CONFIG_ARCH_MX21 is not set
++CONFIG_I2C_MXC_SELECT1=y
++CONFIG_I2C_MXC_SELECT2=y
++CONFIG_MXC_SDMA_API=y
++# CONFIG_I2C_MXC_SELECT3 is not set
++CONFIG_SDMA_IRAM=y
++CONFIG_SDMA_IRAM_SIZE=0x1000
++CONFIG_ARCH_MXC_HAS_NFC_V3=y
++
++#
++# MX51 Options
++#
++CONFIG_MX51_OPTIONS=y
++CONFIG_MACH_MX51_3DS=y
++CONFIG_MACH_MX51_BABBAGE=y
++CONFIG_ARCH_MXC_HAS_NFC_V3_2=y
++
++#
++# SDMA options
++#
++
++#
++# Device options
++#
++CONFIG_MXC_TZIC=y
++CONFIG_DMA_ZONE_SIZE=64
++CONFIG_UTMI_MXC=y
++
++#
++# Processor Type
++#
++CONFIG_CPU_32=y
++# CONFIG_CPU_ARM926T is not set
++# CONFIG_CPU_V6 is not set
++CONFIG_CPU_32v6K=y
++CONFIG_CPU_V7=y
++CONFIG_CPU_32v7=y
++CONFIG_CPU_ABRT_EV7=y
++CONFIG_CPU_PABRT_IFAR=y
++CONFIG_CPU_CACHE_V7=y
++CONFIG_CPU_CACHE_VIPT=y
++CONFIG_CPU_COPY_V6=y
++CONFIG_CPU_TLB_V7=y
++CONFIG_CPU_HAS_ASID=y
++CONFIG_CPU_CP15=y
++CONFIG_CPU_CP15_MMU=y
++
++#
++# Processor Features
++#
++CONFIG_ARM_THUMB=y
++# CONFIG_ARM_THUMBEE is not set
++# CONFIG_CPU_ICACHE_DISABLE is not set
++# CONFIG_CPU_DCACHE_DISABLE is not set
++# CONFIG_CPU_BPREDICT_DISABLE is not set
++CONFIG_HAS_TLS_REG=y
++# CONFIG_OUTER_CACHE is not set
++
++#
++# Bus support
++#
++# CONFIG_PCI_SYSCALL is not set
++# CONFIG_ARCH_SUPPORTS_MSI is not set
++# CONFIG_PCCARD is not set
++
++#
++# Kernel Features
++#
++CONFIG_TICK_ONESHOT=y
++CONFIG_NO_HZ=y
++CONFIG_HIGH_RES_TIMERS=y
++CONFIG_GENERIC_CLOCKEVENTS_BUILD=y
++CONFIG_PREEMPT=y
++CONFIG_HZ=100
++CONFIG_AEABI=y
++# CONFIG_OABI_COMPAT is not set
++# CONFIG_ARCH_DISCONTIGMEM_ENABLE is not set
++CONFIG_SELECT_MEMORY_MODEL=y
++CONFIG_FLATMEM_MANUAL=y
++# CONFIG_DISCONTIGMEM_MANUAL is not set
++# CONFIG_SPARSEMEM_MANUAL is not set
++CONFIG_FLATMEM=y
++CONFIG_FLAT_NODE_MEM_MAP=y
++# CONFIG_SPARSEMEM_STATIC is not set
++# CONFIG_SPARSEMEM_VMEMMAP_ENABLE is not set
++CONFIG_PAGEFLAGS_EXTENDED=y
++CONFIG_SPLIT_PTLOCK_CPUS=4
++# CONFIG_RESOURCES_64BIT is not set
++CONFIG_ZONE_DMA_FLAG=1
++CONFIG_BOUNCE=y
++CONFIG_VIRT_TO_BUS=y
++# CONFIG_LEDS is not set
++CONFIG_ALIGNMENT_TRAP=y
++
++#
++# Boot options
++#
++CONFIG_ZBOOT_ROM_TEXT=0x0
++CONFIG_ZBOOT_ROM_BSS=0x0
++CONFIG_CMDLINE="noinitrd console=ttymxc0,115200 root=/dev/mtdblock2 rw rootfstype=jffs2 ip=off"
++# CONFIG_XIP_KERNEL is not set
++# CONFIG_KEXEC is not set
++
++#
++# CPU Frequency scaling
++#
++CONFIG_CPU_FREQ=y
++CONFIG_CPU_FREQ_TABLE=y
++# CONFIG_CPU_FREQ_DEBUG is not set
++CONFIG_CPU_FREQ_STAT=y
++# CONFIG_CPU_FREQ_STAT_DETAILS is not set
++# CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE is not set
++# CONFIG_CPU_FREQ_DEFAULT_GOV_POWERSAVE is not set
++CONFIG_CPU_FREQ_DEFAULT_GOV_USERSPACE=y
++# CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND is not set
++# CONFIG_CPU_FREQ_DEFAULT_GOV_CONSERVATIVE is not set
++CONFIG_CPU_FREQ_GOV_PERFORMANCE=y
++CONFIG_CPU_FREQ_GOV_POWERSAVE=y
++CONFIG_CPU_FREQ_GOV_USERSPACE=y
++# CONFIG_CPU_FREQ_GOV_ONDEMAND is not set
++# CONFIG_CPU_FREQ_GOV_CONSERVATIVE is not set
++CONFIG_CPU_FREQ_IMX=y
++
++#
++# Floating point emulation
++#
++
++#
++# At least one emulation must be selected
++#
++CONFIG_VFP=y
++CONFIG_VFPv3=y
++CONFIG_NEON=y
++
++#
++# Userspace binary formats
++#
++CONFIG_BINFMT_ELF=y
++# CONFIG_BINFMT_AOUT is not set
++# CONFIG_BINFMT_MISC is not set
++
++#
++# Power management options
++#
++CONFIG_PM=y
++# CONFIG_PM_DEBUG is not set
++CONFIG_PM_SLEEP=y
++CONFIG_SUSPEND=y
++CONFIG_SUSPEND_FREEZER=y
++# CONFIG_APM_EMULATION is not set
++CONFIG_ARCH_SUSPEND_POSSIBLE=y
++
++#
++# Networking
++#
++CONFIG_NET=y
++
++#
++# Networking options
++#
++CONFIG_PACKET=y
++CONFIG_PACKET_MMAP=y
++CONFIG_UNIX=y
++CONFIG_XFRM=y
++# CONFIG_XFRM_USER is not set
++# CONFIG_XFRM_SUB_POLICY is not set
++# CONFIG_XFRM_MIGRATE is not set
++# CONFIG_XFRM_STATISTICS is not set
++# CONFIG_NET_KEY is not set
++CONFIG_INET=y
++CONFIG_IP_MULTICAST=y
++# CONFIG_IP_ADVANCED_ROUTER is not set
++CONFIG_IP_FIB_HASH=y
++CONFIG_IP_PNP=y
++CONFIG_IP_PNP_DHCP=y
++CONFIG_IP_PNP_BOOTP=y
++# CONFIG_IP_PNP_RARP is not set
++# CONFIG_NET_IPIP is not set
++# CONFIG_NET_IPGRE is not set
++# CONFIG_IP_MROUTE is not set
++# CONFIG_ARPD is not set
++# CONFIG_SYN_COOKIES is not set
++# CONFIG_INET_AH is not set
++# CONFIG_INET_ESP is not set
++# CONFIG_INET_IPCOMP is not set
++# CONFIG_INET_XFRM_TUNNEL is not set
++# CONFIG_INET_TUNNEL is not set
++CONFIG_INET_XFRM_MODE_TRANSPORT=y
++CONFIG_INET_XFRM_MODE_TUNNEL=y
++CONFIG_INET_XFRM_MODE_BEET=y
++# CONFIG_INET_LRO is not set
++CONFIG_INET_DIAG=y
++CONFIG_INET_TCP_DIAG=y
++# CONFIG_TCP_CONG_ADVANCED is not set
++CONFIG_TCP_CONG_CUBIC=y
++CONFIG_DEFAULT_TCP_CONG="cubic"
++# CONFIG_TCP_MD5SIG is not set
++# CONFIG_IPV6 is not set
++# CONFIG_NETWORK_SECMARK is not set
++# CONFIG_NETFILTER is not set
++# CONFIG_IP_DCCP is not set
++# CONFIG_IP_SCTP is not set
++# CONFIG_TIPC is not set
++# CONFIG_ATM is not set
++# CONFIG_BRIDGE is not set
++# CONFIG_VLAN_8021Q is not set
++# CONFIG_DECNET is not set
++# CONFIG_LLC2 is not set
++# CONFIG_IPX is not set
++# CONFIG_ATALK is not set
++# CONFIG_X25 is not set
++# CONFIG_LAPB is not set
++# CONFIG_ECONET is not set
++# CONFIG_WAN_ROUTER is not set
++CONFIG_NET_SCHED=y
++
++#
++# Queueing/Scheduling
++#
++# CONFIG_NET_SCH_CBQ is not set
++# CONFIG_NET_SCH_HTB is not set
++# CONFIG_NET_SCH_HFSC is not set
++# CONFIG_NET_SCH_PRIO is not set
++# CONFIG_NET_SCH_RED is not set
++# CONFIG_NET_SCH_SFQ is not set
++# CONFIG_NET_SCH_TEQL is not set
++# CONFIG_NET_SCH_TBF is not set
++# CONFIG_NET_SCH_GRED is not set
++# CONFIG_NET_SCH_DSMARK is not set
++# CONFIG_NET_SCH_NETEM is not set
++
++#
++# Classification
++#
++# CONFIG_NET_CLS_BASIC is not set
++# CONFIG_NET_CLS_TCINDEX is not set
++# CONFIG_NET_CLS_ROUTE4 is not set
++# CONFIG_NET_CLS_FW is not set
++# CONFIG_NET_CLS_U32 is not set
++# CONFIG_NET_CLS_RSVP is not set
++# CONFIG_NET_CLS_RSVP6 is not set
++# CONFIG_NET_CLS_FLOW is not set
++# CONFIG_NET_EMATCH is not set
++# CONFIG_NET_CLS_ACT is not set
++CONFIG_NET_SCH_FIFO=y
++
++#
++# Network testing
++#
++# CONFIG_NET_PKTGEN is not set
++# CONFIG_HAMRADIO is not set
++# CONFIG_CAN is not set
++# CONFIG_IRDA is not set
++# CONFIG_BT is not set
++# CONFIG_AF_RXRPC is not set
++
++#
++# Wireless
++#
++# CONFIG_CFG80211 is not set
++CONFIG_WIRELESS_EXT=y
++# CONFIG_MAC80211 is not set
++CONFIG_IEEE80211=y
++# CONFIG_IEEE80211_DEBUG is not set
++# CONFIG_IEEE80211_CRYPT_WEP is not set
++# CONFIG_IEEE80211_CRYPT_CCMP is not set
++# CONFIG_IEEE80211_CRYPT_TKIP is not set
++# CONFIG_RFKILL is not set
++# CONFIG_NET_9P is not set
++
++#
++# Device Drivers
++#
++
++#
++# Generic Driver Options
++#
++CONFIG_UEVENT_HELPER_PATH="/sbin/hotplug"
++CONFIG_STANDALONE=y
++CONFIG_PREVENT_FIRMWARE_BUILD=y
++CONFIG_FW_LOADER=y
++# CONFIG_SYS_HYPERVISOR is not set
++CONFIG_CONNECTOR=y
++CONFIG_PROC_EVENTS=y
++CONFIG_MTD=y
++# CONFIG_MTD_DEBUG is not set
++# CONFIG_MTD_CONCAT is not set
++CONFIG_MTD_PARTITIONS=y
++# CONFIG_MTD_REDBOOT_PARTS is not set
++CONFIG_MTD_CMDLINE_PARTS=y
++# CONFIG_MTD_AFS_PARTS is not set
++# CONFIG_MTD_AR7_PARTS is not set
++
++#
++# User Modules And Translation Layers
++#
++CONFIG_MTD_CHAR=y
++CONFIG_MTD_BLKDEVS=y
++CONFIG_MTD_BLOCK=y
++# CONFIG_FTL is not set
++# CONFIG_NFTL is not set
++# CONFIG_INFTL is not set
++# CONFIG_RFD_FTL is not set
++# CONFIG_SSFDC is not set
++# CONFIG_MTD_OOPS is not set
++
++#
++# RAM/ROM/Flash chip drivers
++#
++# CONFIG_MTD_CFI is not set
++# CONFIG_MTD_JEDECPROBE is not set
++CONFIG_MTD_MAP_BANK_WIDTH_1=y
++CONFIG_MTD_MAP_BANK_WIDTH_2=y
++CONFIG_MTD_MAP_BANK_WIDTH_4=y
++# CONFIG_MTD_MAP_BANK_WIDTH_8 is not set
++# CONFIG_MTD_MAP_BANK_WIDTH_16 is not set
++# CONFIG_MTD_MAP_BANK_WIDTH_32 is not set
++CONFIG_MTD_CFI_I1=y
++CONFIG_MTD_CFI_I2=y
++# CONFIG_MTD_CFI_I4 is not set
++# CONFIG_MTD_CFI_I8 is not set
++# CONFIG_MTD_RAM is not set
++# CONFIG_MTD_ROM is not set
++# CONFIG_MTD_ABSENT is not set
++
++#
++# Mapping drivers for chip access
++#
++# CONFIG_MTD_COMPLEX_MAPPINGS is not set
++# CONFIG_MTD_PLATRAM is not set
++# CONFIG_MTD_MXC is not set
++
++#
++# Self-contained MTD device drivers
++#
++# CONFIG_MTD_DATAFLASH is not set
++# CONFIG_MTD_M25P80 is not set
++# CONFIG_MTD_SLRAM is not set
++# CONFIG_MTD_PHRAM is not set
++# CONFIG_MTD_MTDRAM is not set
++# CONFIG_MTD_BLOCK2MTD is not set
++
++#
++# Disk-On-Chip Device Drivers
++#
++# CONFIG_MTD_DOC2000 is not set
++# CONFIG_MTD_DOC2001 is not set
++# CONFIG_MTD_DOC2001PLUS is not set
++CONFIG_MTD_NAND=y
++# CONFIG_MTD_NAND_VERIFY_WRITE is not set
++# CONFIG_MTD_NAND_ECC_SMC is not set
++# CONFIG_MTD_NAND_MUSEUM_IDS is not set
++CONFIG_MTD_NAND_IDS=y
++# CONFIG_MTD_NAND_DISKONCHIP is not set
++# CONFIG_MTD_NAND_NANDSIM is not set
++CONFIG_MTD_NAND_MXC_V3=y
++# CONFIG_MTD_NAND_MXC_SWECC is not set
++# CONFIG_MTD_NAND_MXC_FORCE_CE is not set
++# CONFIG_MXC_NAND_LOW_LEVEL_ERASE is not set
++# CONFIG_MTD_NAND_PLATFORM is not set
++# CONFIG_MTD_ALAUDA is not set
++# CONFIG_MTD_ONENAND is not set
++
++#
++# UBI - Unsorted block images
++#
++# CONFIG_MTD_UBI is not set
++
++#
++# Voltage and Current regulators
++#
++CONFIG_REGULATOR_API=y
++CONFIG_REGULATOR=y
++# CONFIG_REGULATOR_DEBUG is not set
++CONFIG_REGULATOR_MC13892=y
++# CONFIG_REGULATOR_WM8350 is not set
++# CONFIG_PARPORT is not set
++CONFIG_BLK_DEV=y
++# CONFIG_BLK_DEV_COW_COMMON is not set
++CONFIG_BLK_DEV_LOOP=y
++# CONFIG_BLK_DEV_CRYPTOLOOP is not set
++# CONFIG_BLK_DEV_NBD is not set
++# CONFIG_BLK_DEV_UB is not set
++# CONFIG_BLK_DEV_RAM is not set
++# CONFIG_CDROM_PKTCDVD is not set
++# CONFIG_ATA_OVER_ETH is not set
++CONFIG_MISC_DEVICES=y
++# CONFIG_EEPROM_93CX6 is not set
++# CONFIG_ENCLOSURE_SERVICES is not set
++CONFIG_HAVE_IDE=y
++# CONFIG_IDE is not set
++
++#
++# SCSI device support
++#
++# CONFIG_RAID_ATTRS is not set
++CONFIG_SCSI=y
++CONFIG_SCSI_DMA=y
++# CONFIG_SCSI_TGT is not set
++# CONFIG_SCSI_NETLINK is not set
++CONFIG_SCSI_PROC_FS=y
++
++#
++# SCSI support type (disk, tape, CD-ROM)
++#
++CONFIG_BLK_DEV_SD=y
++# CONFIG_CHR_DEV_ST is not set
++# CONFIG_CHR_DEV_OSST is not set
++# CONFIG_BLK_DEV_SR is not set
++# CONFIG_CHR_DEV_SG is not set
++# CONFIG_CHR_DEV_SCH is not set
++
++#
++# Some SCSI devices (e.g. CD jukebox) support multiple LUNs
++#
++CONFIG_SCSI_MULTI_LUN=y
++# CONFIG_SCSI_CONSTANTS is not set
++# CONFIG_SCSI_LOGGING is not set
++# CONFIG_SCSI_SCAN_ASYNC is not set
++CONFIG_SCSI_WAIT_SCAN=m
++
++#
++# SCSI Transports
++#
++# CONFIG_SCSI_SPI_ATTRS is not set
++# CONFIG_SCSI_FC_ATTRS is not set
++# CONFIG_SCSI_ISCSI_ATTRS is not set
++# CONFIG_SCSI_SAS_LIBSAS is not set
++# CONFIG_SCSI_SRP_ATTRS is not set
++CONFIG_SCSI_LOWLEVEL=y
++# CONFIG_ISCSI_TCP is not set
++# CONFIG_SCSI_DEBUG is not set
++CONFIG_ATA=m
++# CONFIG_ATA_NONSTANDARD is not set
++# CONFIG_SATA_PMP is not set
++CONFIG_ATA_SFF=y
++# CONFIG_SATA_MV is not set
++# CONFIG_PATA_PLATFORM is not set
++CONFIG_PATA_FSL=m
++# CONFIG_MD is not set
++CONFIG_NETDEVICES=y
++# CONFIG_NETDEVICES_MULTIQUEUE is not set
++# CONFIG_DUMMY is not set
++# CONFIG_BONDING is not set
++# CONFIG_MACVLAN is not set
++# CONFIG_EQUALIZER is not set
++# CONFIG_TUN is not set
++# CONFIG_VETH is not set
++# CONFIG_PHYLIB is not set
++CONFIG_NET_ETHERNET=y
++CONFIG_MII=y
++# CONFIG_AX88796 is not set
++# CONFIG_SMC91X is not set
++# CONFIG_DM9000 is not set
++# CONFIG_ENC28J60 is not set
++# CONFIG_SMC911X is not set
++CONFIG_SMSC911X=y
++# CONFIG_IBM_NEW_EMAC_ZMII is not set
++# CONFIG_IBM_NEW_EMAC_RGMII is not set
++# CONFIG_IBM_NEW_EMAC_TAH is not set
++# CONFIG_IBM_NEW_EMAC_EMAC4 is not set
++# CONFIG_B44 is not set
++# CONFIG_CS89x0 is not set
++CONFIG_FEC=y
++# CONFIG_FEC2 is not set
++# CONFIG_NETDEV_1000 is not set
++# CONFIG_NETDEV_10000 is not set
++
++#
++# Wireless LAN
++#
++# CONFIG_WLAN_PRE80211 is not set
++# CONFIG_WLAN_80211 is not set
++# CONFIG_IWLWIFI_LEDS is not set
++
++#
++# USB Network Adapters
++#
++# CONFIG_USB_CATC is not set
++# CONFIG_USB_KAWETH is not set
++# CONFIG_USB_PEGASUS is not set
++# CONFIG_USB_RTL8150 is not set
++# CONFIG_USB_USBNET is not set
++# CONFIG_WAN is not set
++# CONFIG_PPP is not set
++# CONFIG_SLIP is not set
++# CONFIG_NETCONSOLE is not set
++# CONFIG_NETPOLL is not set
++# CONFIG_NET_POLL_CONTROLLER is not set
++# CONFIG_ISDN is not set
++
++#
++# Input device support
++#
++CONFIG_INPUT=y
++# CONFIG_INPUT_FF_MEMLESS is not set
++CONFIG_INPUT_POLLDEV=y
++
++#
++# Userland interfaces
++#
++# CONFIG_INPUT_MOUSEDEV is not set
++# CONFIG_INPUT_JOYDEV is not set
++CONFIG_INPUT_EVDEV=y
++# CONFIG_INPUT_EVBUG is not set
++
++#
++# Input Device Drivers
++#
++CONFIG_INPUT_KEYBOARD=y
++# CONFIG_KEYBOARD_ATKBD is not set
++# CONFIG_KEYBOARD_SUNKBD is not set
++# CONFIG_KEYBOARD_LKKBD is not set
++# CONFIG_KEYBOARD_XTKBD is not set
++# CONFIG_KEYBOARD_NEWTON is not set
++# CONFIG_KEYBOARD_STOWAWAY is not set
++CONFIG_KEYBOARD_MXC=y
++CONFIG_GPIO_BUTTON_MXC=y
++# CONFIG_INPUT_MOUSE is not set
++# CONFIG_INPUT_JOYSTICK is not set
++# CONFIG_INPUT_TABLET is not set
++CONFIG_INPUT_TOUCHSCREEN=y
++# CONFIG_TOUCHSCREEN_ADS7846 is not set
++# CONFIG_TOUCHSCREEN_FUJITSU is not set
++# CONFIG_TOUCHSCREEN_GUNZE is not set
++# CONFIG_TOUCHSCREEN_ELO is not set
++# CONFIG_TOUCHSCREEN_MTOUCH is not set
++# CONFIG_TOUCHSCREEN_MK712 is not set
++CONFIG_TOUCHSCREEN_MXC=y
++# CONFIG_TOUCHSCREEN_PENMOUNT is not set
++# CONFIG_TOUCHSCREEN_TOUCHRIGHT is not set
++# CONFIG_TOUCHSCREEN_TOUCHWIN is not set
++# CONFIG_TOUCHSCREEN_UCB1400 is not set
++# CONFIG_TOUCHSCREEN_USB_COMPOSITE is not set
++# CONFIG_TOUCHSCREEN_TSC2007 is not set
++# CONFIG_INPUT_MISC is not set
++
++#
++# Hardware I/O ports
++#
++# CONFIG_SERIO is not set
++# CONFIG_GAMEPORT is not set
++
++#
++# Character devices
++#
++CONFIG_VT=y
++CONFIG_VT_CONSOLE=y
++CONFIG_HW_CONSOLE=y
++# CONFIG_VT_HW_CONSOLE_BINDING is not set
++CONFIG_DEVKMEM=y
++# CONFIG_SERIAL_NONSTANDARD is not set
++
++#
++# Serial drivers
++#
++# CONFIG_SERIAL_8250 is not set
++
++#
++# Non-8250 serial port support
++#
++CONFIG_SERIAL_MXC=y
++CONFIG_SERIAL_MXC_CONSOLE=y
++CONFIG_SERIAL_CORE=y
++CONFIG_SERIAL_CORE_CONSOLE=y
++CONFIG_UNIX98_PTYS=y
++CONFIG_LEGACY_PTYS=y
++CONFIG_LEGACY_PTY_COUNT=256
++# CONFIG_IPMI_HANDLER is not set
++CONFIG_HW_RANDOM=y
++# CONFIG_NVRAM is not set
++# CONFIG_R3964 is not set
++# CONFIG_RAW_DRIVER is not set
++# CONFIG_TCG_TPM is not set
++CONFIG_I2C=y
++CONFIG_I2C_BOARDINFO=y
++CONFIG_I2C_CHARDEV=y
++
++#
++# I2C Hardware Bus support
++#
++CONFIG_I2C_MXC=y
++CONFIG_I2C_MXC_HS=y
++# CONFIG_I2C_OCORES is not set
++# CONFIG_I2C_PARPORT_LIGHT is not set
++# CONFIG_I2C_SIMTEC is not set
++# CONFIG_I2C_TAOS_EVM is not set
++# CONFIG_I2C_STUB is not set
++# CONFIG_I2C_TINY_USB is not set
++# CONFIG_I2C_PCA_PLATFORM is not set
++
++#
++# Miscellaneous I2C Chip support
++#
++# CONFIG_DS1682 is not set
++# CONFIG_SENSORS_EEPROM is not set
++# CONFIG_SENSORS_PCF8574 is not set
++# CONFIG_PCF8575 is not set
++# CONFIG_SENSORS_PCF8591 is not set
++# CONFIG_SENSORS_MAX6875 is not set
++# CONFIG_SENSORS_TSL2550 is not set
++# CONFIG_I2C_DEBUG_CORE is not set
++# CONFIG_I2C_DEBUG_ALGO is not set
++# CONFIG_I2C_DEBUG_BUS is not set
++# CONFIG_I2C_DEBUG_CHIP is not set
++# CONFIG_I2C_SLAVE is not set
++CONFIG_SPI=y
++CONFIG_SPI_MASTER=y
++
++#
++# SPI Master Controller Drivers
++#
++CONFIG_SPI_BITBANG=y
++CONFIG_SPI_MXC=y
++# CONFIG_SPI_MXC_TEST_LOOPBACK is not set
++CONFIG_SPI_MXC_SELECT1=y
++# CONFIG_SPI_MXC_SELECT2 is not set
++# CONFIG_SPI_MXC_SELECT3 is not set
++
++#
++# SPI Protocol Masters
++#
++# CONFIG_SPI_AT25 is not set
++# CONFIG_SPI_SPIDEV is not set
++# CONFIG_SPI_TLE62X0 is not set
++CONFIG_W1=m
++CONFIG_W1_CON=y
++
++#
++# 1-wire Bus Masters
++#
++# CONFIG_W1_MASTER_DS2490 is not set
++# CONFIG_W1_MASTER_DS2482 is not set
++CONFIG_W1_MASTER_MXC=m
++# CONFIG_W1_MASTER_DS1WM is not set
++
++#
++# 1-wire Slaves
++#
++# CONFIG_W1_SLAVE_THERM is not set
++# CONFIG_W1_SLAVE_SMEM is not set
++# CONFIG_W1_SLAVE_DS2751 is not set
++# CONFIG_W1_SLAVE_DS2433 is not set
++CONFIG_W1_SLAVE_DS2438=m
++# CONFIG_W1_SLAVE_DS2760 is not set
++CONFIG_POWER_SUPPLY=m
++# CONFIG_POWER_SUPPLY_DEBUG is not set
++# CONFIG_PDA_POWER is not set
++# CONFIG_BATTERY_DS2760 is not set
++CONFIG_HWMON=y
++# CONFIG_HWMON_VID is not set
++# CONFIG_SENSORS_AD7418 is not set
++# CONFIG_SENSORS_ADM1021 is not set
++# CONFIG_SENSORS_ADM1025 is not set
++# CONFIG_SENSORS_ADM1026 is not set
++# CONFIG_SENSORS_ADM1029 is not set
++# CONFIG_SENSORS_ADM1031 is not set
++# CONFIG_SENSORS_ADM9240 is not set
++# CONFIG_SENSORS_ADT7470 is not set
++# CONFIG_SENSORS_ADT7473 is not set
++# CONFIG_SENSORS_ATXP1 is not set
++# CONFIG_SENSORS_DS1621 is not set
++# CONFIG_SENSORS_F71805F is not set
++# CONFIG_SENSORS_F71882FG is not set
++# CONFIG_SENSORS_F75375S is not set
++# CONFIG_SENSORS_GL518SM is not set
++# CONFIG_SENSORS_GL520SM is not set
++# CONFIG_SENSORS_IT87 is not set
++# CONFIG_SENSORS_LM63 is not set
++# CONFIG_SENSORS_LM70 is not set
++# CONFIG_SENSORS_LM75 is not set
++# CONFIG_SENSORS_LM77 is not set
++# CONFIG_SENSORS_LM78 is not set
++# CONFIG_SENSORS_LM80 is not set
++# CONFIG_SENSORS_LM83 is not set
++# CONFIG_SENSORS_LM85 is not set
++# CONFIG_SENSORS_LM87 is not set
++# CONFIG_SENSORS_LM90 is not set
++# CONFIG_SENSORS_LM92 is not set
++# CONFIG_SENSORS_LM93 is not set
++# CONFIG_SENSORS_MAX1619 is not set
++# CONFIG_SENSORS_MAX6650 is not set
++# CONFIG_SENSORS_PC87360 is not set
++# CONFIG_SENSORS_PC87427 is not set
++# CONFIG_SENSORS_DME1737 is not set
++# CONFIG_SENSORS_SMSC47M1 is not set
++# CONFIG_SENSORS_SMSC47M192 is not set
++# CONFIG_SENSORS_SMSC47B397 is not set
++# CONFIG_SENSORS_ADS7828 is not set
++# CONFIG_SENSORS_THMC50 is not set
++# CONFIG_SENSORS_VT1211 is not set
++# CONFIG_SENSORS_W83781D is not set
++# CONFIG_SENSORS_W83791D is not set
++# CONFIG_SENSORS_W83792D is not set
++# CONFIG_SENSORS_W83793 is not set
++# CONFIG_SENSORS_W83L785TS is not set
++# CONFIG_SENSORS_W83L786NG is not set
++# CONFIG_SENSORS_W83627HF is not set
++# CONFIG_SENSORS_W83627EHF is not set
++# CONFIG_HWMON_DEBUG_CHIP is not set
++CONFIG_SENSORS_ISL29003=y
++CONFIG_WATCHDOG=y
++CONFIG_WATCHDOG_NOWAYOUT=y
++
++#
++# Watchdog Device Drivers
++#
++# CONFIG_SOFT_WATCHDOG is not set
++CONFIG_MXC_WATCHDOG=y
++
++#
++# USB-based Watchdog Cards
++#
++# CONFIG_USBPCWATCHDOG is not set
++
++#
++# Sonics Silicon Backplane
++#
++CONFIG_SSB_POSSIBLE=y
++# CONFIG_SSB is not set
++
++#
++# Multifunction device drivers
++#
++# CONFIG_MFD_SM501 is not set
++# CONFIG_MFD_ASIC3 is not set
++# CONFIG_HTC_PASIC3 is not set
++
++#
++# Multimedia devices
++#
++
++#
++# Multimedia core support
++#
++CONFIG_VIDEO_DEV=y
++CONFIG_VIDEO_V4L2_COMMON=y
++CONFIG_VIDEO_ALLOW_V4L1=y
++CONFIG_VIDEO_V4L1_COMPAT=y
++# CONFIG_DVB_CORE is not set
++CONFIG_VIDEO_MEDIA=y
++
++#
++# Multimedia drivers
++#
++# CONFIG_MEDIA_ATTACH is not set
++CONFIG_MEDIA_TUNER=y
++CONFIG_MEDIA_TUNER_CUSTOMIZE=y
++# CONFIG_MEDIA_TUNER_SIMPLE is not set
++# CONFIG_MEDIA_TUNER_TDA8290 is not set
++# CONFIG_MEDIA_TUNER_TDA827X is not set
++# CONFIG_MEDIA_TUNER_TDA18271 is not set
++# CONFIG_MEDIA_TUNER_TDA9887 is not set
++# CONFIG_MEDIA_TUNER_TEA5761 is not set
++# CONFIG_MEDIA_TUNER_TEA5767 is not set
++# CONFIG_MEDIA_TUNER_MT20XX is not set
++# CONFIG_MEDIA_TUNER_MT2060 is not set
++# CONFIG_MEDIA_TUNER_MT2266 is not set
++# CONFIG_MEDIA_TUNER_MT2131 is not set
++# CONFIG_MEDIA_TUNER_QT1010 is not set
++# CONFIG_MEDIA_TUNER_XC2028 is not set
++# CONFIG_MEDIA_TUNER_XC5000 is not set
++# CONFIG_MEDIA_TUNER_MXL5005S is not set
++CONFIG_VIDEO_V4L2=y
++CONFIG_VIDEO_V4L1=y
++CONFIG_VIDEO_CAPTURE_DRIVERS=y
++# CONFIG_VIDEO_ADV_DEBUG is not set
++# CONFIG_VIDEO_HELPER_CHIPS_AUTO is not set
++
++#
++# Encoders/decoders and other helper chips
++#
++
++#
++# Audio decoders
++#
++# CONFIG_VIDEO_TVAUDIO is not set
++# CONFIG_VIDEO_TDA7432 is not set
++# CONFIG_VIDEO_TDA9840 is not set
++# CONFIG_VIDEO_TDA9875 is not set
++# CONFIG_VIDEO_TEA6415C is not set
++# CONFIG_VIDEO_TEA6420 is not set
++# CONFIG_VIDEO_MSP3400 is not set
++# CONFIG_VIDEO_CS5345 is not set
++# CONFIG_VIDEO_CS53L32A is not set
++# CONFIG_VIDEO_M52790 is not set
++# CONFIG_VIDEO_TLV320AIC23B is not set
++# CONFIG_VIDEO_WM8775 is not set
++# CONFIG_VIDEO_WM8739 is not set
++# CONFIG_VIDEO_VP27SMPX is not set
++
++#
++# Video decoders
++#
++# CONFIG_VIDEO_BT819 is not set
++# CONFIG_VIDEO_BT856 is not set
++# CONFIG_VIDEO_BT866 is not set
++# CONFIG_VIDEO_KS0127 is not set
++# CONFIG_VIDEO_OV7670 is not set
++# CONFIG_VIDEO_TCM825X is not set
++# CONFIG_VIDEO_SAA7110 is not set
++# CONFIG_VIDEO_SAA7111 is not set
++# CONFIG_VIDEO_SAA7114 is not set
++# CONFIG_VIDEO_SAA711X is not set
++# CONFIG_VIDEO_SAA717X is not set
++# CONFIG_VIDEO_SAA7191 is not set
++# CONFIG_VIDEO_TVP5150 is not set
++# CONFIG_VIDEO_VPX3220 is not set
++
++#
++# Video and audio decoders
++#
++# CONFIG_VIDEO_CX25840 is not set
++
++#
++# MPEG video encoders
++#
++# CONFIG_VIDEO_CX2341X is not set
++
++#
++# Video encoders
++#
++# CONFIG_VIDEO_SAA7127 is not set
++# CONFIG_VIDEO_SAA7185 is not set
++# CONFIG_VIDEO_ADV7170 is not set
++# CONFIG_VIDEO_ADV7175 is not set
++
++#
++# Video improvement chips
++#
++# CONFIG_VIDEO_UPD64031A is not set
++# CONFIG_VIDEO_UPD64083 is not set
++# CONFIG_VIDEO_VIVI is not set
++CONFIG_VIDEO_MXC_CAMERA=m
++
++#
++# MXC Camera/V4L2 PRP Features support
++#
++CONFIG_VIDEO_MXC_IPU_CAMERA=y
++# CONFIG_MXC_CAMERA_MC521DA is not set
++# CONFIG_MXC_EMMA_CAMERA_MICRON111 is not set
++# CONFIG_MXC_CAMERA_OV2640_EMMA is not set
++# CONFIG_MXC_CAMERA_MICRON111 is not set
++# CONFIG_MXC_CAMERA_OV2640 is not set
++CONFIG_MXC_CAMERA_OV3640=m
++# CONFIG_MXC_TVIN_ADV7180 is not set
++CONFIG_MXC_IPU_PRP_VF_SDC=m
++CONFIG_MXC_IPU_PRP_ENC=m
++CONFIG_VIDEO_MXC_OUTPUT=y
++CONFIG_VIDEO_MXC_IPU_OUTPUT=y
++# CONFIG_VIDEO_MXC_IPUV1_WVGA_OUTPUT is not set
++# CONFIG_VIDEO_MXC_OPL is not set
++# CONFIG_VIDEO_CPIA is not set
++# CONFIG_VIDEO_CPIA2 is not set
++# CONFIG_VIDEO_SAA5246A is not set
++# CONFIG_VIDEO_SAA5249 is not set
++# CONFIG_TUNER_3036 is not set
++CONFIG_V4L_USB_DRIVERS=y
++# CONFIG_USB_VIDEO_CLASS is not set
++# CONFIG_VIDEO_PVRUSB2 is not set
++# CONFIG_VIDEO_EM28XX is not set
++# CONFIG_VIDEO_USBVISION is not set
++# CONFIG_USB_VICAM is not set
++# CONFIG_USB_IBMCAM is not set
++# CONFIG_USB_KONICAWC is not set
++# CONFIG_USB_QUICKCAM_MESSENGER is not set
++# CONFIG_USB_ET61X251 is not set
++# CONFIG_VIDEO_OVCAMCHIP is not set
++# CONFIG_USB_W9968CF is not set
++# CONFIG_USB_OV511 is not set
++# CONFIG_USB_SE401 is not set
++# CONFIG_USB_SN9C102 is not set
++# CONFIG_USB_STV680 is not set
++# CONFIG_USB_ZC0301 is not set
++# CONFIG_USB_PWC is not set
++# CONFIG_USB_ZR364XX is not set
++# CONFIG_USB_STKWEBCAM is not set
++# CONFIG_SOC_CAMERA is not set
++# CONFIG_RADIO_ADAPTERS is not set
++# CONFIG_DAB is not set
++
++#
++# Graphics support
++#
++# CONFIG_VGASTATE is not set
++# CONFIG_VIDEO_OUTPUT_CONTROL is not set
++CONFIG_FB=y
++# CONFIG_FIRMWARE_EDID is not set
++# CONFIG_FB_DDC is not set
++CONFIG_FB_CFB_FILLRECT=y
++CONFIG_FB_CFB_COPYAREA=y
++CONFIG_FB_CFB_IMAGEBLIT=y
++# CONFIG_FB_CFB_REV_PIXELS_IN_BYTE is not set
++# CONFIG_FB_SYS_FILLRECT is not set
++# CONFIG_FB_SYS_COPYAREA is not set
++# CONFIG_FB_SYS_IMAGEBLIT is not set
++# CONFIG_FB_FOREIGN_ENDIAN is not set
++# CONFIG_FB_SYS_FOPS is not set
++# CONFIG_FB_SVGALIB is not set
++# CONFIG_FB_MACMODES is not set
++# CONFIG_FB_BACKLIGHT is not set
++# CONFIG_FB_MODE_HELPERS is not set
++# CONFIG_FB_TILEBLITTING is not set
++
++#
++# Frame buffer hardware drivers
++#
++CONFIG_FB_MXC=y
++CONFIG_FB_MXC_SYNC_PANEL=y
++CONFIG_FB_MXC_EPSON_VGA_SYNC_PANEL=y
++CONFIG_FB_MXC_TVOUT_TVE=y
++# CONFIG_FB_MXC_CLAA_WVGA_SYNC_PANEL is not set
++# CONFIG_FB_MXC_SII9022 is not set
++CONFIG_FB_MXC_CH7026=y
++# CONFIG_FB_MXC_TVOUT is not set
++# CONFIG_FB_MXC_TVOUT_CH7024 is not set
++# CONFIG_FB_MXC_ASYNC_PANEL is not set
++# CONFIG_FB_UVESA is not set
++# CONFIG_FB_S1D13XXX is not set
++# CONFIG_FB_VIRTUAL is not set
++CONFIG_BACKLIGHT_LCD_SUPPORT=y
++# CONFIG_LCD_CLASS_DEVICE is not set
++CONFIG_BACKLIGHT_CLASS_DEVICE=y
++# CONFIG_BACKLIGHT_CORGI is not set
++CONFIG_BACKLIGHT_MXC=y
++# CONFIG_BACKLIGHT_MXC_PWM is not set
++CONFIG_BACKLIGHT_MXC_MC13892=y
++
++#
++# Display device support
++#
++# CONFIG_DISPLAY_SUPPORT is not set
++
++#
++# Console display driver support
++#
++# CONFIG_VGA_CONSOLE is not set
++CONFIG_DUMMY_CONSOLE=y
++CONFIG_FRAMEBUFFER_CONSOLE=y
++# CONFIG_FRAMEBUFFER_CONSOLE_DETECT_PRIMARY is not set
++# CONFIG_FRAMEBUFFER_CONSOLE_ROTATION is not set
++CONFIG_FONTS=y
++# CONFIG_FONT_8x8 is not set
++CONFIG_FONT_8x16=y
++# CONFIG_FONT_6x11 is not set
++# CONFIG_FONT_7x14 is not set
++# CONFIG_FONT_PEARL_8x8 is not set
++# CONFIG_FONT_ACORN_8x8 is not set
++# CONFIG_FONT_MINI_4x6 is not set
++# CONFIG_FONT_SUN8x16 is not set
++# CONFIG_FONT_SUN12x22 is not set
++# CONFIG_FONT_10x18 is not set
++CONFIG_LOGO=y
++# CONFIG_LOGO_LINUX_MONO is not set
++# CONFIG_LOGO_LINUX_VGA16 is not set
++CONFIG_LOGO_LINUX_CLUT224=y
++
++#
++# Sound
++#
++CONFIG_SOUND=y
++
++#
++# Advanced Linux Sound Architecture
++#
++CONFIG_SND=y
++CONFIG_SND_TIMER=y
++CONFIG_SND_PCM=y
++# CONFIG_SND_SEQUENCER is not set
++CONFIG_SND_OSSEMUL=y
++CONFIG_SND_MIXER_OSS=y
++CONFIG_SND_PCM_OSS=y
++CONFIG_SND_PCM_OSS_PLUGINS=y
++# CONFIG_SND_DYNAMIC_MINORS is not set
++CONFIG_SND_SUPPORT_OLD_API=y
++CONFIG_SND_VERBOSE_PROCFS=y
++# CONFIG_SND_VERBOSE_PRINTK is not set
++# CONFIG_SND_DEBUG is not set
++
++#
++# Generic devices
++#
++# CONFIG_SND_DUMMY is not set
++# CONFIG_SND_MTPAV is not set
++# CONFIG_SND_SERIAL_U16550 is not set
++# CONFIG_SND_MPU401 is not set
++
++#
++# ALSA ARM devices
++#
++CONFIG_SND_MXC_SPDIF=m
++
++#
++# SPI devices
++#
++
++#
++# USB devices
++#
++# CONFIG_SND_USB_AUDIO is not set
++# CONFIG_SND_USB_CAIAQ is not set
++
++#
++# System on Chip audio support
++#
++CONFIG_SND_SOC=y
++CONFIG_SND_MXC_SOC=y
++CONFIG_SND_MXC_SOC_SSI=y
++CONFIG_SND_MXC_SOC_IRAM=y
++# CONFIG_SND_SOC_IMX_3STACK_WM8350 is not set
++# CONFIG_SND_SOC_IMX_3STACK_AK4647 is not set
++# CONFIG_SND_SOC_IMX_3STACK_WM8580 is not set
++CONFIG_SND_SOC_IMX_3STACK_WM8903=y
++CONFIG_SND_SOC_IMX_3STACK_SGTL5000=y
++# CONFIG_SND_SOC_IMX_3STACK_BLUETOOTH is not set
++
++#
++# ALSA SoC audio for Freescale SOCs
++#
++
++#
++# SoC Audio for the Texas Instruments OMAP
++#
++CONFIG_SND_SOC_WM8903=y
++CONFIG_SND_SOC_SGTL5000=y
++
++#
++# Open Sound System
++#
++# CONFIG_SOUND_PRIME is not set
++CONFIG_HID_SUPPORT=y
++CONFIG_HID=y
++# CONFIG_HID_DEBUG is not set
++# CONFIG_HIDRAW is not set
++
++#
++# USB Input Devices
++#
++CONFIG_USB_HID=y
++# CONFIG_USB_HIDINPUT_POWERBOOK is not set
++# CONFIG_HID_FF is not set
++# CONFIG_USB_HIDDEV is not set
++CONFIG_USB_SUPPORT=y
++CONFIG_USB_ARCH_HAS_HCD=y
++# CONFIG_USB_ARCH_HAS_OHCI is not set
++CONFIG_USB_ARCH_HAS_EHCI=y
++CONFIG_USB=y
++# CONFIG_USB_DEBUG is not set
++# CONFIG_USB_ANNOUNCE_NEW_DEVICES is not set
++
++#
++# Miscellaneous USB options
++#
++# CONFIG_USB_DEVICEFS is not set
++CONFIG_USB_DEVICE_CLASS=y
++# CONFIG_USB_DYNAMIC_MINORS is not set
++# CONFIG_USB_SUSPEND is not set
++# CONFIG_USB_OTG is not set
++# CONFIG_USB_OTG_WHITELIST is not set
++# CONFIG_USB_OTG_BLACKLIST_HUB is not set
++
++#
++# USB Host Controller Drivers
++#
++# CONFIG_USB_C67X00_HCD is not set
++CONFIG_USB_EHCI_HCD=y
++CONFIG_USB_EHCI_ARC=y
++CONFIG_USB_EHCI_ARC_H1=y
++CONFIG_USB_EHCI_ARC_H2=y
++CONFIG_USB_EHCI_ARC_OTG=y
++# CONFIG_USB_STATIC_IRAM is not set
++# CONFIG_USB_EHCI_FSL_MC13783 is not set
++# CONFIG_USB_EHCI_FSL_1301 is not set
++# CONFIG_USB_EHCI_FSL_1504 is not set
++CONFIG_USB_EHCI_FSL_UTMI=y
++CONFIG_USB_EHCI_ROOT_HUB_TT=y
++# CONFIG_USB_EHCI_TT_NEWSCHED is not set
++# CONFIG_USB_ISP116X_HCD is not set
++# CONFIG_USB_ISP1760_HCD is not set
++# CONFIG_USB_SL811_HCD is not set
++# CONFIG_USB_R8A66597_HCD is not set
++
++#
++# USB Device Class drivers
++#
++# CONFIG_USB_ACM is not set
++# CONFIG_USB_PRINTER is not set
++# CONFIG_USB_WDM is not set
++
++#
++# NOTE: USB_STORAGE enables SCSI, and 'SCSI disk support'
++#
++
++#
++# may also be needed; see USB_STORAGE Help for more information
++#
++CONFIG_USB_STORAGE=y
++# CONFIG_USB_STORAGE_DEBUG is not set
++# CONFIG_USB_STORAGE_DATAFAB is not set
++# CONFIG_USB_STORAGE_FREECOM is not set
++# CONFIG_USB_STORAGE_ISD200 is not set
++# CONFIG_USB_STORAGE_DPCM is not set
++# CONFIG_USB_STORAGE_USBAT is not set
++# CONFIG_USB_STORAGE_SDDR09 is not set
++# CONFIG_USB_STORAGE_SDDR55 is not set
++# CONFIG_USB_STORAGE_JUMPSHOT is not set
++# CONFIG_USB_STORAGE_ALAUDA is not set
++# CONFIG_USB_STORAGE_ONETOUCH is not set
++# CONFIG_USB_STORAGE_KARMA is not set
++# CONFIG_USB_STORAGE_CYPRESS_ATACB is not set
++# CONFIG_USB_LIBUSUAL is not set
++
++#
++# USB Imaging devices
++#
++# CONFIG_USB_MDC800 is not set
++# CONFIG_USB_MICROTEK is not set
++# CONFIG_USB_MON is not set
++
++#
++# Belcarra USBLAN Networking for USB
++#
++# CONFIG_USB_USBLAN is not set
++
++#
++# USB port drivers
++#
++# CONFIG_USB_SERIAL is not set
++
++#
++# USB Miscellaneous drivers
++#
++# CONFIG_USB_EMI62 is not set
++# CONFIG_USB_EMI26 is not set
++# CONFIG_USB_ADUTUX is not set
++# CONFIG_USB_AUERSWALD is not set
++# CONFIG_USB_RIO500 is not set
++# CONFIG_USB_LEGOTOWER is not set
++# CONFIG_USB_LCD is not set
++# CONFIG_USB_BERRY_CHARGE is not set
++# CONFIG_USB_LED is not set
++# CONFIG_USB_CYPRESS_CY7C63 is not set
++# CONFIG_USB_CYTHERM is not set
++# CONFIG_USB_PHIDGET is not set
++# CONFIG_USB_IDMOUSE is not set
++# CONFIG_USB_FTDI_ELAN is not set
++# CONFIG_USB_APPLEDISPLAY is not set
++# CONFIG_USB_SISUSBVGA is not set
++# CONFIG_USB_LD is not set
++# CONFIG_USB_TRANCEVIBRATOR is not set
++# CONFIG_USB_IOWARRIOR is not set
++# CONFIG_USB_ISIGHTFW is not set
++CONFIG_USB_GADGET=m
++# CONFIG_USB_GADGET_DEBUG_FILES is not set
++CONFIG_USB_GADGET_SELECTED=y
++# CONFIG_USB_GADGET_AMD5536UDC is not set
++# CONFIG_USB_GADGET_ATMEL_USBA is not set
++# CONFIG_USB_GADGET_FSL_USB2 is not set
++# CONFIG_USB_GADGET_NET2280 is not set
++# CONFIG_USB_GADGET_PXA2XX is not set
++# CONFIG_USB_GADGET_M66592 is not set
++# CONFIG_USB_GADGET_PXA27X is not set
++# CONFIG_USB_GADGET_GOKU is not set
++# CONFIG_USB_GADGET_LH7A40X is not set
++# CONFIG_USB_GADGET_OMAP is not set
++CONFIG_USB_GADGET_ARC=y
++CONFIG_USB_ARC=m
++# CONFIG_USB_GADGET_S3C2410 is not set
++# CONFIG_USB_GADGET_AT91 is not set
++# CONFIG_USB_GADGET_DUMMY_HCD is not set
++CONFIG_USB_GADGET_DUALSPEED=y
++CONFIG_USB_GADGET_ARC_OTG=y
++# CONFIG_USB_GADGET_FSL_MC13783 is not set
++# CONFIG_USB_GADGET_FSL_1301 is not set
++# CONFIG_USB_GADGET_FSL_1504 is not set
++CONFIG_USB_GADGET_FSL_UTMI=y
++# CONFIG_USB_ZERO is not set
++CONFIG_USB_ETH=m
++CONFIG_USB_ETH_RNDIS=y
++CONFIG_USB_GADGETFS=m
++CONFIG_USB_FILE_STORAGE=m
++# CONFIG_USB_FILE_STORAGE_TEST is not set
++CONFIG_USB_G_SERIAL=m
++# CONFIG_USB_MIDI_GADGET is not set
++# CONFIG_USB_G_PRINTER is not set
++CONFIG_MMC=y
++# CONFIG_MMC_DEBUG is not set
++# CONFIG_MMC_UNSAFE_RESUME is not set
++
++#
++# MMC/SD Card Drivers
++#
++CONFIG_MMC_BLOCK=y
++CONFIG_MMC_BLOCK_BOUNCE=y
++# CONFIG_SDIO_UART is not set
++# CONFIG_MMC_TEST is not set
++CONFIG_SDIO_UNIFI_FS=m
++
++#
++# MMC/SD Host Controller Drivers
++#
++# CONFIG_MMC_SPI is not set
++# CONFIG_MMC_MXC is not set
++CONFIG_MMC_IMX_ESDHCI=y
++# CONFIG_MMC_IMX_ESDHCI_PIO_MODE is not set
++CONFIG_NEW_LEDS=y
++CONFIG_LEDS_CLASS=y
++
++#
++# LED drivers
++#
++CONFIG_LEDS_MC13892=y
++
++#
++# LED Triggers
++#
++# CONFIG_LEDS_TRIGGERS is not set
++CONFIG_RTC_LIB=y
++CONFIG_RTC_CLASS=y
++CONFIG_RTC_HCTOSYS=y
++CONFIG_RTC_HCTOSYS_DEVICE="rtc0"
++# CONFIG_RTC_DEBUG is not set
++
++#
++# RTC interfaces
++#
++CONFIG_RTC_INTF_SYSFS=y
++CONFIG_RTC_INTF_PROC=y
++CONFIG_RTC_INTF_DEV=y
++CONFIG_RTC_INTF_DEV_UIE_EMUL=y
++# CONFIG_RTC_DRV_TEST is not set
++
++#
++# I2C RTC drivers
++#
++# CONFIG_RTC_DRV_DS1307 is not set
++# CONFIG_RTC_DRV_DS1374 is not set
++# CONFIG_RTC_DRV_DS1672 is not set
++# CONFIG_RTC_DRV_MAX6900 is not set
++# CONFIG_RTC_DRV_RS5C372 is not set
++# CONFIG_RTC_DRV_ISL1208 is not set
++# CONFIG_RTC_DRV_X1205 is not set
++# CONFIG_RTC_DRV_PCF8563 is not set
++# CONFIG_RTC_DRV_PCF8583 is not set
++# CONFIG_RTC_DRV_M41T80 is not set
++# CONFIG_RTC_DRV_S35390A is not set
++# CONFIG_RTC_DRV_FM3130 is not set
++
++#
++# SPI RTC drivers
++#
++# CONFIG_RTC_DRV_MAX6902 is not set
++# CONFIG_RTC_DRV_R9701 is not set
++# CONFIG_RTC_DRV_RS5C348 is not set
++
++#
++# Platform RTC drivers
++#
++# CONFIG_RTC_DRV_CMOS is not set
++# CONFIG_RTC_DRV_DS1511 is not set
++# CONFIG_RTC_DRV_DS1553 is not set
++# CONFIG_RTC_DRV_DS1742 is not set
++# CONFIG_RTC_DRV_STK17TA8 is not set
++# CONFIG_RTC_DRV_M48T86 is not set
++# CONFIG_RTC_DRV_M48T59 is not set
++# CONFIG_RTC_DRV_V3020 is not set
++
++#
++# on-CPU RTC drivers
++#
++# CONFIG_RTC_MXC is not set
++CONFIG_RTC_DRV_MXC_V2=y
++# CONFIG_RTC_DRV_IMXDI is not set
++CONFIG_RTC_MC13892=m
++# CONFIG_UIO is not set
++
++#
++# MXC support drivers
++#
++CONFIG_MXC_IPU=y
++CONFIG_MXC_IPU_V3=y
++
++#
++# MXC SSI support
++#
++# CONFIG_MXC_SSI is not set
++
++#
++# MXC Digital Audio Multiplexer support
++#
++# CONFIG_MXC_DAM is not set
++
++#
++# MXC PMIC support
++#
++CONFIG_MXC_PMIC=y
++# CONFIG_MXC_PMIC_MC13783 is not set
++CONFIG_MXC_PMIC_MC13892=y
++CONFIG_MXC_PMIC_I2C=y
++CONFIG_MXC_PMIC_SPI=y
++# CONFIG_MXC_PMIC_MC34704 is not set
++# CONFIG_MXC_PMIC_CHARDEV is not set
++
++#
++# MXC PMIC Client Drivers
++#
++CONFIG_MXC_MC13892_ADC=y
++CONFIG_MXC_MC13892_RTC=y
++CONFIG_MXC_MC13892_LIGHT=y
++CONFIG_MXC_MC13892_BATTERY=y
++CONFIG_MXC_MC13892_CONNECTIVITY=y
++CONFIG_MXC_MC13892_POWER=y
++# CONFIG_MXC_PMIC_MC9SDZ60 is not set
++
++#
++# Advanced Power Management devices
++#
++
++#
++# MXC Security Drivers
++#
++# CONFIG_MXC_SECURITY_SCC is not set
++CONFIG_MXC_SECURITY_SCC2=y
++CONFIG_SCC_DEBUG=y
++# CONFIG_MXC_SECURITY_RNG is not set
++
++#
++# SAHARA2 Security Hardware Support
++#
++CONFIG_MXC_SAHARA=y
++CONFIG_MXC_SAHARA_USER_MODE=y
++# CONFIG_MXC_SAHARA_POLL_MODE is not set
++
++#
++# MXC MPEG4 Encoder Kernel module support
++#
++# CONFIG_MXC_HMP4E is not set
++
++#
++# MXC HARDWARE EVENT
++#
++# CONFIG_MXC_HWEVENT is not set
++
++#
++# MXC VPU(Video Processing Unit) support
++#
++CONFIG_MXC_VPU=y
++CONFIG_MXC_VPU_IRAM=y
++# CONFIG_MXC_VPU_DEBUG is not set
++
++#
++# MXC Asynchronous Sample Rate Converter support
++#
++
++#
++# MXC Bluetooth support
++#
++CONFIG_MXC_BLUETOOTH=m
++
++#
++# Broadcom GPS ioctrl support
++#
++
++#
++# MXC Media Local Bus Driver
++#
++
++#
++# i.MX ADC support
++#
++# CONFIG_IMX_ADC is not set
++
++#
++# File systems
++#
++CONFIG_EXT2_FS=y
++# CONFIG_EXT2_FS_XATTR is not set
++# CONFIG_EXT2_FS_XIP is not set
++CONFIG_EXT3_FS=y
++CONFIG_EXT3_FS_XATTR=y
++# CONFIG_EXT3_FS_POSIX_ACL is not set
++# CONFIG_EXT3_FS_SECURITY is not set
++# CONFIG_EXT4DEV_FS is not set
++CONFIG_JBD=y
++CONFIG_FS_MBCACHE=y
++# CONFIG_REISERFS_FS is not set
++# CONFIG_JFS_FS is not set
++# CONFIG_FS_POSIX_ACL is not set
++# CONFIG_XFS_FS is not set
++# CONFIG_OCFS2_FS is not set
++CONFIG_DNOTIFY=y
++CONFIG_INOTIFY=y
++CONFIG_INOTIFY_USER=y
++# CONFIG_QUOTA is not set
++# CONFIG_AUTOFS_FS is not set
++CONFIG_AUTOFS4_FS=m
++# CONFIG_FUSE_FS is not set
++
++#
++# CD-ROM/DVD Filesystems
++#
++# CONFIG_ISO9660_FS is not set
++# CONFIG_UDF_FS is not set
++
++#
++# DOS/FAT/NT Filesystems
++#
++CONFIG_FAT_FS=y
++CONFIG_MSDOS_FS=y
++CONFIG_VFAT_FS=y
++CONFIG_FAT_DEFAULT_CODEPAGE=437
++CONFIG_FAT_DEFAULT_IOCHARSET="iso8859-1"
++# CONFIG_NTFS_FS is not set
++
++#
++# Pseudo filesystems
++#
++CONFIG_PROC_FS=y
++CONFIG_PROC_SYSCTL=y
++CONFIG_SYSFS=y
++CONFIG_TMPFS=y
++# CONFIG_TMPFS_POSIX_ACL is not set
++# CONFIG_HUGETLB_PAGE is not set
++# CONFIG_CONFIGFS_FS is not set
++
++#
++# Miscellaneous filesystems
++#
++# CONFIG_ADFS_FS is not set
++# CONFIG_AFFS_FS is not set
++# CONFIG_HFS_FS is not set
++# CONFIG_HFSPLUS_FS is not set
++# CONFIG_BEFS_FS is not set
++# CONFIG_BFS_FS is not set
++# CONFIG_EFS_FS is not set
++CONFIG_JFFS2_FS=y
++CONFIG_JFFS2_FS_DEBUG=0
++CONFIG_JFFS2_FS_WRITEBUFFER=y
++# CONFIG_JFFS2_FS_WBUF_VERIFY is not set
++# CONFIG_JFFS2_SUMMARY is not set
++# CONFIG_JFFS2_FS_XATTR is not set
++# CONFIG_JFFS2_COMPRESSION_OPTIONS is not set
++CONFIG_JFFS2_ZLIB=y
++# CONFIG_JFFS2_LZO is not set
++CONFIG_JFFS2_RTIME=y
++# CONFIG_JFFS2_RUBIN is not set
++CONFIG_CRAMFS=y
++# CONFIG_VXFS_FS is not set
++# CONFIG_MINIX_FS is not set
++# CONFIG_HPFS_FS is not set
++# CONFIG_QNX4FS_FS is not set
++# CONFIG_ROMFS_FS is not set
++# CONFIG_SYSV_FS is not set
++# CONFIG_UFS_FS is not set
++CONFIG_NETWORK_FILESYSTEMS=y
++CONFIG_NFS_FS=y
++CONFIG_NFS_V3=y
++# CONFIG_NFS_V3_ACL is not set
++# CONFIG_NFS_V4 is not set
++# CONFIG_NFSD is not set
++CONFIG_ROOT_NFS=y
++CONFIG_LOCKD=y
++CONFIG_LOCKD_V4=y
++CONFIG_NFS_COMMON=y
++CONFIG_SUNRPC=y
++# CONFIG_SUNRPC_BIND34 is not set
++# CONFIG_RPCSEC_GSS_KRB5 is not set
++# CONFIG_RPCSEC_GSS_SPKM3 is not set
++# CONFIG_SMB_FS is not set
++# CONFIG_CIFS is not set
++# CONFIG_NCP_FS is not set
++# CONFIG_CODA_FS is not set
++# CONFIG_AFS_FS is not set
++
++#
++# Partition Types
++#
++# CONFIG_PARTITION_ADVANCED is not set
++CONFIG_MSDOS_PARTITION=y
++CONFIG_NLS=y
++CONFIG_NLS_DEFAULT="iso8859-1"
++CONFIG_NLS_CODEPAGE_437=y
++# CONFIG_NLS_CODEPAGE_737 is not set
++# CONFIG_NLS_CODEPAGE_775 is not set
++# CONFIG_NLS_CODEPAGE_850 is not set
++# CONFIG_NLS_CODEPAGE_852 is not set
++# CONFIG_NLS_CODEPAGE_855 is not set
++# CONFIG_NLS_CODEPAGE_857 is not set
++# CONFIG_NLS_CODEPAGE_860 is not set
++# CONFIG_NLS_CODEPAGE_861 is not set
++# CONFIG_NLS_CODEPAGE_862 is not set
++# CONFIG_NLS_CODEPAGE_863 is not set
++# CONFIG_NLS_CODEPAGE_864 is not set
++# CONFIG_NLS_CODEPAGE_865 is not set
++# CONFIG_NLS_CODEPAGE_866 is not set
++# CONFIG_NLS_CODEPAGE_869 is not set
++# CONFIG_NLS_CODEPAGE_936 is not set
++# CONFIG_NLS_CODEPAGE_950 is not set
++# CONFIG_NLS_CODEPAGE_932 is not set
++# CONFIG_NLS_CODEPAGE_949 is not set
++# CONFIG_NLS_CODEPAGE_874 is not set
++# CONFIG_NLS_ISO8859_8 is not set
++# CONFIG_NLS_CODEPAGE_1250 is not set
++# CONFIG_NLS_CODEPAGE_1251 is not set
++CONFIG_NLS_ASCII=m
++CONFIG_NLS_ISO8859_1=y
++# CONFIG_NLS_ISO8859_2 is not set
++# CONFIG_NLS_ISO8859_3 is not set
++# CONFIG_NLS_ISO8859_4 is not set
++# CONFIG_NLS_ISO8859_5 is not set
++# CONFIG_NLS_ISO8859_6 is not set
++# CONFIG_NLS_ISO8859_7 is not set
++# CONFIG_NLS_ISO8859_9 is not set
++# CONFIG_NLS_ISO8859_13 is not set
++# CONFIG_NLS_ISO8859_14 is not set
++# CONFIG_NLS_ISO8859_15 is not set
++# CONFIG_NLS_KOI8_R is not set
++# CONFIG_NLS_KOI8_U is not set
++CONFIG_NLS_UTF8=m
++# CONFIG_DLM is not set
++
++#
++# Kernel hacking
++#
++# CONFIG_PRINTK_TIME is not set
++CONFIG_ENABLE_WARN_DEPRECATED=y
++CONFIG_ENABLE_MUST_CHECK=y
++CONFIG_FRAME_WARN=1024
++# CONFIG_MAGIC_SYSRQ is not set
++# CONFIG_UNUSED_SYMBOLS is not set
++# CONFIG_DEBUG_FS is not set
++# CONFIG_HEADERS_CHECK is not set
++# CONFIG_DEBUG_KERNEL is not set
++# CONFIG_SLUB_DEBUG_ON is not set
++# CONFIG_SLUB_STATS is not set
++# CONFIG_DEBUG_BUGVERBOSE is not set
++CONFIG_FRAME_POINTER=y
++# CONFIG_SAMPLES is not set
++# CONFIG_DEBUG_USER is not set
++
++#
++# Security options
++#
++# CONFIG_KEYS is not set
++# CONFIG_SECURITY is not set
++# CONFIG_SECURITY_FILE_CAPABILITIES is not set
++CONFIG_CRYPTO=y
++
++#
++# Crypto core or helper
++#
++# CONFIG_CRYPTO_MANAGER is not set
++# CONFIG_CRYPTO_GF128MUL is not set
++# CONFIG_CRYPTO_NULL is not set
++# CONFIG_CRYPTO_CRYPTD is not set
++# CONFIG_CRYPTO_AUTHENC is not set
++# CONFIG_CRYPTO_TEST is not set
++
++#
++# Authenticated Encryption with Associated Data
++#
++# CONFIG_CRYPTO_CCM is not set
++# CONFIG_CRYPTO_GCM is not set
++# CONFIG_CRYPTO_SEQIV is not set
++
++#
++# Block modes
++#
++# CONFIG_CRYPTO_CBC is not set
++# CONFIG_CRYPTO_CTR is not set
++# CONFIG_CRYPTO_CTS is not set
++# CONFIG_CRYPTO_ECB is not set
++# CONFIG_CRYPTO_LRW is not set
++# CONFIG_CRYPTO_PCBC is not set
++# CONFIG_CRYPTO_XTS is not set
++
++#
++# Hash modes
++#
++# CONFIG_CRYPTO_HMAC is not set
++# CONFIG_CRYPTO_XCBC is not set
++
++#
++# Digest
++#
++# CONFIG_CRYPTO_CRC32C is not set
++# CONFIG_CRYPTO_MD4 is not set
++# CONFIG_CRYPTO_MD5 is not set
++# CONFIG_CRYPTO_MICHAEL_MIC is not set
++# CONFIG_CRYPTO_SHA1 is not set
++# CONFIG_CRYPTO_SHA256 is not set
++# CONFIG_CRYPTO_SHA512 is not set
++# CONFIG_CRYPTO_TGR192 is not set
++# CONFIG_CRYPTO_WP512 is not set
++
++#
++# Ciphers
++#
++# CONFIG_CRYPTO_AES is not set
++# CONFIG_CRYPTO_ANUBIS is not set
++# CONFIG_CRYPTO_ARC4 is not set
++# CONFIG_CRYPTO_BLOWFISH is not set
++# CONFIG_CRYPTO_CAMELLIA is not set
++# CONFIG_CRYPTO_CAST5 is not set
++# CONFIG_CRYPTO_CAST6 is not set
++# CONFIG_CRYPTO_DES is not set
++# CONFIG_CRYPTO_FCRYPT is not set
++# CONFIG_CRYPTO_KHAZAD is not set
++# CONFIG_CRYPTO_SALSA20 is not set
++# CONFIG_CRYPTO_SEED is not set
++# CONFIG_CRYPTO_SERPENT is not set
++# CONFIG_CRYPTO_TEA is not set
++# CONFIG_CRYPTO_TWOFISH is not set
++
++#
++# Compression
++#
++# CONFIG_CRYPTO_DEFLATE is not set
++# CONFIG_CRYPTO_LZO is not set
++CONFIG_CRYPTO_HW=y
++
++#
++# Library routines
++#
++CONFIG_BITREVERSE=y
++# CONFIG_GENERIC_FIND_FIRST_BIT is not set
++# CONFIG_GENERIC_FIND_NEXT_BIT is not set
++CONFIG_CRC_CCITT=m
++# CONFIG_CRC16 is not set
++# CONFIG_CRC_ITU_T is not set
++CONFIG_CRC32=y
++# CONFIG_CRC7 is not set
++# CONFIG_LIBCRC32C is not set
++CONFIG_ZLIB_INFLATE=y
++CONFIG_ZLIB_DEFLATE=y
++CONFIG_PLIST=y
++CONFIG_HAS_IOMEM=y
++CONFIG_HAS_IOPORT=y
++CONFIG_HAS_DMA=y
+diff --git a/arch/arm/mach-mx51/Kconfig b/arch/arm/mach-mx51/Kconfig
+index 7655de1..b92ad87 100644
+--- a/arch/arm/mach-mx51/Kconfig
++++ b/arch/arm/mach-mx51/Kconfig
+@@ -15,6 +15,12 @@ config MACH_MX51_3DS
+ 	  Include support for MX51 3-Stack platform. This includes specific
+ 	  configurations for the board and its peripherals.
+ 
++config MACH_MX51_BABBAGE
++	bool "Support MX51 BABBAGE platforms"
++	help
++	  Include support for MX51 Babbage platform. This includes specific
++	  configurations for the board and its peripherals.
++
+ config MXC_SDMA_API
+         bool "Use SDMA API"
+         default y
+diff --git a/arch/arm/mach-mx51/Makefile b/arch/arm/mach-mx51/Makefile
+index 5d0b792..8ff16da 100644
+--- a/arch/arm/mach-mx51/Makefile
++++ b/arch/arm/mach-mx51/Makefile
+@@ -11,6 +11,7 @@ obj-y += dummy_gpio.o
+ 
+ obj-$(CONFIG_CPU_V7)        += wfi.o suspend.o
+ obj-$(CONFIG_MACH_MX51_3DS) += mx51_3stack.o mx51_3stack_gpio.o mx51_3stack_pmic_mc13892.o
++obj-$(CONFIG_MACH_MX51_BABBAGE) += mx51_babbage.o mx51_babbage_gpio.o mx51_babbage_pmic_mc13892.o
+ 
+ obj-$(CONFIG_USB_EHCI_ARC_H1)   += usb_h1.o
+ obj-$(CONFIG_USB_EHCI_ARC_H2)   += usb_h2.o
+diff --git a/arch/arm/mach-mx51/board-mx51_babbage.h b/arch/arm/mach-mx51/board-mx51_babbage.h
+new file mode 100644
+index 0000000..1e6c7c8
+--- /dev/null
++++ b/arch/arm/mach-mx51/board-mx51_babbage.h
+@@ -0,0 +1,85 @@
++/*
++ * Copyright 2009 Freescale Semiconductor, Inc. All Rights Reserved.
++ */
++
++/*
++ * The code contained herein is licensed under the GNU General Public
++ * License. You may obtain a copy of the GNU General Public License
++ * Version 2 or later at the following locations:
++ *
++ * http://www.opensource.org/licenses/gpl-license.html
++ * http://www.gnu.org/copyleft/gpl.html
++ */
++
++#ifndef __ASM_ARCH_MXC_BOARD_MX51_BABBAGE_H__
++#define __ASM_ARCH_MXC_BOARD_MX51_BABBAGE_H__
++
++/*!
++ * @defgroup BRDCFG_MX51 Board Configuration Options
++ * @ingroup MSL_MX51
++ */
++
++/*!
++ * @file mach-mx51/board-mx51_babbage.h
++ *
++ * @brief This file contains all the board level configuration options.
++ *
++ * It currently hold the options defined for MX51 Babbage Platform.
++ *
++ * @ingroup BRDCFG_MX51
++ */
++
++/*
++ * Include Files
++ */
++#include <mach/mxc_uart.h>
++
++/*!
++ * @name MXC UART board level configurations
++ */
++/*! @{ */
++/*!
++ * Specifies if the Irda transmit path is inverting
++ */
++#define MXC_IRDA_TX_INV	0
++/*!
++ * Specifies if the Irda receive path is inverting
++ */
++#define MXC_IRDA_RX_INV	0
++
++/* UART 1 configuration */
++/*!
++ * This define specifies if the UART port is configured to be in DTE or
++ * DCE mode. There exists a define like this for each UART port. Valid
++ * values that can be used are \b MODE_DTE or \b MODE_DCE.
++ */
++#define UART1_MODE		MODE_DCE
++/*!
++ * This define specifies if the UART is to be used for IRDA. There exists a
++ * define like this for each UART port. Valid values that can be used are
++ * \b IRDA or \b NO_IRDA.
++ */
++#define UART1_IR		NO_IRDA
++/*!
++ * This define is used to enable or disable a particular UART port. If
++ * disabled, the UART will not be registered in the file system and the user
++ * will not be able to access it. There exists a define like this for each UART
++ * port. Specify a value of 1 to enable the UART and 0 to disable it.
++ */
++#define UART1_ENABLED		1
++/*! @} */
++/* UART 2 configuration */
++#define UART2_MODE		MODE_DCE
++#define UART2_IR		IRDA
++#define UART2_ENABLED		1
++/* UART 3 configuration */
++#define UART3_MODE		MODE_DTE
++#define UART3_IR		NO_IRDA
++#define UART3_ENABLED		1
++
++#define MXC_LL_UART_PADDR	UART1_BASE_ADDR
++#define MXC_LL_UART_VADDR	AIPS1_IO_ADDRESS(UART1_BASE_ADDR)
++
++extern int __init mx51_babbage_init_mc13892(void);
++
++#endif				/* __ASM_ARCH_MXC_BOARD_MX51_BABBAGE_H__ */
+diff --git a/arch/arm/mach-mx51/mx51_babbage.c b/arch/arm/mach-mx51/mx51_babbage.c
+new file mode 100644
+index 0000000..986cfa9
+--- /dev/null
++++ b/arch/arm/mach-mx51/mx51_babbage.c
+@@ -0,0 +1,622 @@
++/*
++ * Copyright 2009 Freescale Semiconductor, Inc. All Rights Reserved.
++ */
++
++/*
++ * The code contained herein is licensed under the GNU General Public
++ * License. You may obtain a copy of the GNU General Public License
++ * Version 2 or later at the following locations:
++ *
++ * http://www.opensource.org/licenses/gpl-license.html
++ * http://www.gnu.org/copyleft/gpl.html
++ */
++
++#include <linux/types.h>
++#include <linux/sched.h>
++#include <linux/delay.h>
++#include <linux/pm.h>
++#include <linux/interrupt.h>
++#include <linux/irq.h>
++#include <linux/init.h>
++#include <linux/input.h>
++#include <linux/nodemask.h>
++#include <linux/clk.h>
++#include <linux/platform_device.h>
++#include <linux/fsl_devices.h>
++#include <linux/spi/spi.h>
++#include <linux/i2c.h>
++#include <linux/ata.h>
++#include <linux/mtd/mtd.h>
++#include <linux/mtd/map.h>
++#include <linux/mtd/partitions.h>
++#include <linux/spi/flash.h>
++#include <linux/regulator/consumer.h>
++#include <linux/pmic_external.h>
++#include <linux/pmic_status.h>
++#include <linux/ipu.h>
++#include <linux/mxcfb.h>
++#include <mach/common.h>
++#include <mach/hardware.h>
++#include <mach/spba.h>
++#include <asm/irq.h>
++#include <asm/setup.h>
++#include <asm/mach-types.h>
++#include <asm/mach/arch.h>
++#include <asm/mach/time.h>
++#include <asm/mach/keypad.h>
++#include <mach/memory.h>
++#include <mach/gpio.h>
++#include <mach/mmc.h>
++#include "board-mx51_babbage.h"
++#include "iomux.h"
++#include "crm_regs.h"
++
++/*!
++ * @file mach-mx51/mx51_babbage.c
++ *
++ * @brief This file contains the board specific initialization routines.
++ *
++ * @ingroup MSL_MX51
++ */
++extern void __init mx51_babbage_io_init(void);
++extern struct cpu_wp *(*get_cpu_wp)(int *wp);
++
++/* working point(wp): 0 - 800MHz; 1 - 200MHz; */
++static struct cpu_wp cpu_wp_auto[] = {
++	{
++	 .pll_rate = 800000000,
++	 .cpu_rate = 800000000,
++	 .pdf = 0,
++	 .mfi = 8,
++	 .mfd = 2,
++	 .mfn = 1,
++	 .cpu_podf = 0,
++	 .cpu_voltage = 1050000,},
++	{
++	 .pll_rate = 800000000,
++	 .cpu_rate = 200000000,
++	 .pdf = 3,
++	 .mfi = 8,
++	 .mfd = 2,
++	 .mfn = 1,
++	 .cpu_podf = 3,
++	 .cpu_voltage = 775000,},
++};
++
++struct cpu_wp *mx51_babbage_get_cpu_wp(int *wp)
++{
++	*wp = 2;
++	return cpu_wp_auto;
++}
++
++static void mxc_nop_release(struct device *dev)
++{
++	/* Nothing */
++}
++
++#if defined(CONFIG_FB_MXC_SYNC_PANEL) || \
++	defined(CONFIG_FB_MXC_SYNC_PANEL_MODULE)
++static struct resource mxcfb_resources[] = {
++	[0] = {
++	       .flags = IORESOURCE_MEM,
++	       },
++};
++
++static struct mxc_fb_platform_data fb_data[] = {
++	{
++	 .interface_pix_fmt = IPU_PIX_FMT_RGB24,
++	 },
++	{
++	 .interface_pix_fmt = IPU_PIX_FMT_RGB565,
++	 },
++};
++
++static struct platform_device mxc_fb_device[] = {
++	{
++	 .name = "mxc_sdc_fb",
++	 .id = 0,
++	 .dev = {
++		 .release = mxc_nop_release,
++		 .coherent_dma_mask = 0xFFFFFFFF,
++		 .platform_data = &fb_data[0],
++		 },
++	 },
++	{
++	 .name = "mxc_sdc_fb",
++	 .id = 1,
++	 .dev = {
++		 .release = mxc_nop_release,
++		 .coherent_dma_mask = 0xFFFFFFFF,
++		 .platform_data = &fb_data[1],
++		 },
++	 },
++	{
++	 .name = "mxc_sdc_fb",
++	 .id = 2,
++	 .dev = {
++		 .release = mxc_nop_release,
++		 .coherent_dma_mask = 0xFFFFFFFF,
++		 },
++	 },
++};
++
++static void mxc_init_fb(void)
++{
++	(void)platform_device_register(&mxc_fb_device[1]);
++	(void)platform_device_register(&mxc_fb_device[2]);
++}
++#else
++static inline void mxc_init_fb(void)
++{
++}
++#endif
++
++static struct platform_device mxcbl_device = {
++	.name = "mxc_mc13892_bl",
++};
++
++static inline void mxc_init_bl(void)
++{
++	platform_device_register(&mxcbl_device);
++}
++
++static void dvi_reset(void)
++{
++	mxc_set_gpio_direction(MX51_PIN_DISPB2_SER_DIN, 0);
++	mxc_set_gpio_dataout(MX51_PIN_DISPB2_SER_DIN, 0);
++	msleep(50);
++
++	/* do reset */
++	mxc_set_gpio_dataout(MX51_PIN_DISPB2_SER_DIN, 1);
++	msleep(20);		/* tRES >= 50us */
++
++	mxc_set_gpio_dataout(MX51_PIN_DISPB2_SER_DIN, 0);
++}
++
++static struct mxc_lcd_platform_data dvi_data = {
++	.core_reg = "VGEN1",
++	.io_reg = "VGEN3",
++	.reset = dvi_reset,
++};
++
++static void vga_reset(void)
++{
++	mxc_set_gpio_direction(MX51_PIN_EIM_A19, 0);
++	mxc_set_gpio_dataout(MX51_PIN_EIM_A19, 0);
++	msleep(50);
++	/* do reset */
++	mxc_set_gpio_dataout(MX51_PIN_EIM_A19, 1);
++	msleep(10);		/* tRES >= 50us */
++	mxc_set_gpio_dataout(MX51_PIN_EIM_A19, 0);
++}
++
++static struct mxc_lcd_platform_data vga_data = {
++	.core_reg = "VCAM",
++	.io_reg = "VGEN3",
++	.analog_reg = "VAUDIO",
++	.reset = vga_reset,
++};
++
++static void si4702_reset(void)
++{
++	return;
++	mxc_set_gpio_dataout(MX51_PIN_EIM_A21, 0);
++	msleep(100);
++	mxc_set_gpio_dataout(MX51_PIN_EIM_A21, 1);
++	msleep(100);
++}
++
++static void si4702_clock_ctl(int flag)
++{
++	mxc_set_gpio_dataout(MX51_PIN_EIM_A18, flag);
++	msleep(100);
++}
++
++static void si4702_gpio_get(void)
++{
++	mxc_set_gpio_direction(MX51_PIN_EIM_A18, 0);
++}
++
++static void si4702_gpio_put(void)
++{
++}
++
++static struct mxc_fm_platform_data si4702_data = {
++	.reg_vio = "SW4",
++	.reg_vdd = "VIOHI",
++	.gpio_get = si4702_gpio_get,
++	.gpio_put = si4702_gpio_put,
++	.reset = si4702_reset,
++	.clock_ctl = si4702_clock_ctl,
++};
++
++#if defined(CONFIG_I2C_MXC) || defined(CONFIG_I2C_MXC_MODULE)
++
++#ifdef CONFIG_I2C_MXC_SELECT1
++static struct i2c_board_info mxc_i2c0_board_info[] __initdata = {
++};
++#endif
++#ifdef CONFIG_I2C_MXC_SELECT2
++static struct i2c_board_info mxc_i2c1_board_info[] __initdata = {
++	{
++	 .type = "sgtl5000-i2c",
++	 .addr = 0x0a,
++	 },
++};
++#endif
++
++#if defined(CONFIG_I2C_MXC_HS) || defined(CONFIG_I2C_MXC_HS_MODULE)
++static struct i2c_board_info mxc_i2c_hs_board_info[] __initdata = {
++	{
++	 .type = "sii9022",
++	 .addr = 0x39,
++	 .platform_data = &dvi_data,
++	 },
++	{
++	 .type = "ch7026",
++	 .addr = 0x75,
++	 .platform_data = &vga_data,
++	 },
++	{
++	 .type = "si4702",
++	 .addr = 0x10,
++	 .platform_data = (void *)&si4702_data,
++	 },
++};
++#endif
++
++#endif
++
++#if defined(CONFIG_MTD) || defined(CONFIG_MTD_MODULE)
++static struct mtd_partition mxc_spi_flash_partitions[] = {
++	{
++		.name = "bootloader",
++		.offset = 0,
++		.size = 0x00040000,
++		.mask_flags = MTD_CAP_ROM},
++	{
++		.name = "kernel",
++		.offset = MTDPART_OFS_APPEND,
++		.size = MTDPART_SIZ_FULL},
++};
++
++static struct flash_platform_data mxc_spi_flash_data = {
++	.name = "mxc_spi_nor",
++	.parts = mxc_spi_flash_partitions,
++	.nr_parts = ARRAY_SIZE(mxc_spi_flash_partitions),
++	.type = "sst25vf016b",
++};
++#endif
++
++static struct spi_board_info mxc_spi_board_info[] __initdata = {
++#if defined(CONFIG_MTD) || defined(CONFIG_MTD_MODULE)
++	{
++	 .modalias = "mxc_spi_nor",
++	 .max_speed_hz = 25000000, /* max spi clock (SCK) speed in HZ */
++	 .bus_num = 1,
++	 .chip_select = 1,
++	 .platform_data = &mxc_spi_flash_data,
++	},
++#endif
++};
++
++#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
++unsigned int expio_intr_fec;
++
++EXPORT_SYMBOL(expio_intr_fec);
++#endif
++
++#if defined(CONFIG_MMC_IMX_ESDHCI) || defined(CONFIG_MMC_IMX_ESDHCI_MODULE)
++static int sdhc_write_protect(struct device *dev)
++{
++	unsigned short rc = 0;
++
++	if (to_platform_device(dev)->id == 0)
++		rc = mxc_get_gpio_datain(MX51_PIN_GPIO1_1);
++
++	return rc;
++}
++
++static unsigned int sdhc_get_card_det_status(struct device *dev)
++{
++	int ret;
++
++	if (to_platform_device(dev)->id == 0) {
++		ret = mxc_get_gpio_datain(MX51_PIN_GPIO1_0);
++		return ret;
++	} else {		/* config the det pin for SDHC2 */
++		return 0;
++	}
++}
++
++static struct mxc_mmc_platform_data mmc_data = {
++	.ocr_mask = MMC_VDD_31_32,
++	.caps = MMC_CAP_4_BIT_DATA,
++	.min_clk = 400000,
++	.max_clk = 52000000,
++	.card_inserted_state = 1,
++	.status = sdhc_get_card_det_status,
++	.wp_status = sdhc_write_protect,
++	.clock_mmc = "esdhc_clk",
++	.power_mmc = NULL,
++};
++
++/*!
++ * Resource definition for the SDHC1
++ */
++static struct resource mxcsdhc1_resources[] = {
++	[0] = {
++	       .start = MMC_SDHC1_BASE_ADDR,
++	       .end = MMC_SDHC1_BASE_ADDR + SZ_4K - 1,
++	       .flags = IORESOURCE_MEM,
++	       },
++	[1] = {
++	       .start = MXC_INT_MMC_SDHC1,
++	       .end = MXC_INT_MMC_SDHC1,
++	       .flags = IORESOURCE_IRQ,
++	       },
++	[2] = {
++	       .start = IOMUX_TO_IRQ(MX51_PIN_GPIO1_0),
++	       .end = IOMUX_TO_IRQ(MX51_PIN_GPIO1_0),
++	       .flags = IORESOURCE_IRQ,
++	       },
++};
++
++/*!
++ * Resource definition for the SDHC2
++ */
++static struct resource mxcsdhc2_resources[] = {
++	[0] = {
++	       .start = MMC_SDHC2_BASE_ADDR,
++	       .end = MMC_SDHC2_BASE_ADDR + SZ_4K - 1,
++	       .flags = IORESOURCE_MEM,
++	       },
++	[1] = {
++	       .start = MXC_INT_MMC_SDHC2,
++	       .end = MXC_INT_MMC_SDHC2,
++	       .flags = IORESOURCE_IRQ,
++	       },
++	[2] = {
++	       .start = 0,
++	       .end = 0,
++	       .flags = IORESOURCE_IRQ,
++	       },
++};
++
++/*! Device Definition for MXC SDHC1 */
++static struct platform_device mxcsdhc1_device = {
++	.name = "mxsdhci",
++	.id = 0,
++	.dev = {
++		.release = mxc_nop_release,
++		.platform_data = &mmc_data,
++		},
++	.num_resources = ARRAY_SIZE(mxcsdhc1_resources),
++	.resource = mxcsdhc1_resources,
++};
++
++/*! Device Definition for MXC SDHC2 */
++static struct platform_device mxcsdhc2_device = {
++	.name = "mxsdhci",
++	.id = 1,
++	.dev = {
++		.release = mxc_nop_release,
++		.platform_data = &mmc_data,
++		},
++	.num_resources = ARRAY_SIZE(mxcsdhc2_resources),
++	.resource = mxcsdhc2_resources,
++};
++
++static inline void mxc_init_mmc(void)
++{
++	(void)platform_device_register(&mxcsdhc1_device);
++	(void)platform_device_register(&mxcsdhc2_device);
++}
++#else
++static inline void mxc_init_mmc(void)
++{
++}
++#endif
++
++#if defined(CONFIG_SND_SOC_IMX_3STACK_SGTL5000) \
++    || defined(CONFIG_SND_SOC_IMX_3STACK_SGTL5000_MODULE)
++static int mxc_sgtl5000_amp_enable(int enable);
++
++static int headphone_det_status(void)
++{
++	return mxc_get_gpio_datain(MX51_PIN_NANDF_CS0);
++}
++
++static struct mxc_sgtl5000_platform_data sgtl5000_data = {
++	.ssi_num = 1,
++	.src_port = 2,
++	.ext_port = 3,
++	.hp_irq = IOMUX_TO_IRQ(MX51_PIN_NANDF_CS0),
++	.hp_status = headphone_det_status,
++	.vddio_reg = "VVIDEO",
++	.vdda_reg = "VDIG",
++	.vddd_reg = "VGEN1",
++	.amp_enable = mxc_sgtl5000_amp_enable,
++	.vddio = 2775000,
++	.vdda = 1650000,
++	.vddd = 12000000,
++	.sysclk = 12288000,
++};
++
++static struct platform_device sgtl5000_device = {
++	.name = "sgtl5000-imx",
++	.dev = {
++		.release = mxc_nop_release,
++		.platform_data = &sgtl5000_data,
++		},
++};
++
++static int mxc_sgtl5000_amp_enable(int enable)
++{
++	mxc_set_gpio_dataout(MX51_PIN_EIM_A23, enable ? 1 : 0);
++	return 0;
++}
++
++static void mxc_sgtl5000_init(void)
++{
++	int err, pin;
++
++	mxc_set_gpio_direction(MX51_PIN_NANDF_CS0, 1);
++	mxc_set_gpio_direction(MX51_PIN_EIM_A23, 0);
++
++	platform_device_register(&sgtl5000_device);
++}
++#else
++static inline void mxc_sgtl5000_init(void)
++{
++}
++#endif
++
++#if defined(CONFIG_GPIO_BUTTON_MXC) || \
++	defined(CONFIG_GPIO_BUTTON_MXC_MODULE)
++
++#define MXC_BUTTON_GPIO_PIN MX51_PIN_EIM_DTACK
++
++static struct mxc_gpio_button_data gpio_button_data = {
++	.name = "Power Button (CM)",
++	.gpio = MXC_BUTTON_GPIO_PIN,
++	.irq = IOMUX_TO_IRQ(MXC_BUTTON_GPIO_PIN),
++	.key = KEY_POWER,
++};
++
++static struct platform_device gpio_button_device = {
++	.name = "gpio_button",
++	.dev = {
++		.release = mxc_nop_release,
++		.platform_data = &gpio_button_data,
++		},
++};
++
++static inline void mxc_init_gpio_button(void)
++{
++	mxc_set_gpio_direction(MXC_BUTTON_GPIO_PIN, 1);
++	platform_device_register(&gpio_button_device);
++}
++#else
++static inline void mxc_init_gpio_button(void)
++{
++}
++#endif
++
++/*!
++ * Board specific fixup function. It is called by \b setup_arch() in
++ * setup.c file very early on during kernel starts. It allows the user to
++ * statically fill in the proper values for the passed-in parameters. None of
++ * the parameters is used currently.
++ *
++ * @param  desc         pointer to \b struct \b machine_desc
++ * @param  tags         pointer to \b struct \b tag
++ * @param  cmdline      pointer to the command line
++ * @param  mi           pointer to \b struct \b meminfo
++ */
++static void __init fixup_mxc_board(struct machine_desc *desc, struct tag *tags,
++				   char **cmdline, struct meminfo *mi)
++{
++	struct tag *t;
++
++	mxc_cpu_init();
++
++	get_cpu_wp = mx51_babbage_get_cpu_wp;
++
++	for_each_tag(t, tags) {
++		if (t->hdr.tag != ATAG_MEM)
++			continue;
++
++		if (t->u.mem.size == SZ_512M)
++			t->u.mem.size -= SZ_32M;
++		mxcfb_resources[0].start = t->u.mem.start + t->u.mem.size;
++		mxcfb_resources[0].end = t->u.mem.start + SZ_512M - 1;
++	}
++}
++
++#define PWGT1SPIEN (1<<15)
++#define PWGT2SPIEN (1<<16)
++#define USEROFFSPI (1<<3)
++
++static void mxc_power_off(void)
++{
++	/* We can do power down one of two ways:
++	   Set the power gating
++	   Set USEROFFSPI */
++
++	/* Set the power gate bits to power down */
++	pmic_write_reg(REG_POWER_MISC, (PWGT1SPIEN|PWGT2SPIEN),
++		(PWGT1SPIEN|PWGT2SPIEN));
++}
++
++/*!
++ * Board specific initialization.
++ */
++static void __init mxc_board_init(void)
++{
++	struct regulator *regulator;
++
++	mxc_cpu_common_init();
++	mxc_gpio_init();
++	mx51_babbage_io_init();
++	early_console_setup(saved_command_line);
++
++	mxc_init_devices();
++
++	mxc_init_fb();
++	mxc_init_bl();
++	mxc_init_mmc();
++	mxc_init_gpio_button();
++	mx51_babbage_init_mc13892();
++
++	spi_register_board_info(mxc_spi_board_info,
++				ARRAY_SIZE(mxc_spi_board_info));
++
++#if defined(CONFIG_I2C_MXC) || defined(CONFIG_I2C_MXC_MODULE)
++
++#ifdef CONFIG_I2C_MXC_SELECT1
++	i2c_register_board_info(0, mxc_i2c0_board_info,
++				ARRAY_SIZE(mxc_i2c0_board_info));
++#endif
++#ifdef CONFIG_I2C_MXC_SELECT2
++	i2c_register_board_info(1, mxc_i2c1_board_info,
++				ARRAY_SIZE(mxc_i2c1_board_info));
++#endif
++#if defined(CONFIG_I2C_MXC_HS) || defined(CONFIG_I2C_MXC_HS_MODULE)
++	i2c_register_board_info(3, mxc_i2c_hs_board_info,
++				ARRAY_SIZE(mxc_i2c_hs_board_info));
++#endif
++
++#endif
++
++	pm_power_off = mxc_power_off;
++
++	mxc_sgtl5000_init();
++}
++
++static void __init mx51_babbage_timer_init(void)
++{
++	mxc_clocks_init(32768, 24000000, 22579200, 24576000);
++	mxc_timer_init("gpt_clk.0");
++}
++
++static struct sys_timer mxc_timer = {
++	.init	= mx51_babbage_timer_init,
++};
++
++/*
++ * The following uses standard kernel macros define in arch.h in order to
++ * initialize __mach_desc_MX51_BABBAGE data structure.
++ */
++/* *INDENT-OFF* */
++MACHINE_START(MX51_BABBAGE, "Freescale MX51 Babbage Board")
++	/* Maintainer: Freescale Semiconductor, Inc. */
++	.phys_io = AIPS1_BASE_ADDR,
++	.io_pg_offst = ((AIPS1_BASE_ADDR_VIRT) >> 18) & 0xfffc,
++	.boot_params = PHYS_OFFSET + 0x100,
++	.fixup = fixup_mxc_board,
++	.map_io = mxc_map_io,
++	.init_irq = mxc_init_irq,
++	.init_machine = mxc_board_init,
++	.timer = &mxc_timer,
++MACHINE_END
+diff --git a/arch/arm/mach-mx51/mx51_babbage_gpio.c b/arch/arm/mach-mx51/mx51_babbage_gpio.c
+new file mode 100644
+index 0000000..f8d0364
+--- /dev/null
++++ b/arch/arm/mach-mx51/mx51_babbage_gpio.c
+@@ -0,0 +1,464 @@
++/*
++ * Copyright 2007-2009 Freescale Semiconductor, Inc. All Rights Reserved.
++ */
++
++/*
++ * The code contained herein is licensed under the GNU General Public
++ * License. You may obtain a copy of the GNU General Public License
++ * Version 2 or later at the following locations:
++ *
++ * http://www.opensource.org/licenses/gpl-license.html
++ * http://www.gnu.org/copyleft/gpl.html
++ */
++
++#include <linux/errno.h>
++#include <linux/module.h>
++#include <linux/platform_device.h>
++#include <linux/delay.h>
++#include <mach/hardware.h>
++#include <mach/gpio.h>
++
++#include "iomux.h"
++
++/*!
++ * @file mach-mx51/mx51_babbage_gpio.c
++ *
++ * @brief This file contains all the GPIO setup functions for the board.
++ *
++ * @ingroup GPIO
++ */
++
++static struct mxc_iomux_pin_cfg __initdata mxc_iomux_pins[] = {
++	/* USBH2_DATA0 */
++	{
++	 MX51_PIN_EIM_D16, IOMUX_CONFIG_ALT2,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_ODE_OPENDRAIN_NONE |
++	  PAD_CTL_100K_PU | PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE |
++	  PAD_CTL_HYS_ENABLE),
++	 },
++	/* USBH2_DATA1 */
++	{
++	 MX51_PIN_EIM_D17, IOMUX_CONFIG_ALT2,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
++	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
++	 },
++	/* USBH2_DATA2 */
++	{
++	 MX51_PIN_EIM_D18, IOMUX_CONFIG_ALT2,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
++	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
++	 },
++	/* USBH2_DATA3 */
++	{
++	 MX51_PIN_EIM_D19, IOMUX_CONFIG_ALT2,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
++	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
++	 },
++	/* USBH2_DATA4 */
++	{
++	 MX51_PIN_EIM_D20, IOMUX_CONFIG_ALT2,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
++	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
++	 },
++	/* USBH2_DATA5 */
++	{
++	 MX51_PIN_EIM_D21, IOMUX_CONFIG_ALT2,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
++	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
++	 },
++	/* USBH2_DATA6 */
++	{
++	 MX51_PIN_EIM_D22, IOMUX_CONFIG_ALT2,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
++	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
++	 },
++	/* USBH2_DATA7 */
++	{
++	 MX51_PIN_EIM_D23, IOMUX_CONFIG_ALT2,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
++	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
++	 },
++	{
++	 MX51_PIN_EIM_A16, IOMUX_CONFIG_GPIO,
++	 },
++	{
++	 MX51_PIN_EIM_A17, IOMUX_CONFIG_GPIO,
++	 },
++	{
++	 MX51_PIN_EIM_A18, IOMUX_CONFIG_GPIO,
++	 },
++	{
++	 MX51_PIN_EIM_A19, IOMUX_CONFIG_GPIO,
++	 },
++	{
++	 MX51_PIN_EIM_A20, IOMUX_CONFIG_GPIO,
++	 (PAD_CTL_PKE_ENABLE),
++	 },
++	{
++	 MX51_PIN_EIM_A21, IOMUX_CONFIG_GPIO,
++	 },
++	{
++	 MX51_PIN_EIM_A22, IOMUX_CONFIG_GPIO,
++	 },
++	{
++	 MX51_PIN_EIM_A23, IOMUX_CONFIG_GPIO,
++	 },
++	{
++	 MX51_PIN_EIM_A24, IOMUX_CONFIG_ALT2,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
++	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
++	 },
++	{
++	 MX51_PIN_EIM_A25, IOMUX_CONFIG_ALT2,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
++	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
++	 },
++	{
++	 MX51_PIN_EIM_A26, IOMUX_CONFIG_ALT2,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
++	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
++	 },
++	{
++	 MX51_PIN_EIM_A27, IOMUX_CONFIG_ALT2,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
++	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
++	 },
++	{			/*MDIO */
++	 MX51_PIN_EIM_EB2, IOMUX_CONFIG_ALT3,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_ODE_OPENDRAIN_ENABLE |
++	  PAD_CTL_22K_PU | PAD_CTL_HYS_ENABLE | PAD_CTL_PKE_ENABLE |
++	  PAD_CTL_PUE_PULL),
++	 },
++	{			/*RDATA[1] */
++
++	 MX51_PIN_EIM_EB3, IOMUX_CONFIG_ALT3,
++	 (PAD_CTL_HYS_ENABLE | PAD_CTL_PKE_ENABLE),
++	 },
++	{			/*RDATA[2] */
++	 MX51_PIN_EIM_CS2, IOMUX_CONFIG_ALT3,
++	 (PAD_CTL_HYS_ENABLE | PAD_CTL_PKE_ENABLE),
++	 },
++	{			/*RDATA[3] */
++	 MX51_PIN_EIM_CS3, IOMUX_CONFIG_ALT3,
++	 (PAD_CTL_HYS_ENABLE | PAD_CTL_PKE_ENABLE),
++	 },
++	{			/*RX_ER */
++	 MX51_PIN_EIM_CS4, IOMUX_CONFIG_ALT3,
++	 (PAD_CTL_HYS_ENABLE | PAD_CTL_PKE_ENABLE),
++	 },
++	{			/*CRS */
++	 MX51_PIN_EIM_CS5, IOMUX_CONFIG_ALT3,
++	 (PAD_CTL_HYS_ENABLE | PAD_CTL_PKE_ENABLE),
++	 },
++	{
++	 MX51_PIN_EIM_DTACK, IOMUX_CONFIG_GPIO,
++	 (PAD_CTL_PKE_ENABLE | PAD_CTL_100K_PU),
++	 },
++	{
++	 MX51_PIN_EIM_LBA, IOMUX_CONFIG_GPIO,
++	 },
++	{
++	 MX51_PIN_EIM_CRE, IOMUX_CONFIG_GPIO,
++	 },
++	{
++	 MX51_PIN_NANDF_RB2, IOMUX_CONFIG_ALT1,
++	 (PAD_CTL_HYS_ENABLE | PAD_CTL_PKE_ENABLE),
++	 },
++	{
++	 MX51_PIN_NANDF_RB3, IOMUX_CONFIG_ALT1,
++	 (PAD_CTL_HYS_ENABLE | PAD_CTL_PKE_ENABLE),
++	 },
++	{
++	 MX51_PIN_NANDF_RB4, IOMUX_CONFIG_ALT1,
++	 (PAD_CTL_HYS_ENABLE | PAD_CTL_PKE_ENABLE),
++	 },
++	{			/*RDATA[0] */
++	 MX51_PIN_NANDF_RB6, IOMUX_CONFIG_ALT1,
++	 (PAD_CTL_DRV_VOT_HIGH | PAD_CTL_HYS_ENABLE | PAD_CTL_PKE_ENABLE),
++	 },
++	{			/*TDATA[0] */
++	 MX51_PIN_NANDF_RB7, IOMUX_CONFIG_ALT1,
++	 (PAD_CTL_DRV_VOT_HIGH | PAD_CTL_DRV_HIGH),
++	 },
++	{
++	 MX51_PIN_NANDF_CS0, IOMUX_CONFIG_GPIO,
++	 (PAD_CTL_PKE_ENABLE | PAD_CTL_100K_PU),
++	 },
++	{
++	 MX51_PIN_NANDF_CS1, IOMUX_CONFIG_GPIO,
++	 },
++	{			/*TX_ER */
++	 MX51_PIN_NANDF_CS2, IOMUX_CONFIG_ALT2,
++	 (PAD_CTL_DRV_VOT_HIGH | PAD_CTL_DRV_HIGH),
++	 },
++	{
++	 MX51_PIN_NANDF_CS3, IOMUX_CONFIG_ALT2,
++	 (PAD_CTL_DRV_VOT_HIGH | PAD_CTL_DRV_HIGH),
++	 },
++	{			/*TDATA[1] */
++	 MX51_PIN_NANDF_CS4, IOMUX_CONFIG_ALT2,
++	 (PAD_CTL_DRV_VOT_HIGH | PAD_CTL_DRV_HIGH),
++	 },
++	{			/*TDATA[2] */
++	 MX51_PIN_NANDF_CS5, IOMUX_CONFIG_ALT2,
++	 (PAD_CTL_DRV_VOT_HIGH | PAD_CTL_DRV_HIGH),
++	 },
++	{			/*TDATA[3] */
++	 MX51_PIN_NANDF_CS6, IOMUX_CONFIG_ALT2,
++	 (PAD_CTL_DRV_VOT_HIGH | PAD_CTL_DRV_HIGH),
++	 },
++	{			/*TX_EN */
++	 MX51_PIN_NANDF_CS7, IOMUX_CONFIG_ALT1,
++	 (PAD_CTL_DRV_VOT_HIGH | PAD_CTL_DRV_HIGH),
++	 },
++	{			/*TX_CLK */
++	 MX51_PIN_NANDF_RDY_INT, IOMUX_CONFIG_ALT1,
++	 (PAD_CTL_DRV_VOT_HIGH | PAD_CTL_HYS_ENABLE | PAD_CTL_PKE_ENABLE),
++	 },
++	{
++	 MX51_PIN_GPIO1_8, IOMUX_CONFIG_GPIO | IOMUX_CONFIG_SION,
++	 (PAD_CTL_SRE_SLOW | PAD_CTL_DRV_MEDIUM | PAD_CTL_100K_PU |
++	  PAD_CTL_HYS_ENABLE | PAD_CTL_DRV_VOT_HIGH),
++	 },
++	{
++	 MX51_PIN_DI_GP4, IOMUX_CONFIG_ALT4,
++	 },
++	{
++	 MX51_PIN_DISPB2_SER_DIN, IOMUX_CONFIG_GPIO,
++	 0,
++	 MUX_IN_GPIO3_IPP_IND_G_IN_5_SELECT_INPUT,
++	 INPUT_CTL_PATH1,
++	 },
++	{
++	 MX51_PIN_I2C1_CLK, IOMUX_CONFIG_ALT0 | IOMUX_CONFIG_SION,
++	 0x1E4,
++	 },
++	{
++	 MX51_PIN_I2C1_DAT, IOMUX_CONFIG_ALT0 | IOMUX_CONFIG_SION,
++	 0x1E4,
++	 },
++	{
++	 MX51_PIN_GPIO1_2, IOMUX_CONFIG_ALT2 | IOMUX_CONFIG_SION,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_ODE_OPENDRAIN_ENABLE | PAD_CTL_DRV_HIGH |
++	  PAD_CTL_100K_PU | PAD_CTL_HYS_ENABLE),
++	 MUX_IN_I2C2_IPP_SCL_IN_SELECT_INPUT, INPUT_CTL_PATH3,
++	 },
++	{
++	 MX51_PIN_GPIO1_3, IOMUX_CONFIG_ALT2 | IOMUX_CONFIG_SION,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_ODE_OPENDRAIN_ENABLE | PAD_CTL_DRV_HIGH |
++	  PAD_CTL_100K_PU | PAD_CTL_HYS_ENABLE),
++	 MUX_IN_I2C2_IPP_SDA_IN_SELECT_INPUT, INPUT_CTL_PATH3,
++	 },
++	{
++	 MX51_PIN_USBH1_STP, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_PUE_KEEPER |
++	  PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
++	 },
++	{			/* USBH1_CLK */
++	 MX51_PIN_USBH1_CLK, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_PUE_KEEPER |
++	  PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE | PAD_CTL_DDR_INPUT_CMOS),
++	 },
++	{			/* USBH1_DIR */
++	 MX51_PIN_USBH1_DIR, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_PUE_KEEPER |
++	  PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE | PAD_CTL_DDR_INPUT_CMOS),
++	 },
++	{			/* USBH1_NXT */
++	 MX51_PIN_USBH1_NXT, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_PUE_KEEPER |
++	  PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE | PAD_CTL_DDR_INPUT_CMOS),
++	 },
++	{			/* USBH1_DATA0 */
++	 MX51_PIN_USBH1_DATA0, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
++	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
++	 },
++	{			/* USBH1_DATA1 */
++	 MX51_PIN_USBH1_DATA1, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
++	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
++	 },
++	{			/* USBH1_DATA2 */
++	 MX51_PIN_USBH1_DATA2, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
++	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
++	 },
++	{			/* USBH1_DATA3 */
++	 MX51_PIN_USBH1_DATA3, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
++	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
++	 },
++	{			/* USBH1_DATA4 */
++	 MX51_PIN_USBH1_DATA4, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
++	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
++	 },
++	{			/* USBH1_DATA5 */
++	 MX51_PIN_USBH1_DATA5, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
++	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
++	 },
++	{			/* USBH1_DATA6 */
++	 MX51_PIN_USBH1_DATA6, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
++	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
++	 },
++	{			/* USBH1_DATA7 */
++	 MX51_PIN_USBH1_DATA7, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
++	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
++	 },
++	{
++	 MX51_PIN_SD1_CMD, IOMUX_CONFIG_ALT0 | IOMUX_CONFIG_SION,
++	 (PAD_CTL_DRV_MAX | PAD_CTL_22K_PU | PAD_CTL_SRE_FAST),
++	 },
++	{
++	 MX51_PIN_SD1_CLK, IOMUX_CONFIG_ALT0 | IOMUX_CONFIG_SION,
++	 (PAD_CTL_DRV_MAX | PAD_CTL_22K_PU | PAD_CTL_SRE_FAST),
++	 },
++	{
++	 MX51_PIN_SD1_DATA0, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_DRV_MAX | PAD_CTL_22K_PU | PAD_CTL_SRE_FAST),
++	 },
++	{
++	 MX51_PIN_SD1_DATA1, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_DRV_MAX | PAD_CTL_22K_PU | PAD_CTL_SRE_FAST),
++	 },
++	{
++	 MX51_PIN_SD1_DATA2, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_DRV_MAX | PAD_CTL_22K_PU | PAD_CTL_SRE_FAST),
++	 },
++	{
++	 MX51_PIN_SD1_DATA3, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_DRV_MAX | PAD_CTL_22K_PU | PAD_CTL_SRE_FAST),
++	 },
++	{
++	 MX51_PIN_GPIO1_0, IOMUX_CONFIG_GPIO | IOMUX_CONFIG_SION,
++	 (PAD_CTL_HYS_ENABLE | PAD_CTL_100K_PU),
++	 },
++	{
++	 MX51_PIN_GPIO1_1, IOMUX_CONFIG_GPIO | IOMUX_CONFIG_SION,
++	 (PAD_CTL_HYS_ENABLE | PAD_CTL_100K_PU),
++	 },
++	{
++	 MX51_PIN_UART1_RXD, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_HYS_ENABLE | PAD_CTL_PKE_ENABLE | PAD_CTL_PUE_PULL |
++	  PAD_CTL_DRV_HIGH | PAD_CTL_SRE_FAST),
++	 MUX_IN_UART1_IPP_UART_RXD_MUX_SELECT_INPUT,
++	 INPUT_CTL_PATH0,
++	 },
++	{
++	 MX51_PIN_UART1_TXD, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_HYS_ENABLE | PAD_CTL_PKE_ENABLE | PAD_CTL_PUE_PULL |
++	  PAD_CTL_DRV_HIGH | PAD_CTL_SRE_FAST),
++	 },
++	{
++	 MX51_PIN_UART1_RTS, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_HYS_ENABLE | PAD_CTL_PKE_ENABLE | PAD_CTL_PUE_PULL |
++	  PAD_CTL_DRV_HIGH),
++	 MUX_IN_UART1_IPP_UART_RTS_B_SELECT_INPUT,
++	 INPUT_CTL_PATH0,
++	 },
++	{
++	 MX51_PIN_UART1_CTS, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_HYS_ENABLE | PAD_CTL_PKE_ENABLE | PAD_CTL_PUE_PULL |
++	  PAD_CTL_DRV_HIGH),
++	 },
++	{
++	 MX51_PIN_AUD3_BB_TXD, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_ODE_OPENDRAIN_NONE |
++	  PAD_CTL_100K_PU | PAD_CTL_HYS_NONE | PAD_CTL_DDR_INPUT_CMOS |
++	  PAD_CTL_DRV_VOT_LOW),
++	 },
++	{
++	 MX51_PIN_AUD3_BB_RXD, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_ODE_OPENDRAIN_NONE |
++	  PAD_CTL_100K_PU | PAD_CTL_HYS_NONE | PAD_CTL_DDR_INPUT_CMOS |
++	  PAD_CTL_DRV_VOT_LOW),
++	 },
++	{
++	 MX51_PIN_AUD3_BB_CK, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_ODE_OPENDRAIN_NONE |
++	  PAD_CTL_100K_PU | PAD_CTL_HYS_NONE | PAD_CTL_DDR_INPUT_CMOS |
++	  PAD_CTL_DRV_VOT_LOW),
++	 },
++	{
++	 MX51_PIN_AUD3_BB_FS, IOMUX_CONFIG_ALT0,
++	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_ODE_OPENDRAIN_NONE |
++	  PAD_CTL_100K_PU | PAD_CTL_HYS_NONE | PAD_CTL_DDR_INPUT_CMOS |
++	  PAD_CTL_DRV_VOT_LOW),
++	 },
++};
++
++void __init mx51_babbage_io_init(void)
++{
++	int i;
++
++	/* Work-around For external USB HUB chip to use default configuration
++	   by reseting hub with i2c lines pulled low */
++	mxc_request_iomux(MX51_PIN_GPIO1_7, IOMUX_CONFIG_GPIO);
++	mxc_iomux_set_pad(MX51_PIN_GPIO1_7, PAD_CTL_DRV_HIGH |
++			  PAD_CTL_PKE_ENABLE | PAD_CTL_SRE_FAST);
++	mxc_set_gpio_direction(MX51_PIN_GPIO1_7, 0);
++	mxc_set_gpio_dataout(MX51_PIN_GPIO1_7, 1);
++
++	/* Drive I2C1 SDA line low */
++	mxc_request_iomux(MX51_PIN_GPIO1_3, IOMUX_CONFIG_ALT0);
++	mxc_iomux_set_pad(MX51_PIN_GPIO1_3, PAD_CTL_DRV_HIGH |
++			  PAD_CTL_PKE_ENABLE | PAD_CTL_SRE_FAST);
++	mxc_set_gpio_direction(MX51_PIN_GPIO1_3, 0);
++	mxc_set_gpio_dataout(MX51_PIN_GPIO1_3, 0);
++
++	/* Drive I2C1 SCL line low */
++	mxc_request_iomux(MX51_PIN_GPIO1_2, IOMUX_CONFIG_ALT0);
++	mxc_iomux_set_pad(MX51_PIN_GPIO1_2, PAD_CTL_DRV_HIGH |
++			  PAD_CTL_PKE_ENABLE | PAD_CTL_SRE_FAST);
++	mxc_set_gpio_direction(MX51_PIN_GPIO1_2, 0);
++	mxc_set_gpio_dataout(MX51_PIN_GPIO1_2, 0);
++
++	/* USB HUB RESET - De-assert USB HUB RESET_N */
++	msleep(1);
++	mxc_set_gpio_dataout(MX51_PIN_GPIO1_7, 0);
++	msleep(5);
++	mxc_set_gpio_dataout(MX51_PIN_GPIO1_7, 1);
++
++	msleep(5);
++	mxc_free_iomux(MX51_PIN_GPIO1_2, IOMUX_CONFIG_ALT2);
++	mxc_free_iomux(MX51_PIN_GPIO1_3, IOMUX_CONFIG_ALT2);
++
++	for (i = 0; i < ARRAY_SIZE(mxc_iomux_pins); i++) {
++		mxc_request_iomux(mxc_iomux_pins[i].pin,
++				  mxc_iomux_pins[i].mux_mode);
++		if (mxc_iomux_pins[i].pad_cfg)
++			mxc_iomux_set_pad(mxc_iomux_pins[i].pin,
++					  mxc_iomux_pins[i].pad_cfg);
++		if (mxc_iomux_pins[i].in_select)
++			mxc_iomux_set_input(mxc_iomux_pins[i].in_select,
++					    mxc_iomux_pins[i].in_mode);
++	}
++
++	mxc_set_gpio_direction(MX51_PIN_GPIO1_8, 1);
++	mxc_set_gpio_direction(MX51_PIN_GPIO1_0, 1);	/* SD1 CD */
++	mxc_set_gpio_direction(MX51_PIN_GPIO1_1, 1);	/* SD1 WP */
++
++	/* reset FEC PHY */
++	mxc_set_gpio_direction(MX51_PIN_EIM_A20, 0);
++	mxc_set_gpio_dataout(MX51_PIN_EIM_A20, 0);
++	msleep(10);
++	mxc_set_gpio_dataout(MX51_PIN_EIM_A20, 1);
++
++	/* reset FM */
++	mxc_set_gpio_dataout(MX51_PIN_EIM_A21, 0);
++	mxc_set_gpio_direction(MX51_PIN_EIM_A21, 0);
++	msleep(10);
++	mxc_set_gpio_dataout(MX51_PIN_EIM_A21, 1);
++
++	/* MX51_PIN_EIM_CRE - De-assert USB PHY RESETB */
++	mxc_set_gpio_direction(MX51_PIN_EIM_CRE, 0);
++	mxc_set_gpio_dataout(MX51_PIN_EIM_CRE, 1);
++
++	/* Deassert VGA reset to free i2c bus */
++	mxc_set_gpio_direction(MX51_PIN_EIM_A19, 0);
++	mxc_set_gpio_dataout(MX51_PIN_EIM_A19, 1);
++}
+diff --git a/arch/arm/mach-mx51/mx51_babbage_pmic_mc13892.c b/arch/arm/mach-mx51/mx51_babbage_pmic_mc13892.c
+new file mode 100644
+index 0000000..b0bdfd7
+--- /dev/null
++++ b/arch/arm/mach-mx51/mx51_babbage_pmic_mc13892.c
+@@ -0,0 +1,265 @@
++/*
++ * mx51-3stack-pmic-mc13892.c  --  i.MX51 3STACK Driver for Atlas MC13892 PMIC
++ */
++ /*
++  * Copyright 2009 Freescale Semiconductor, Inc. All Rights Reserved.
++  */
++
++ /*
++  * The code contained herein is licensed under the GNU General Public
++  * License. You may obtain a copy of the GNU General Public License
++  * Version 2 or later at the following locations:
++  *
++  * http://www.opensource.org/licenses/gpl-license.html
++  * http://www.gnu.org/copyleft/gpl.html
++  */
++
++#include <linux/module.h>
++#include <linux/init.h>
++#include <linux/platform_device.h>
++#include <linux/spi/spi.h>
++#include <linux/err.h>
++#include <linux/pmic_external.h>
++#include <linux/regulator/machine.h>
++#include <linux/mfd/mc13892/core.h>
++#include "iomux.h"
++
++/*
++ * Convenience conversion.
++ * Here atm, maybe there is somewhere better for this.
++ */
++#define mV_to_uV(mV) (mV * 1000)
++#define uV_to_mV(uV) (uV / 1000)
++#define V_to_uV(V) (mV_to_uV(V * 1000))
++#define uV_to_V(uV) (uV_to_mV(uV) / 1000)
++
++/* CPU */
++static struct regulator_consumer_supply sw1_consumers[] = {
++	{
++		.supply = "cpu_vcc",
++	}
++};
++
++struct mc13892;
++
++static struct regulator_init_data sw1_init = {
++	.constraints = {
++		.name = "SW1",
++		.min_uV = mV_to_uV(600),
++		.max_uV = mV_to_uV(1375),
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++		.valid_modes_mask = 0,
++		.always_on = 1,
++		.boot_on = 1,
++		.initial_state = PM_SUSPEND_MEM,
++		.state_mem = {
++			.uV = 700000,
++			.mode = REGULATOR_MODE_NORMAL,
++			.enabled = 1,
++		},
++	},
++	.num_consumer_supplies = ARRAY_SIZE(sw1_consumers),
++	.consumer_supplies = sw1_consumers,
++};
++
++static struct regulator_init_data sw2_init = {
++	.constraints = {
++		.name = "SW2",
++		.min_uV = mV_to_uV(900),
++		.max_uV = mV_to_uV(1850),
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++		.always_on = 1,
++		.boot_on = 1,
++		.initial_state = PM_SUSPEND_MEM,
++		.state_mem = {
++			.uV = 900000,
++			.mode = REGULATOR_MODE_NORMAL,
++			.enabled = 1,
++		},
++	}
++};
++
++static struct regulator_init_data sw3_init = {
++	.constraints = {
++		.name = "SW3",
++		.min_uV = mV_to_uV(1100),
++		.max_uV = mV_to_uV(1850),
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++		.always_on = 1,
++		.boot_on = 1,
++	}
++};
++
++static struct regulator_init_data sw4_init = {
++	.constraints = {
++		.name = "SW4",
++		.min_uV = mV_to_uV(1100),
++		.max_uV = mV_to_uV(1850),
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++		.always_on = 1,
++		.boot_on = 1,
++	}
++};
++
++static struct regulator_init_data viohi_init = {
++	.constraints = {
++		.name = "VIOHI",
++		.boot_on = 1,
++	}
++};
++
++static struct regulator_init_data vusb_init = {
++	.constraints = {
++		.name = "VUSB",
++		.boot_on = 1,
++	}
++};
++
++static struct regulator_init_data swbst_init = {
++	.constraints = {
++		.name = "SWBST",
++	}
++};
++
++static struct regulator_init_data vdig_init = {
++	.constraints = {
++		.name = "VDIG",
++		.min_uV = mV_to_uV(1050),
++		.max_uV = mV_to_uV(1800),
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++		.boot_on = 1,
++	}
++};
++
++static struct regulator_init_data vpll_init = {
++	.constraints = {
++		.name = "VPLL",
++		.min_uV = mV_to_uV(1050),
++		.max_uV = mV_to_uV(1800),
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++		.boot_on = 1,
++	}
++};
++
++static struct regulator_init_data vusb2_init = {
++	.constraints = {
++		.name = "VUSB2",
++		.min_uV = mV_to_uV(2400),
++		.max_uV = mV_to_uV(2775),
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++		.boot_on = 1,
++	}
++};
++
++static struct regulator_init_data vvideo_init = {
++	.constraints = {
++		.name = "VVIDEO",
++		.min_uV = mV_to_uV(2775),
++		.max_uV = mV_to_uV(2775),
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++		.always_on = 1,
++		.apply_uV =1,
++	}
++};
++
++static struct regulator_init_data vaudio_init = {
++	.constraints = {
++		.name = "VAUDIO",
++		.min_uV = mV_to_uV(2300),
++		.max_uV = mV_to_uV(3000),
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++	}
++};
++
++static struct regulator_init_data vsd_init = {
++	.constraints = {
++		.name = "VSD",
++		.min_uV = mV_to_uV(1800),
++		.max_uV = mV_to_uV(3150),
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++	}
++};
++
++static struct regulator_init_data vcam_init = {
++	.constraints = {
++		.name = "VCAM",
++		.min_uV = mV_to_uV(2500),
++		.max_uV = mV_to_uV(3000),
++		.valid_ops_mask =
++			REGULATOR_CHANGE_VOLTAGE | REGULATOR_CHANGE_MODE,
++		.valid_modes_mask = REGULATOR_MODE_FAST | REGULATOR_MODE_NORMAL,
++	}
++};
++
++static struct regulator_init_data vgen1_init = {
++	.constraints = {
++		.name = "VGEN1",
++		.min_uV = mV_to_uV(1200),
++		.max_uV = mV_to_uV(3150),
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++	}
++};
++
++static struct regulator_init_data vgen2_init = {
++	.constraints = {
++		.name = "VGEN2",
++		.min_uV = mV_to_uV(1200),
++		.max_uV = mV_to_uV(3150),
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++	}
++};
++
++static struct regulator_init_data vgen3_init = {
++	.constraints = {
++		.name = "VGEN3",
++		.min_uV = mV_to_uV(1800),
++		.max_uV = mV_to_uV(2900),
++		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
++	}
++};
++
++static int mc13892_regulator_init(struct mc13892 *mc13892)
++{
++	if (mxc_cpu_is_rev(CHIP_REV_2_0) < 0)
++		sw2_init.constraints.state_mem.uV = 1100000;
++
++	mc13892_register_regulator(mc13892, MC13892_SW1, &sw1_init);
++	mc13892_register_regulator(mc13892, MC13892_SW2, &sw2_init);
++	mc13892_register_regulator(mc13892, MC13892_SW3, &sw3_init);
++	mc13892_register_regulator(mc13892, MC13892_SW4, &sw4_init);
++	mc13892_register_regulator(mc13892, MC13892_SWBST, &swbst_init);
++	mc13892_register_regulator(mc13892, MC13892_VIOHI, &viohi_init);
++	mc13892_register_regulator(mc13892, MC13892_VPLL, &vpll_init);
++	mc13892_register_regulator(mc13892, MC13892_VDIG, &vdig_init);
++	mc13892_register_regulator(mc13892, MC13892_VSD, &vsd_init);
++	mc13892_register_regulator(mc13892, MC13892_VUSB2, &vusb2_init);
++	mc13892_register_regulator(mc13892, MC13892_VVIDEO, &vvideo_init);
++	mc13892_register_regulator(mc13892, MC13892_VAUDIO, &vaudio_init);
++	mc13892_register_regulator(mc13892, MC13892_VCAM, &vcam_init);
++	mc13892_register_regulator(mc13892, MC13892_VGEN1, &vgen1_init);
++	mc13892_register_regulator(mc13892, MC13892_VGEN2, &vgen2_init);
++	mc13892_register_regulator(mc13892, MC13892_VGEN3, &vgen3_init);
++	mc13892_register_regulator(mc13892, MC13892_VUSB, &vusb_init);
++
++	return 0;
++}
++
++static struct mc13892_platform_data mc13892_plat = {
++	.init = mc13892_regulator_init,
++};
++
++static struct spi_board_info __initdata mc13892_spi_device = {
++	.modalias = "pmic_spi",
++	.irq = IOMUX_TO_IRQ(MX51_PIN_GPIO1_8),
++	.max_speed_hz = 1000000,	/* max spi SCK clock speed in HZ */
++	.bus_num = 1,
++	.chip_select = 0,
++	.platform_data = &mc13892_plat,
++};
++
++
++int __init mx51_babbage_init_mc13892(void)
++{
++	return spi_register_board_info(&mc13892_spi_device, 1);
++}
++
+diff --git a/arch/arm/plat-mxc/include/mach/memory.h b/arch/arm/plat-mxc/include/mach/memory.h
+index 3658da2..e101be9 100644
+--- a/arch/arm/plat-mxc/include/mach/memory.h
++++ b/arch/arm/plat-mxc/include/mach/memory.h
+@@ -15,7 +15,7 @@
+ #include <asm/sizes.h>
+ 
+ /* Start of physical RAM */
+-#if defined(CONFIG_MACH_MX35EVB) || defined(CONFIG_MACH_MX51_3DS)
++#if defined(CONFIG_MACH_MX35EVB) || defined(CONFIG_ARCH_MX51)
+ #define PHYS_OFFSET             UL(0x90000000)
+ #endif
+ 
+diff --git a/arch/arm/tools/mach-types b/arch/arm/tools/mach-types
+index 43aa202..53565b5 100644
+--- a/arch/arm/tools/mach-types
++++ b/arch/arm/tools/mach-types
+@@ -12,7 +12,7 @@
+ #
+ #   http://www.arm.linux.org.uk/developer/machines/?action=new
+ #
+-# Last update: Thu Sep 25 10:10:50 2008
++# Last update: Tue Mar 3 15:42:36 2009
+ #
+ # machine_is_xxx	CONFIG_xxxx		MACH_TYPE_xxx		number
+ #
+@@ -1380,7 +1380,7 @@ holon			MACH_HOLON		HOLON			1377
+ olip8			MACH_OLIP8		OLIP8			1378
+ ghi270hg		MACH_GHI270HG		GHI270HG		1379
+ davinci_dm6467_evm	MACH_DAVINCI_DM6467_EVM	DAVINCI_DM6467_EVM	1380
+-davinci_dm355_evm	MACH_DAVINCI_DM350_EVM	DAVINCI_DM350_EVM	1381
++davinci_dm355_evm	MACH_DAVINCI_DM355_EVM	DAVINCI_DM355_EVM	1381
+ blackriver		MACH_BLACKRIVER		BLACKRIVER		1383
+ sandgate_wp		MACH_SANDGATEWP		SANDGATEWP		1384
+ cdotbwsg		MACH_CDOTBWSG		CDOTBWSG		1385
+@@ -1771,7 +1771,7 @@ axs_ultrax		MACH_AXS_ULTRAX		AXS_ULTRAX		1779
+ at572d940deb		MACH_AT572D940DEB	AT572D940DEB		1780
+ davinci_da8xx_evm	MACH_DAVINCI_DA8XX_EVM	DAVINCI_DA8XX_EVM	1781
+ ep9302			MACH_EP9302		EP9302			1782
+-at572d940hfeb		MACH_AT572D940HFEB	AT572D940HFEB		1783
++at572d940hfek		MACH_AT572D940HFEB	AT572D940HFEB		1783
+ cybook3			MACH_CYBOOK3		CYBOOK3			1784
+ wdg002			MACH_WDG002		WDG002			1785
+ sg560adsl		MACH_SG560ADSL		SG560ADSL		1786
+@@ -1811,7 +1811,7 @@ pilz_pmi5		MACH_PILZ_PMI5		PILZ_PMI5		1820
+ jade			MACH_JADE		JADE			1821
+ ks8695_softplc		MACH_KS8695_SOFTPLC	KS8695_SOFTPLC		1822
+ gprisc3			MACH_GPRISC3		GPRISC3			1823
+-stamp9260		MACH_STAMP9260		STAMP9260		1824
++stamp9g20		MACH_STAMP9G20		STAMP9G20		1824
+ smdk6430		MACH_SMDK6430		SMDK6430		1825
+ smdkc100		MACH_SMDKC100		SMDKC100		1826
+ tavorevb		MACH_TAVOREVB		TAVOREVB		1827
+@@ -1899,3 +1899,217 @@ rut100			MACH_RUT100		RUT100			1908
+ asusp535		MACH_ASUSP535		ASUSP535		1909
+ htcraphael		MACH_HTCRAPHAEL		HTCRAPHAEL		1910
+ sygdg1			MACH_SYGDG1		SYGDG1			1911
++sygdg2			MACH_SYGDG2		SYGDG2			1912
++seoul			MACH_SEOUL		SEOUL			1913
++salerno			MACH_SALERNO		SALERNO			1914
++ucn_s3c64xx		MACH_UCN_S3C64XX	UCN_S3C64XX		1915
++msm7201a		MACH_MSM7201A		MSM7201A		1916
++lpr1			MACH_LPR1		LPR1			1917
++armadillo500fx		MACH_ARMADILLO500FX	ARMADILLO500FX		1918
++g3evm			MACH_G3EVM		G3EVM			1919
++z3_dm355		MACH_Z3_DM355		Z3_DM355		1920
++w90p910evb		MACH_W90P910EVB		W90P910EVB		1921
++w90p920evb		MACH_W90P920EVB		W90P920EVB		1922
++w90p950evb		MACH_W90P950EVB		W90P950EVB		1923
++w90n960evb		MACH_W90N960EVB		W90N960EVB		1924
++camhd			MACH_CAMHD		CAMHD			1925
++mvc100			MACH_MVC100		MVC100			1926
++electrum_200		MACH_ELECTRUM_200	ELECTRUM_200		1927
++htcjade			MACH_HTCJADE		HTCJADE			1928
++memphis			MACH_MEMPHIS		MEMPHIS			1929
++imx27sbc		MACH_IMX27SBC		IMX27SBC		1930
++lextar			MACH_LEXTAR		LEXTAR			1931
++mv88f6281gtw_ge		MACH_MV88F6281GTW_GE	MV88F6281GTW_GE		1932
++ncp			MACH_NCP		NCP			1933
++z32an_series		MACH_Z32AN		Z32AN			1934
++tmq_capd		MACH_TMQ_CAPD		TMQ_CAPD		1935
++omap3_wl		MACH_OMAP3_WL		OMAP3_WL		1936
++chumby			MACH_CHUMBY		CHUMBY			1937
++atsarm9			MACH_ATSARM9		ATSARM9			1938
++davinci_dm365_evm	MACH_DAVINCI_DM365_EVM	DAVINCI_DM365_EVM	1939
++bahamas			MACH_BAHAMAS		BAHAMAS			1940
++das			MACH_DAS		DAS			1941
++minidas			MACH_MINIDAS		MINIDAS			1942
++vk1000			MACH_VK1000		VK1000			1943
++centro			MACH_CENTRO		CENTRO			1944
++ctera_2bay		MACH_CTERA_2BAY		CTERA_2BAY		1945
++edgeconnect		MACH_EDGECONNECT	EDGECONNECT		1946
++nd27000			MACH_ND27000		ND27000			1947
++cobra			MACH_GEMALTO_COBRA	GEMALTO_COBRA		1948
++ingelabs_comet		MACH_INGELABS_COMET	INGELABS_COMET		1949
++pollux_wiz		MACH_POLLUX_WIZ		POLLUX_WIZ		1950
++blackstone		MACH_BLACKSTONE		BLACKSTONE		1951
++topaz			MACH_TOPAZ		TOPAZ			1952
++aixle			MACH_AIXLE		AIXLE			1953
++mw998			MACH_MW998		MW998			1954
++nokia_rx51		MACH_NOKIA_RX51		NOKIA_RX51		1955
++vsc5605ev		MACH_VSC5605EV		VSC5605EV		1956
++nt98700dk		MACH_NT98700DK		NT98700DK		1957
++icontact		MACH_ICONTACT		ICONTACT		1958
++swarco_frcpu		MACH_SWARCO_FRCPU	SWARCO_FRCPU		1959
++swarco_scpu		MACH_SWARCO_SCPU	SWARCO_SCPU		1960
++bbox_p16		MACH_BBOX_P16		BBOX_P16		1961
++bstd			MACH_BSTD		BSTD			1962
++sbc2440ii		MACH_SBC2440II		SBC2440II		1963
++pcm034			MACH_PCM034		PCM034			1964
++neso			MACH_NESO		NESO			1965
++wlnx_9g20		MACH_WLNX_9G20		WLNX_9G20		1966
++omap_zoom2		MACH_OMAP_ZOOM2		OMAP_ZOOM2		1967
++totemnova		MACH_TOTEMNOVA		TOTEMNOVA		1968
++c5000			MACH_C5000		C5000			1969
++unipo_at91sam9263	MACH_UNIPO_AT91SAM9263	UNIPO_AT91SAM9263	1970
++ethernut5		MACH_ETHERNUT5		ETHERNUT5		1971
++arm11			MACH_ARM11		ARM11			1972
++cpuat9260		MACH_CPUAT9260		CPUAT9260		1973
++cpupxa255		MACH_CPUPXA255		CPUPXA255		1974
++cpuimx27		MACH_CPUIMX27		CPUIMX27		1975
++cheflux			MACH_CHEFLUX		CHEFLUX			1976
++eb_cpux9k2		MACH_EB_CPUX9K2		EB_CPUX9K2		1977
++opcotec			MACH_OPCOTEC		OPCOTEC			1978
++yt			MACH_YT			YT			1979
++motoq			MACH_MOTOQ		MOTOQ			1980
++bsb1			MACH_BSB1		BSB1			1981
++acs5k			MACH_ACS5K		ACS5K			1982
++milan			MACH_MILAN		MILAN			1983
++quartzv2		MACH_QUARTZV2		QUARTZV2		1984
++rsvp			MACH_RSVP		RSVP			1985
++rmp200			MACH_RMP200		RMP200			1986
++snapper_9260		MACH_SNAPPER_9260	SNAPPER_9260		1987
++dsm320			MACH_DSM320		DSM320			1988
++adsgcm			MACH_ADSGCM		ADSGCM			1989
++ase2_400		MACH_ASE2_400		ASE2_400		1990
++pizza			MACH_PIZZA		PIZZA			1991
++spot_ngpl		MACH_SPOT_NGPL		SPOT_NGPL		1992
++armata			MACH_ARMATA		ARMATA			1993
++exeda			MACH_EXEDA		EXEDA			1994
++mx31sf005		MACH_MX31SF005		MX31SF005		1995
++f5d8231_4_v2		MACH_F5D8231_4_V2	F5D8231_4_V2		1996
++q2440			MACH_Q2440		Q2440			1997
++qq2440			MACH_QQ2440		QQ2440			1998
++mini2440		MACH_MINI2440		MINI2440		1999
++colibri300		MACH_COLIBRI300		COLIBRI300		2000
++jades			MACH_JADES		JADES			2001
++spark			MACH_SPARK		SPARK			2002
++benzina			MACH_BENZINA		BENZINA			2003
++blaze			MACH_BLAZE		BLAZE			2004
++linkstation_ls_hgl	MACH_LINKSTATION_LS_HGL	LINKSTATION_LS_HGL	2005
++htckovsky		MACH_HTCVENUS		HTCVENUS		2006
++sony_prs505		MACH_SONY_PRS505	SONY_PRS505		2007
++hanlin_v3		MACH_HANLIN_V3		HANLIN_V3		2008
++sapphira		MACH_SAPPHIRA		SAPPHIRA		2009
++dack_sda_01		MACH_DACK_SDA_01	DACK_SDA_01		2010
++armbox			MACH_ARMBOX		ARMBOX			2011
++harris_rvp		MACH_HARRIS_RVP		HARRIS_RVP		2012
++ribaldo			MACH_RIBALDO		RIBALDO			2013
++agora			MACH_AGORA		AGORA			2014
++omap3_mini		MACH_OMAP3_MINI		OMAP3_MINI		2015
++a9sam6432_b		MACH_A9SAM6432_B	A9SAM6432_B		2016
++usg2410			MACH_USG2410		USG2410			2017
++pc72052_i10_revb	MACH_PC72052_I10_REVB	PC72052_I10_REVB	2018
++mx35_exm32		MACH_MX35_EXM32		MX35_EXM32		2019
++topas910		MACH_TOPAS910		TOPAS910		2020
++hyena			MACH_HYENA		HYENA			2021
++pospax			MACH_POSPAX		POSPAX			2022
++hdl_gx			MACH_HDL_GX		HDL_GX			2023
++ctera_4bay		MACH_CTERA_4BAY		CTERA_4BAY		2024
++ctera_plug_c		MACH_CTERA_PLUG_C	CTERA_PLUG_C		2025
++crwea_plug_i		MACH_CRWEA_PLUG_I	CRWEA_PLUG_I		2026
++egauge2			MACH_EGAUGE2		EGAUGE2			2027
++didj			MACH_DIDJ		DIDJ			2028
++meister			MACH_MEISTER		MEISTER			2029
++htcblackstone		MACH_HTCBLACKSTONE	HTCBLACKSTONE		2030
++cpuat9g20		MACH_CPUAT9G20		CPUAT9G20		2031
++smdk6440		MACH_SMDK6440		SMDK6440		2032
++omap_35xx_mvp		MACH_OMAP_35XX_MVP	OMAP_35XX_MVP		2033
++ctera_plug_i		MACH_CTERA_PLUG_I	CTERA_PLUG_I		2034
++pvg610_100		MACH_PVG610		PVG610			2035
++hprw6815		MACH_HPRW6815		HPRW6815		2036
++omap3_oswald		MACH_OMAP3_OSWALD	OMAP3_OSWALD		2037
++nas4220b		MACH_NAS4220B		NAS4220B		2038
++htcraphael_cdma		MACH_HTCRAPHAEL_CDMA	HTCRAPHAEL_CDMA		2039
++htcdiamond_cdma		MACH_HTCDIAMOND_CDMA	HTCDIAMOND_CDMA		2040
++scaler			MACH_SCALER		SCALER			2041
++zylonite2		MACH_ZYLONITE2		ZYLONITE2		2042
++aspenite		MACH_ASPENITE		ASPENITE		2043
++teton			MACH_TETON		TETON			2044
++ttc_dkb			MACH_TTC_DKB		TTC_DKB			2045
++bishop2			MACH_BISHOP2		BISHOP2			2046
++ippv5			MACH_IPPV5		IPPV5			2047
++farm926			MACH_FARM926		FARM926			2048
++mmccpu			MACH_MMCCPU		MMCCPU			2049
++sgmsfl			MACH_SGMSFL		SGMSFL			2050
++tt8000			MACH_TT8000		TT8000			2051
++zrn4300lp		MACH_ZRN4300LP		ZRN4300LP		2052
++mptc			MACH_MPTC		MPTC			2053
++h6051			MACH_H6051		H6051			2054
++pvg610_101		MACH_PVG610_101		PVG610_101		2055
++stamp9261_pc_evb	MACH_STAMP9261_PC_EVB	STAMP9261_PC_EVB	2056
++pelco_odysseus		MACH_PELCO_ODYSSEUS	PELCO_ODYSSEUS		2057
++tny_a9260		MACH_TNY_A9260		TNY_A9260		2058
++tny_a9g20		MACH_TNY_A9G20		TNY_A9G20		2059
++aesop_mp2530f		MACH_AESOP_MP2530F	AESOP_MP2530F		2060
++dx900			MACH_DX900		DX900			2061
++cpodc2			MACH_CPODC2		CPODC2			2062
++tilt_8925		MACH_TILT_8925		TILT_8925		2063
++davinci_dm357_evm	MACH_DAVINCI_DM357_EVM	DAVINCI_DM357_EVM	2064
++swordfish		MACH_SWORDFISH		SWORDFISH		2065
++corvus			MACH_CORVUS		CORVUS			2066
++taurus			MACH_TAURUS		TAURUS			2067
++axm			MACH_AXM		AXM			2068
++axc			MACH_AXC		AXC			2069
++baby			MACH_BABY		BABY			2070
++mp200			MACH_MP200		MP200			2071
++pcm043			MACH_PCM043		PCM043			2072
++hanlin_v3c		MACH_HANLIN_V3C		HANLIN_V3C		2073
++kbk9g20			MACH_KBK9G20		KBK9G20			2074
++adsturbog5		MACH_ADSTURBOG5		ADSTURBOG5		2075
++avenger_lite1		MACH_AVENGER_LITE1	AVENGER_LITE1		2076
++suc82x			MACH_SUC		SUC			2077
++at91sam7s256		MACH_AT91SAM7S256	AT91SAM7S256		2078
++mendoza			MACH_MENDOZA		MENDOZA			2079
++kira			MACH_KIRA		KIRA			2080
++mx1hbm			MACH_MX1HBM		MX1HBM			2081
++quatro43xx		MACH_QUATRO43XX		QUATRO43XX		2082
++quatro4230		MACH_QUATRO4230		QUATRO4230		2083
++nsb400			MACH_NSB400		NSB400			2084
++drp255			MACH_DRP255		DRP255			2085
++thoth			MACH_THOTH		THOTH			2086
++firestone		MACH_FIRESTONE		FIRESTONE		2087
++asusp750		MACH_ASUSP750		ASUSP750		2088
++ctera_dl		MACH_CTERA_DL		CTERA_DL		2089
++socr			MACH_SOCR		SOCR			2090
++htcoxygen		MACH_HTCOXYGEN		HTCOXYGEN		2091
++heroc			MACH_HEROC		HEROC			2092
++zeno6800		MACH_ZENO6800		ZENO6800		2093
++sc2mcs			MACH_SC2MCS		SC2MCS			2094
++gene100			MACH_GENE100		GENE100			2095
++as353x			MACH_AS353X		AS353X			2096
++kirkwood_plug		MACH_KIRKWOOD_PLUG	KIRKWOOD_PLUG		2097
++at91sam9g20		MACH_AT91SAM9G20	AT91SAM9G20		2098
++mv88f6192gtw_fe		MACH_MV88F6192GTW_FE	MV88F6192GTW_FE		2099
++cc9200			MACH_CC9200		CC9200			2100
++sm9200			MACH_SM9200		SM9200			2101
++tp9200			MACH_TP9200		TP9200			2102
++snapperdv		MACH_SNAPPERDV		SNAPPERDV		2103
++avengers_lite		MACH_AVENGERS_LITE	AVENGERS_LITE		2104
++avengers_lite1		MACH_AVENGERS_LITE1	AVENGERS_LITE1		2105
++omap3axon		MACH_OMAP3AXON		OMAP3AXON		2106
++ma8xx			MACH_MA8XX		MA8XX			2107
++mp201ek			MACH_MP201EK		MP201EK			2108
++davinci_tux		MACH_DAVINCI_TUX	DAVINCI_TUX		2109
++mpa1600			MACH_MPA1600		MPA1600			2110
++pelco_troy		MACH_PELCO_TROY		PELCO_TROY		2111
++nsb667			MACH_NSB667		NSB667			2112
++rovers5_4mpix		MACH_ROVERS5_4MPIX	ROVERS5_4MPIX		2113
++twocom			MACH_TWOCOM		TWOCOM			2114
++ubisys_p9_rcu3r2	MACH_UBISYS_P9_RCU3R2	UBISYS_P9_RCU3R2	2115
++hero_espresso		MACH_HERO_ESPRESSO	HERO_ESPRESSO		2116
++afeusb			MACH_AFEUSB		AFEUSB			2117
++t830			MACH_T830		T830			2118
++spd8020_cc		MACH_SPD8020_CC		SPD8020_CC		2119
++om_3d7k			MACH_OM_3D7K		OM_3D7K			2120
++picocom2		MACH_PICOCOM2		PICOCOM2		2121
++uwg4mx27		MACH_UWG4MX27		UWG4MX27		2122
++uwg4mx31		MACH_UWG4MX31		UWG4MX31		2123
++cherry			MACH_CHERRY		CHERRY			2124
++mx51_babbage		MACH_MX51_BABBAGE	MX51_BABBAGE		2125
+diff --git a/drivers/usb/host/ehci-arc.c b/drivers/usb/host/ehci-arc.c
+index abc6524..421fac5 100644
+--- a/drivers/usb/host/ehci-arc.c
++++ b/drivers/usb/host/ehci-arc.c
+@@ -23,6 +23,7 @@
+ #include <linux/platform_device.h>
+ #include <linux/fsl_devices.h>
+ #include <linux/usb/otg.h>
++#include <asm/mach-types.h>
+ 
+ #include "ehci-fsl.h"
+ 
+@@ -405,20 +406,41 @@ static const struct hc_driver ehci_fsl_hc_driver = {
+ 
+ static int ehci_fsl_drv_probe(struct platform_device *pdev)
+ {
++	struct fsl_usb2_platform_data *pdata = pdev->dev.platform_data;
++
+ 	if (usb_disabled())
+ 		return -ENODEV;
+ 
+-	return usb_hcd_fsl_probe(&ehci_fsl_hc_driver, pdev);
++	if (pdata->name[5] == '2') {
++		if (!machine_is_mx51_3ds())
++			return usb_hcd_fsl_probe(&ehci_fsl_hc_driver, pdev);
++	} else
++		return usb_hcd_fsl_probe(&ehci_fsl_hc_driver, pdev);
+ }
+ 
+ static int ehci_fsl_drv_remove(struct platform_device *pdev)
+ {
++	struct fsl_usb2_platform_data *pdata = pdev->dev.platform_data;
+ 	struct usb_hcd *hcd = platform_get_drvdata(pdev);
+ 
+-	usb_hcd_fsl_remove(hcd, pdev);
++	if (pdata->name[5] == '2') {
++		if (!machine_is_mx51_3ds())
++			usb_hcd_fsl_remove(hcd, pdev);
++	} else
++		usb_hcd_fsl_remove(hcd, pdev);
+ 	return 0;
+ }
+ 
++static int ehci_fsl_drv_shutdown(struct platform_device *pdev)
++{
++	struct fsl_usb2_platform_data *pdata = pdev->dev.platform_data;
++
++	if (pdata->name[5] == '2') {
++		if (!machine_is_mx51_3ds())
++			usb_hcd_platform_shutdown(pdev);
++	} else
++		usb_hcd_platform_shutdown(pdev);
++}
+ 
+ #ifdef CONFIG_PM
+ /* suspend/resume, section 4.3 */
+@@ -564,7 +586,7 @@ MODULE_ALIAS("fsl-ehci");
+ static struct platform_driver ehci_fsl_driver = {
+ 	.probe = ehci_fsl_drv_probe,
+ 	.remove = ehci_fsl_drv_remove,
+-	.shutdown = usb_hcd_platform_shutdown,
++	.shutdown = ehci_fsl_drv_shutdown,
+ #ifdef CONFIG_PM
+ 	.suspend = ehci_fsl_drv_suspend,
+ 	.resume = ehci_fsl_drv_resume,
+-- 
+1.5.4.4
+

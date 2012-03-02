@@ -1,0 +1,75 @@
+From d21ed0ad6e61d67c8917b54be433fff24dce307d Mon Sep 17 00:00:00 2001
+From: Lily Zhang <r58066@freescale.com>
+Date: Tue, 9 Jun 2009 13:14:09 +0800
+Subject: [PATCH] ENGR00113154 TZIC: Correct Wakeup registers
+
+mxc_cpu_lp_set function writes all enabled interrupts to wakeup
+register. But for suspend/resume cases, only allows to write
+wakeup resources to wakeup registers.
+
+Signed-off-by: Lily Zhang <r58066@freescale.com>
+---
+ arch/arm/mach-mx37/pm.c |    9 +++++----
+ arch/arm/mach-mx51/pm.c |    7 ++++---
+ 2 files changed, 9 insertions(+), 7 deletions(-)
+
+diff --git a/arch/arm/mach-mx37/pm.c b/arch/arm/mach-mx37/pm.c
+index d8318d5..b3a7ca7 100644
+--- a/arch/arm/mach-mx37/pm.c
++++ b/arch/arm/mach-mx37/pm.c
+@@ -1,5 +1,5 @@
+ /*
+- *  Copyright 2008 Freescale Semiconductor, Inc. All Rights Reserved.
++ *  Copyright 2008-2009 Freescale Semiconductor, Inc. All Rights Reserved.
+  */
+ 
+ /*
+@@ -16,9 +16,6 @@
+ 
+ static int mx37_suspend_enter(suspend_state_t state)
+ {
+-	if (tzic_enable_wake(0) != 0)
+-		return -EAGAIN;
+-
+ 	switch (state) {
+ 	case PM_SUSPEND_MEM:
+ 		mxc_cpu_lp_set(STOP_POWER_OFF);
+@@ -29,6 +26,10 @@ static int mx37_suspend_enter(suspend_state_t state)
+ 	default:
+ 		return -EINVAL;
+ 	}
++
++	if (tzic_enable_wake(0) != 0)
++		return -EAGAIN;
++
+ 	cpu_do_idle();
+ 
+ 	return 0;
+diff --git a/arch/arm/mach-mx51/pm.c b/arch/arm/mach-mx51/pm.c
+index 3b5787a..bb03d97 100644
+--- a/arch/arm/mach-mx51/pm.c
++++ b/arch/arm/mach-mx51/pm.c
+@@ -29,9 +29,6 @@ extern int iram_ready;
+ 
+ static int mx51_suspend_enter(suspend_state_t state)
+ {
+-	if (tzic_enable_wake(0) != 0)
+-		return -EAGAIN;
+-
+ 	if (gpc_dvfs_clk == NULL)
+ 		gpc_dvfs_clk = clk_get(NULL, "gpc_dvfs_clk");
+ 	/* gpc clock is needed for SRPG */
+@@ -46,6 +43,10 @@ static int mx51_suspend_enter(suspend_state_t state)
+ 	default:
+ 		return -EINVAL;
+ 	}
++
++	if (tzic_enable_wake(0) != 0)
++		return -EAGAIN;
++
+ 	if (state == PM_SUSPEND_MEM) {
+ 		cpu_do_suspend_workaround();
+ 		/*clear the EMPGC0/1 bits */
+-- 
+1.5.4.4
+

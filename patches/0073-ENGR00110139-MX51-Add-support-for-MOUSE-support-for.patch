@@ -1,0 +1,37 @@
+From 52e2b2100d10564b299956c387d787d54afb9a73 Mon Sep 17 00:00:00 2001
+From: Dinh Nguyen <Dinh.Nguyen@freescale.com>
+Date: Mon, 23 Mar 2009 22:54:31 -0500
+Subject: [PATCH] ENGR00110139 MX51:Add support for MOUSE support for mx51 boards
+
+Add support for mouse in the defconfig.
+
+Signed-off-by: Dinh Nguyen <Dinh.Nguyen@freescale.com>
+---
+ arch/arm/configs/imx51_defconfig |    8 ++++++--
+ 1 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm/configs/imx51_defconfig b/arch/arm/configs/imx51_defconfig
+index 0ec474f..8adcf72 100644
+--- a/arch/arm/configs/imx51_defconfig
++++ b/arch/arm/configs/imx51_defconfig
+@@ -674,11 +674,15 @@ CONFIG_INPUT_POLLDEV=y
+ #
+ # Userland interfaces
+ #
+-# CONFIG_INPUT_MOUSEDEV is not set
++CONFIG_INPUT_MOUSEDEV=y
++CONFIG_INPUT_MOUSEDEV_PSAUX=y
++CONFIG_INPUT_MOUSEDEV_SCREEN_X=1024
++CONFIG_INPUT_MOUSEDEV_SCREEN_Y=768
+ # CONFIG_INPUT_JOYDEV is not set
+-CONFIG_INPUT_EVDEV=y
++# CONFIG_INPUT_EVDEV is not set
+ # CONFIG_INPUT_EVBUG is not set
+ 
++
+ #
+ # Input Device Drivers
+ #
+-- 
+1.5.4.4
+

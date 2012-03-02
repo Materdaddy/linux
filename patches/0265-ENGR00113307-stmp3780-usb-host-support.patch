@@ -1,0 +1,620 @@
+From a90d8305b69b921ff64c00b5a61b2a6eb9e2ab62 Mon Sep 17 00:00:00 2001
+From: Jun Li <r65092@freescale.com>
+Date: Fri, 12 Jun 2009 18:37:49 +0800
+Subject: [PATCH] ENGR00113307 stmp3780 usb host support.
+
+For stmp3780 usb otg port:
+1. Add usb ehci host driver.
+2. Use parent resource for host and device driver.
+
+Signed-off-by: Li Jun <r65092@freescale.com>
+---
+ arch/arm/configs/imx233_defconfig             |  158 ++++++++++++++++++++++++-
+ arch/arm/mach-stmp3xxx/devices.c              |   33 +++++-
+ arch/arm/mach-stmp3xxx/include/mach/fsl_usb.h |   60 ++++++++++
+ arch/arm/mach-stmp3xxx/stmp378x_devb.c        |    5 +
+ drivers/usb/core/hub.c                        |   29 +++++
+ drivers/usb/gadget/arcotg_udc.c               |    8 ++
+ drivers/usb/host/Kconfig                      |    8 +-
+ drivers/usb/host/ehci-arc.c                   |   34 ++++--
+ drivers/usb/host/ehci-fsl.h                   |    2 +-
+ 9 files changed, 319 insertions(+), 18 deletions(-)
+
+diff --git a/arch/arm/configs/imx233_defconfig b/arch/arm/configs/imx233_defconfig
+index 6217ea3..9d816c8 100644
+--- a/arch/arm/configs/imx233_defconfig
++++ b/arch/arm/configs/imx233_defconfig
+@@ -1,7 +1,7 @@
+ #
+ # Automatically generated make config: don't edit
+ # Linux kernel version: 2.6.28
+-# Wed May 20 14:37:35 2009
++# Fri Jun 12 19:40:44 2009
+ #
+ CONFIG_ARM=y
+ CONFIG_SYS_SUPPORTS_APM_EMULATION=y
+@@ -524,6 +524,7 @@ CONFIG_MTD_NAND_GPMI_BCH=y
+ CONFIG_MTD_NAND_GPMI_TA1=y
+ CONFIG_MTD_NAND_GPMI_TA3=y
+ # CONFIG_MTD_NAND_PLATFORM is not set
++# CONFIG_MTD_ALAUDA is not set
+ # CONFIG_MTD_ONENAND is not set
+ 
+ #
+@@ -545,6 +546,7 @@ CONFIG_BLK_DEV=y
+ CONFIG_BLK_DEV_LOOP=y
+ CONFIG_BLK_DEV_CRYPTOLOOP=y
+ # CONFIG_BLK_DEV_NBD is not set
++# CONFIG_BLK_DEV_UB is not set
+ # CONFIG_BLK_DEV_RAM is not set
+ # CONFIG_CDROM_PKTCDVD is not set
+ # CONFIG_ATA_OVER_ETH is not set
+@@ -638,6 +640,15 @@ CONFIG_ENC28J60=y
+ # CONFIG_WLAN_PRE80211 is not set
+ # CONFIG_WLAN_80211 is not set
+ # CONFIG_IWLWIFI_LEDS is not set
++
++#
++# USB Network Adapters
++#
++# CONFIG_USB_CATC is not set
++# CONFIG_USB_KAWETH is not set
++# CONFIG_USB_PEGASUS is not set
++# CONFIG_USB_RTL8150 is not set
++# CONFIG_USB_USBNET is not set
+ # CONFIG_WAN is not set
+ # CONFIG_PPP is not set
+ # CONFIG_SLIP is not set
+@@ -770,6 +781,7 @@ CONFIG_I2C_STMP378X=m
+ #
+ # CONFIG_I2C_PARPORT_LIGHT is not set
+ # CONFIG_I2C_TAOS_EVM is not set
++# CONFIG_I2C_TINY_USB is not set
+ 
+ #
+ # Other I2C/SMBus bus drivers
+@@ -836,6 +848,11 @@ CONFIG_STMP3XXX_WATCHDOG=y
+ # CONFIG_PCWATCHDOG is not set
+ # CONFIG_MIXCOMWD is not set
+ # CONFIG_WDT is not set
++
++#
++# USB-based Watchdog Cards
++#
++# CONFIG_USBPCWATCHDOG is not set
+ CONFIG_SSB_POSSIBLE=y
+ 
+ #
+@@ -946,6 +963,40 @@ CONFIG_VIDEO_PXP=y
+ # CONFIG_VIDEO_SAA5246A is not set
+ # CONFIG_VIDEO_SAA5249 is not set
+ # CONFIG_SOC_CAMERA is not set
++CONFIG_V4L_USB_DRIVERS=y
++# CONFIG_USB_VIDEO_CLASS is not set
++CONFIG_USB_GSPCA=m
++# CONFIG_USB_M5602 is not set
++# CONFIG_USB_GSPCA_CONEX is not set
++# CONFIG_USB_GSPCA_ETOMS is not set
++# CONFIG_USB_GSPCA_FINEPIX is not set
++# CONFIG_USB_GSPCA_MARS is not set
++# CONFIG_USB_GSPCA_OV519 is not set
++# CONFIG_USB_GSPCA_PAC207 is not set
++# CONFIG_USB_GSPCA_PAC7311 is not set
++# CONFIG_USB_GSPCA_SONIXB is not set
++# CONFIG_USB_GSPCA_SONIXJ is not set
++# CONFIG_USB_GSPCA_SPCA500 is not set
++# CONFIG_USB_GSPCA_SPCA501 is not set
++# CONFIG_USB_GSPCA_SPCA505 is not set
++# CONFIG_USB_GSPCA_SPCA506 is not set
++# CONFIG_USB_GSPCA_SPCA508 is not set
++# CONFIG_USB_GSPCA_SPCA561 is not set
++# CONFIG_USB_GSPCA_STK014 is not set
++# CONFIG_USB_GSPCA_SUNPLUS is not set
++# CONFIG_USB_GSPCA_T613 is not set
++# CONFIG_USB_GSPCA_TV8532 is not set
++# CONFIG_USB_GSPCA_VC032X is not set
++# CONFIG_USB_GSPCA_ZC3XX is not set
++# CONFIG_VIDEO_PVRUSB2 is not set
++# CONFIG_VIDEO_EM28XX is not set
++# CONFIG_VIDEO_USBVISION is not set
++# CONFIG_USB_ET61X251 is not set
++# CONFIG_USB_SN9C102 is not set
++# CONFIG_USB_ZC0301 is not set
++# CONFIG_USB_ZR364XX is not set
++# CONFIG_USB_STKWEBCAM is not set
++# CONFIG_USB_S2255 is not set
+ CONFIG_RADIO_ADAPTERS=y
+ # CONFIG_RADIO_CADET is not set
+ # CONFIG_RADIO_RTRACK is not set
+@@ -958,6 +1009,9 @@ CONFIG_RADIO_ADAPTERS=y
+ # CONFIG_RADIO_TRUST is not set
+ # CONFIG_RADIO_TYPHOON is not set
+ # CONFIG_RADIO_ZOLTRIX is not set
++# CONFIG_USB_DSBR is not set
++# CONFIG_USB_SI470X is not set
++# CONFIG_USB_MR800 is not set
+ CONFIG_RADIO_STFM1000=m
+ CONFIG_RADIO_STFM1000_ALSA=m
+ # CONFIG_DAB is not set
+@@ -1043,6 +1097,9 @@ CONFIG_SND_VERBOSE_PROCFS=y
+ # CONFIG_SND_DRIVERS is not set
+ # CONFIG_SND_ARM is not set
+ # CONFIG_SND_SPI is not set
++CONFIG_SND_USB=y
++# CONFIG_SND_USB_AUDIO is not set
++# CONFIG_SND_USB_CAIAQ is not set
+ CONFIG_SND_SOC=y
+ CONFIG_SND_STMP3XXX_SOC=y
+ CONFIG_SND_STMP3XXX_SOC_DAI=y
+@@ -1058,14 +1115,110 @@ CONFIG_USB_SUPPORT=y
+ CONFIG_USB_ARCH_HAS_HCD=y
+ # CONFIG_USB_ARCH_HAS_OHCI is not set
+ CONFIG_USB_ARCH_HAS_EHCI=y
+-# CONFIG_USB is not set
++CONFIG_USB=y
++# CONFIG_USB_DEBUG is not set
++# CONFIG_USB_ANNOUNCE_NEW_DEVICES is not set
++
++#
++# Miscellaneous USB options
++#
++# CONFIG_USB_DEVICEFS is not set
++CONFIG_USB_DEVICE_CLASS=y
++# CONFIG_USB_DYNAMIC_MINORS is not set
++# CONFIG_USB_SUSPEND is not set
++# CONFIG_USB_OTG is not set
+ # CONFIG_USB_OTG_WHITELIST is not set
+ # CONFIG_USB_OTG_BLACKLIST_HUB is not set
++CONFIG_USB_MON=y
++# CONFIG_USB_WUSB is not set
++# CONFIG_USB_WUSB_CBAF is not set
++
++#
++# USB Host Controller Drivers
++#
++# CONFIG_USB_C67X00_HCD is not set
++CONFIG_USB_EHCI_HCD=m
++CONFIG_USB_EHCI_ARC=y
++CONFIG_USB_EHCI_ARC_OTG=y
++# CONFIG_USB_STATIC_IRAM is not set
++# CONFIG_USB_EHCI_FSL_MC13783 is not set
++# CONFIG_USB_EHCI_FSL_1301 is not set
++# CONFIG_USB_EHCI_FSL_1504 is not set
++CONFIG_USB_EHCI_FSL_UTMI=y
++CONFIG_USB_EHCI_ROOT_HUB_TT=y
++# CONFIG_USB_EHCI_TT_NEWSCHED is not set
++# CONFIG_USB_ISP116X_HCD is not set
++# CONFIG_USB_SL811_HCD is not set
++# CONFIG_USB_R8A66597_HCD is not set
++# CONFIG_USB_HWA_HCD is not set
+ # CONFIG_USB_GADGET_MUSB_HDRC is not set
+ 
+ #
++# USB Device Class drivers
++#
++# CONFIG_USB_ACM is not set
++# CONFIG_USB_PRINTER is not set
++# CONFIG_USB_WDM is not set
++# CONFIG_USB_TMC is not set
++
++#
+ # NOTE: USB_STORAGE depends on SCSI but BLK_DEV_SD may also be needed;
+ #
++
++#
++# see USB_STORAGE Help for more information
++#
++CONFIG_USB_STORAGE=y
++# CONFIG_USB_STORAGE_DEBUG is not set
++# CONFIG_USB_STORAGE_DATAFAB is not set
++# CONFIG_USB_STORAGE_FREECOM is not set
++# CONFIG_USB_STORAGE_ISD200 is not set
++# CONFIG_USB_STORAGE_DPCM is not set
++# CONFIG_USB_STORAGE_USBAT is not set
++# CONFIG_USB_STORAGE_SDDR09 is not set
++# CONFIG_USB_STORAGE_SDDR55 is not set
++# CONFIG_USB_STORAGE_JUMPSHOT is not set
++# CONFIG_USB_STORAGE_ALAUDA is not set
++# CONFIG_USB_STORAGE_ONETOUCH is not set
++# CONFIG_USB_STORAGE_KARMA is not set
++# CONFIG_USB_STORAGE_CYPRESS_ATACB is not set
++# CONFIG_USB_LIBUSUAL is not set
++
++#
++# USB Imaging devices
++#
++# CONFIG_USB_MDC800 is not set
++# CONFIG_USB_MICROTEK is not set
++
++#
++# USB port drivers
++#
++# CONFIG_USB_SERIAL is not set
++
++#
++# USB Miscellaneous drivers
++#
++# CONFIG_USB_EMI62 is not set
++# CONFIG_USB_EMI26 is not set
++# CONFIG_USB_ADUTUX is not set
++# CONFIG_USB_SEVSEG is not set
++# CONFIG_USB_RIO500 is not set
++# CONFIG_USB_LEGOTOWER is not set
++# CONFIG_USB_LCD is not set
++# CONFIG_USB_BERRY_CHARGE is not set
++# CONFIG_USB_LED is not set
++# CONFIG_USB_CYPRESS_CY7C63 is not set
++# CONFIG_USB_CYTHERM is not set
++# CONFIG_USB_PHIDGET is not set
++# CONFIG_USB_IDMOUSE is not set
++# CONFIG_USB_FTDI_ELAN is not set
++# CONFIG_USB_APPLEDISPLAY is not set
++# CONFIG_USB_SISUSBVGA is not set
++# CONFIG_USB_LD is not set
++# CONFIG_USB_TRANCEVIBRATOR is not set
++# CONFIG_USB_IOWARRIOR is not set
++# CONFIG_USB_ISIGHTFW is not set
++# CONFIG_USB_VST is not set
+ CONFIG_USB_GADGET=m
+ # CONFIG_USB_GADGET_DEBUG_FILES is not set
+ CONFIG_USB_GADGET_VBUS_DRAW=2
+@@ -1409,6 +1562,7 @@ CONFIG_SECURITY=y
+ # CONFIG_SECURITYFS is not set
+ # CONFIG_SECURITY_NETWORK is not set
+ # CONFIG_SECURITY_FILE_CAPABILITIES is not set
++# CONFIG_SECURITY_ROOTPLUG is not set
+ CONFIG_SECURITY_DEFAULT_MMAP_MIN_ADDR=0
+ CONFIG_CRYPTO=y
+ 
+diff --git a/arch/arm/mach-stmp3xxx/devices.c b/arch/arm/mach-stmp3xxx/devices.c
+index 0ff1719..cb7d758 100644
+--- a/arch/arm/mach-stmp3xxx/devices.c
++++ b/arch/arm/mach-stmp3xxx/devices.c
+@@ -264,6 +264,17 @@ static struct resource usb_resources[] = {
+ 	},
+ };
+ 
++struct platform_device stmp3xxx_usb = {
++		.name		= "stmp3xxx-usb",
++		.id		= -1,
++		.dev		= {
++		.dma_mask		= &common_dmamask,
++		.coherent_dma_mask	= COMMON_COHERENT_DMAMASK,
++	},
++	.num_resources	= ARRAY_SIZE(usb_resources),
++	.resource	= usb_resources,
++};
++
+ static struct fsl_usb2_platform_data udc_platform_data = {
+ 	.operating_mode = FSL_USB2_DR_DEVICE,
+ 	.phy_mode	= FSL_USB2_PHY_UTMI,
+@@ -279,9 +290,27 @@ struct platform_device stmp3xxx_udc = {
+ 		.dma_mask		= &common_dmamask,
+ 		.coherent_dma_mask	= COMMON_COHERENT_DMAMASK,
+ 		.platform_data		= &udc_platform_data,
++		.parent			= &stmp3xxx_usb.dev,
++	},
++};
++
++static struct fsl_usb2_platform_data ehci_platform_data = {
++	.operating_mode = FSL_USB2_DR_HOST,
++	.phy_mode	= FSL_USB2_PHY_UTMI,
++	.port_enables	= FSL_USB2_DONT_REMAP,
++	.platform_init	= NULL,
++	.platform_uninit = NULL,
++};
++
++struct platform_device stmp3xxx_ehci = {
++	.name		= "fsl-ehci",
++	.id		= -1,
++	.dev		= {
++		.dma_mask		= &common_dmamask,
++		.coherent_dma_mask	= COMMON_COHERENT_DMAMASK,
++		.platform_data		= &ehci_platform_data,
++		.parent			= &stmp3xxx_usb.dev,
+ 	},
+-	.num_resources	= ARRAY_SIZE(usb_resources),
+-	.resource	= usb_resources,
+ };
+ 
+ struct platform_device stmp3xxx_rtc = {
+diff --git a/arch/arm/mach-stmp3xxx/include/mach/fsl_usb.h b/arch/arm/mach-stmp3xxx/include/mach/fsl_usb.h
+new file mode 100644
+index 0000000..87cc7d8
+--- /dev/null
++++ b/arch/arm/mach-stmp3xxx/include/mach/fsl_usb.h
+@@ -0,0 +1,60 @@
++/*
++ * Copyright 2005-2009 Freescale Semiconductor, Inc. All Rights Reserved.
++ */
++
++/*
++ * The code contained herein is licensed under the GNU General Public
++ * License. You may obtain a copy of the GNU General Public License
++ * Version 2 or later at the following locations:
++ *
++ * http://www.opensource.org/licenses/gpl-license.html
++ * http://www.gnu.org/copyleft/gpl.html
++ */
++
++/*
++ * USB Host side, platform-specific functionality.
++ */
++
++#include <linux/usb/fsl_xcvr.h>
++#include <mach/arc_otg.h>
++
++/* ehci_arc_hc_driver.flags value */
++#define FSL_PLATFORM_HC_FLAGS (HCD_USB2 | HCD_MEMORY)
++
++static void fsl_setup_phy(struct ehci_hcd *ehci,
++			  enum fsl_usb2_phy_modes phy_mode,
++			  int port_offset);
++
++static inline void fsl_platform_usb_setup(struct ehci_hcd *ehci)
++{
++	struct fsl_usb2_platform_data *pdata;
++
++	pdata = ehci_to_hcd(ehci)->self.controller->platform_data;
++	fsl_setup_phy(ehci, pdata->phy_mode, 0);
++}
++
++static inline void fsl_platform_set_host_mode(struct usb_hcd *hcd)
++{
++	unsigned int temp;
++	struct fsl_usb2_platform_data *pdata;
++
++	pdata = hcd->self.controller->platform_data;
++
++	if (pdata->xcvr_ops && pdata->xcvr_ops->set_host)
++		pdata->xcvr_ops->set_host();
++
++	/* set host mode */
++	temp = readl(hcd->regs + 0x1a8);
++	writel(temp | USBMODE_CM_HOST, hcd->regs + 0x1a8);
++}
++
++/* Needed for i2c/serial transceivers */
++static inline void
++fsl_platform_set_vbus_power(struct fsl_usb2_platform_data *pdata, int on)
++{
++}
++
++/* Set USB AHB burst length for host */
++static inline void fsl_platform_set_ahb_burst(struct usb_hcd *hcd)
++{
++}
+diff --git a/arch/arm/mach-stmp3xxx/stmp378x_devb.c b/arch/arm/mach-stmp3xxx/stmp378x_devb.c
+index 8e8007c..6aca5ac 100644
+--- a/arch/arm/mach-stmp3xxx/stmp378x_devb.c
++++ b/arch/arm/mach-stmp3xxx/stmp378x_devb.c
+@@ -26,6 +26,7 @@
+ #include <linux/fsl_devices.h>
+ #include <linux/spi/spi.h>
+ #include <linux/i2c.h>
++#include <linux/usb/otg.h>
+ 
+ #include <asm/setup.h>
+ #include <asm/mach-types.h>
+@@ -89,7 +90,9 @@ static struct platform_device *devices[] = {
+ 	&stmp3xxx_appuart,
+ 	&stmp3xxx_dbguart,
+ 	&stmp3xxx_watchdog,
++	&stmp3xxx_usb,
+ 	&stmp3xxx_udc,
++	&stmp3xxx_ehci,
+ 	&stmp3xxx_rtc,
+ 	&stmp3xxx_framebuffer,
+ 	&stmp3xxx_backlight,
+@@ -370,6 +373,8 @@ static void __init stmp378x_devb_init(void)
+ 	stmp3xxx_keyboard.dev.platform_data = &keyboard_data;
+ 	udata = stmp3xxx_udc.dev.platform_data;
+ 	udata->platform_init = usb_phy_enable;
++	udata = stmp3xxx_ehci.dev.platform_data;
++	udata->platform_init = usb_phy_enable;
+ 	spi_register_board_info(spi_board_info, ARRAY_SIZE(spi_board_info));
+ 	stmp3xxx_ssp1_device_register();	/* MMC or SSP */
+ 	stmp3xxx_ssp2_device_register();	/* MMC or SSP */
+diff --git a/drivers/usb/core/hub.c b/drivers/usb/core/hub.c
+index 3b8f678..1722eba 100644
+--- a/drivers/usb/core/hub.c
++++ b/drivers/usb/core/hub.c
+@@ -37,6 +37,14 @@
+ #endif
+ #endif
+ 
++#ifdef CONFIG_ARCH_STMP3XXX
++#define STMP3XXX_USB_HOST_HACK
++#endif
++
++#ifdef STMP3XXX_USB_HOST_HACK
++#include <linux/fsl_devices.h>
++#endif
++
+ struct usb_hub {
+ 	struct device		*intfdev;	/* the "interface" device */
+ 	struct usb_device	*hdev;
+@@ -2841,6 +2849,27 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
+ 		return;
+ 	}
+ 
++#ifdef STMP3XXX_USB_HOST_HACK
++	{
++	/*
++	 * FIXME: the USBPHY of STMP3xxx SoC has bug. The usb port power
++	 * is never enabled during standard ehci reset procedure if the
++	 * external device once passed plug/unplug procedure. This work-
++	 * around resets and reinitiates USBPHY before the ehci port reset
++	 * sequence started.
++	 */
++		struct device *dev = hcd->self.controller;
++		struct fsl_usb2_platform_data *pdata;
++
++		pdata = (struct fsl_usb2_platform_data *)dev->platform_data;
++		if (dev->parent && dev->type) {
++			if (port1 == 1 && pdata->platform_init)
++				pdata->platform_init(NULL);
++		}
++	}
++
++#endif
++
+ 	for (i = 0; i < SET_CONFIG_TRIES; i++) {
+ 
+ 		/* reallocate for each attempt, since references
+diff --git a/drivers/usb/gadget/arcotg_udc.c b/drivers/usb/gadget/arcotg_udc.c
+index af7b940..40df0fb 100644
+--- a/drivers/usb/gadget/arcotg_udc.c
++++ b/drivers/usb/gadget/arcotg_udc.c
+@@ -2592,6 +2592,14 @@ static int __init fsl_udc_probe(struct platform_device *pdev)
+ 		return -ENODEV;
+ 	}
+ #else
++	if ((pdev->dev.parent) &&
++		(to_platform_device(pdev->dev.parent)->resource)) {
++		pdev->resource =
++			to_platform_device(pdev->dev.parent)->resource;
++		pdev->num_resources =
++			to_platform_device(pdev->dev.parent)->num_resources;
++	}
++
+ 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 	if (!res) {
+ 		ret = -ENXIO;
+diff --git a/drivers/usb/host/Kconfig b/drivers/usb/host/Kconfig
+index cad5acd..78bbd6e 100644
+--- a/drivers/usb/host/Kconfig
++++ b/drivers/usb/host/Kconfig
+@@ -44,7 +44,7 @@ config USB_EHCI_HCD
+ 
+ config USB_EHCI_ARC
+ 	bool "Support for Freescale controller"
+-	depends on USB_EHCI_HCD && ARCH_MXC
++	depends on USB_EHCI_HCD && (ARCH_MXC || ARCH_STMP3XXX)
+ 	---help---
+ 	   Some Freescale processors have an integrated High Speed
+ 	   USBOTG controller, which supports EHCI host mode.
+@@ -82,7 +82,7 @@ config USB_EHCI_ARC_OTG
+ 
+ config USB_EHCI_ARC_OTG_WAKE_UP
+         bool "Support wake up from Freescale OTG port"
+-	depends on PM && USB_EHCI_ARC_OTG
++	depends on PM && ARCH_MXC && USB_EHCI_ARC_OTG
+ 	default n
+ 	---help---
+ 	  Enable support system wake up from Host1 port usb device
+@@ -105,7 +105,7 @@ choice
+ 	depends on USB_EHCI_ARC_OTG
+ 	default USB_EHCI_FSL_1504 if ARCH_MX3
+ 	default USB_EHCI_FSL_1301 if ARCH_MX27
+-	default USB_EHCI_FSL_UTMI if (ARCH_MX25 || ARCH_MX35 || ARCH_MX37 || ARCH_MX51)
++	default USB_EHCI_FSL_UTMI if (ARCH_MX25 || ARCH_MX35 || ARCH_MX37 || ARCH_MX51 || ARCH_STMP3XXX)
+ 	---help---
+ 	  Choose the transceiver to use with the Freescale DR port.
+ 
+@@ -139,7 +139,7 @@ config USB_EHCI_FSL_1504
+ 
+ config USB_EHCI_FSL_UTMI
+ 	bool "Internal UTMI"
+-	depends on (ARCH_MX25 || ARCH_MX35 || ARCH_MX37 || ARCH_MX51)
++	depends on (ARCH_MX25 || ARCH_MX35 || ARCH_MX37 || ARCH_MX51 || ARCH_STMP3XXX)
+ 	---help---
+ 	  Enable support for the on-chip High Speed UTMI transceiver.
+ 
+diff --git a/drivers/usb/host/ehci-arc.c b/drivers/usb/host/ehci-arc.c
+index a1b56c7..f1617e9 100644
+--- a/drivers/usb/host/ehci-arc.c
++++ b/drivers/usb/host/ehci-arc.c
+@@ -28,6 +28,7 @@
+ 
+ extern struct resource *otg_get_resources(void);
+ 
++static int regs_remapped /* = 0 */;
+ #undef EHCI_PROC_PTC
+ #ifdef EHCI_PROC_PTC		/* /proc PORTSC:PTC support */
+ /*
+@@ -114,7 +115,7 @@ static int usb_hcd_fsl_probe(const struct hc_driver *driver,
+ 	struct resource *res;
+ 	int irq;
+ 	int retval;
+-	unsigned int __maybe_unused temp;
++	u32 temp;
+ 
+ 	pr_debug("initializing FSL-SOC USB Controller\n");
+ 
+@@ -159,6 +160,14 @@ static int usb_hcd_fsl_probe(const struct hc_driver *driver,
+ 	} else
+ #endif
+ 	{
++		if ((pdev->dev.parent) &&
++			(to_platform_device(pdev->dev.parent)->resource)) {
++			pdev->resource =
++				to_platform_device(pdev->dev.parent)->resource;
++			pdev->num_resources =
++			to_platform_device(pdev->dev.parent)->num_resources;
++		}
++
+ 		res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+ 		if (!res) {
+ 			dev_err(&pdev->dev,
+@@ -180,13 +189,18 @@ static int usb_hcd_fsl_probe(const struct hc_driver *driver,
+ 		}
+ 	}
+ 
+-	hcd->regs = ioremap(hcd->rsrc_start, hcd->rsrc_len);
++	if (!(pdata->port_enables & FSL_USB2_DONT_REMAP)) {
++		hcd->regs = ioremap(hcd->rsrc_start, hcd->rsrc_len);
++
++		if (hcd->regs == NULL) {
++			dev_dbg(&pdev->dev, "error mapping memory\n");
++			retval = -EFAULT;
++			goto err3;
++		}
++		regs_remapped = 1;
++	} else
++		hcd->regs = (void __iomem *)(u32)(hcd->rsrc_start);
+ 
+-	if (hcd->regs == NULL) {
+-		dev_dbg(&pdev->dev, "error mapping memory\n");
+-		retval = -EFAULT;
+-		goto err3;
+-	}
+ 	pdata->regs = hcd->regs;
+ 
+ 	/*
+@@ -236,7 +250,8 @@ static int usb_hcd_fsl_probe(const struct hc_driver *driver,
+ 	return retval;
+ 
+ err4:
+-	iounmap(hcd->regs);
++	if (regs_remapped)
++		iounmap(hcd->regs);
+ err3:
+ 	if (pdata->operating_mode != FSL_USB2_DR_OTG)
+ 		release_mem_region(hcd->rsrc_start, hcd->rsrc_len);
+@@ -286,7 +301,8 @@ static void usb_hcd_fsl_remove(struct usb_hcd *hcd,
+ 	if (pdata->platform_uninit)
+ 		pdata->platform_uninit(pdata);
+ 
+-	iounmap(hcd->regs);
++	if (regs_remapped)
++		iounmap(hcd->regs);
+ }
+ 
+ static void fsl_setup_phy(struct ehci_hcd *ehci,
+diff --git a/drivers/usb/host/ehci-fsl.h b/drivers/usb/host/ehci-fsl.h
+index 6d7d7dc..f3db681 100644
+--- a/drivers/usb/host/ehci-fsl.h
++++ b/drivers/usb/host/ehci-fsl.h
+@@ -43,7 +43,7 @@
+ #define FSL_SOC_USB_CTRL	0x500	/* NOTE: big-endian */
+ #define SNOOP_SIZE_2GB		0x1e
+ 
+-#ifdef CONFIG_ARCH_MXC
++#if defined(CONFIG_ARCH_MXC) || defined(CONFIG_ARCH_STMP3XXX)
+ #include <mach/fsl_usb.h>
+ #elif CONFIG_PPC32
+ #include <asm/fsl_usb.h>
+-- 
+1.5.4.4
+

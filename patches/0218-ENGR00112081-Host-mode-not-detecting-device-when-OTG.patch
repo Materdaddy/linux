@@ -1,0 +1,113 @@
+From fe24ab3b48e1595b1bfd035d871fa54179c64b2b Mon Sep 17 00:00:00 2001
+From: Dinh Nguyen <r00091@freescale.com>
+Date: Mon, 1 Jun 2009 09:15:15 -0500
+Subject: [PATCH] ENGR00112081 Host mode not detecting device when OTG port is in OTG mode
+
+When configuring the OTG port for OTG mode:
+insmod fsl_otg_arc.ko
+insmod ehci-hcd.ko
+insmod arcotg_udc.ko
+Now the OTG port is operating in true OTG mode. Host mode can not work after
+enable gadget driver(ex. g_file_storage.ko).
+This patch change the otg Kconfig to make it can be configured correctly and
+fix the host mode failure issue.
+
+Signed-off-by: Dinh Nguyen <r00091@freescale.com>
+---
+ drivers/usb/Kconfig             |    2 ++
+ drivers/usb/gadget/arcotg_udc.c |    2 +-
+ drivers/usb/host/ehci-arc.c     |    1 +
+ drivers/usb/host/ehci-hcd.c     |    2 +-
+ drivers/usb/otg/Kconfig         |    8 +++++++-
+ drivers/usb/otg/fsl_otg.c       |    4 ++--
+ 6 files changed, 14 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/usb/Kconfig b/drivers/usb/Kconfig
+index 289d81a..83babb0 100644
+--- a/drivers/usb/Kconfig
++++ b/drivers/usb/Kconfig
+@@ -150,4 +150,6 @@ source "drivers/usb/atm/Kconfig"
+ 
+ source "drivers/usb/gadget/Kconfig"
+ 
++source "drivers/usb/otg/Kconfig"
++
+ endif # USB_SUPPORT
+diff --git a/drivers/usb/gadget/arcotg_udc.c b/drivers/usb/gadget/arcotg_udc.c
+index d2200d8..192eddb 100644
+--- a/drivers/usb/gadget/arcotg_udc.c
++++ b/drivers/usb/gadget/arcotg_udc.c
+@@ -2987,7 +2987,7 @@ static int __init udc_init(void)
+ 	return platform_driver_register(&udc_driver);
+ }
+ 
+-module_init(udc_init);
++device_initcall_sync(udc_init);
+ 
+ static void __exit udc_exit(void)
+ {
+diff --git a/drivers/usb/host/ehci-arc.c b/drivers/usb/host/ehci-arc.c
+index 009001c..a1b56c7 100644
+--- a/drivers/usb/host/ehci-arc.c
++++ b/drivers/usb/host/ehci-arc.c
+@@ -588,6 +588,7 @@ static int ehci_fsl_drv_resume(struct platform_device *pdev)
+ 	ehci_writel(ehci, pdata->pm_portsc, &ehci->regs->port_status[0]);
+ 
+ 	set_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags);
++	hcd->state = HC_STATE_RUNNING;
+ 	pdev->dev.power.power_state = PMSG_ON;
+ 
+ 	tmp = ehci_readl(ehci, &ehci->regs->command);
+diff --git a/drivers/usb/host/ehci-hcd.c b/drivers/usb/host/ehci-hcd.c
+index 3c767dd..6a35d6c 100644
+--- a/drivers/usb/host/ehci-hcd.c
++++ b/drivers/usb/host/ehci-hcd.c
+@@ -1125,7 +1125,7 @@ err_debug:
+ 	clear_bit(USB_EHCI_LOADED, &usb_hcds_loaded);
+ 	return retval;
+ }
+-module_init(ehci_hcd_init);
++device_initcall_sync(ehci_hcd_init);
+ 
+ static void __exit ehci_hcd_cleanup(void)
+ {
+diff --git a/drivers/usb/otg/Kconfig b/drivers/usb/otg/Kconfig
+index 20ccb82..f9f868c 100644
+--- a/drivers/usb/otg/Kconfig
++++ b/drivers/usb/otg/Kconfig
+@@ -1,5 +1,11 @@
+ config TRANSCEIVER_MXC_OTG
+-	tristate "usb otg pin detect support"
++	tristate "USB OTG pin detect support"
+ 	depends on (MC13783_MXC || ISP1504_MXC) && USB_GADGET && USB_EHCI_HCD && USB_OTG
+ 	help
+ 	  Support for USB OTG PIN detect on MXC platforms.
++
++config UTMI_MXC_OTG
++	tristate "USB OTG pin detect support for UTMI PHY"
++	depends on  USB_EHCI_FSL_UTMI && USB_GADGET && USB_EHCI_HCD && USB_OTG
++	help
++	  Support for USB OTG PIN detect for UTMI PHY on MXC platforms.
+diff --git a/drivers/usb/otg/fsl_otg.c b/drivers/usb/otg/fsl_otg.c
+index b7c43c8..d5c8cf0 100644
+--- a/drivers/usb/otg/fsl_otg.c
++++ b/drivers/usb/otg/fsl_otg.c
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (C) 2005-2008 Freescale semiconductor, Inc.
++ * Copyright 2005-2009 Freescale Semiconductor, Inc. All Rights Reserved.
+  *
+  * Author: Li Yang <LeoLi@freescale.com>
+  *         Jerry Huang <Chang-Ming.Huang@freescale.com>
+@@ -1148,7 +1148,7 @@ static int __init fsl_otg_probe(struct platform_device *pdev)
+ 	return status;
+ }
+ 
+-static int __exit fsl_otg_remove(struct platform_device *pdev)
++static int fsl_otg_remove(struct platform_device *pdev)
+ {
+ 	struct fsl_usb2_platform_data *pdata = pdev->dev.platform_data;
+ 
+-- 
+1.5.4.4
+

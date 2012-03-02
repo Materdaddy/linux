@@ -1,0 +1,65 @@
+From 9587f999b67a1c88eaa7e3dea9d38e016fed8833 Mon Sep 17 00:00:00 2001
+From: JasonHua <Jason.Hua@freescale.com>
+Date: Fri, 12 Jun 2009 16:47:17 +0800
+Subject: [PATCH] ENGR00113294 GPS:Make gps driver default menuconfig to be module config
+
+Make gps driver default menuconfig to be module config
+
+Signed-off-by: Jason Hua <r65076@freescale.com>
+---
+ arch/arm/configs/imx51_defconfig |    5 ++++-
+ drivers/mxc/gps_ioctrl/Kconfig   |    1 -
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm/configs/imx51_defconfig b/arch/arm/configs/imx51_defconfig
+index 6dd0682..bc7bbf1 100644
+--- a/arch/arm/configs/imx51_defconfig
++++ b/arch/arm/configs/imx51_defconfig
+@@ -1,7 +1,7 @@
+ #
+ # Automatically generated make config: don't edit
+ # Linux kernel version: 2.6.28
+-# Wed May 13 11:08:25 2009
++# Fri Jun 12 16:38:25 2009
+ #
+ CONFIG_ARM=y
+ CONFIG_SYS_SUPPORTS_APM_EMULATION=y
+@@ -1028,6 +1028,7 @@ CONFIG_VIDEO_MXC_CAMERA=m
+ # MXC Camera/V4L2 PRP Features support
+ #
+ CONFIG_VIDEO_MXC_IPU_CAMERA=y
++# CONFIG_VIDEO_MXC_CSI_CAMERA is not set
+ # CONFIG_MXC_CAMERA_MC521DA is not set
+ # CONFIG_MXC_EMMA_CAMERA_MICRON111 is not set
+ # CONFIG_MXC_CAMERA_OV2640_EMMA is not set
+@@ -1201,6 +1202,7 @@ CONFIG_SND_MXC_SOC_IRAM=y
+ CONFIG_SND_SOC_IMX_3STACK_SGTL5000=y
+ # CONFIG_SND_SOC_IMX_3STACK_AK4647 is not set
+ # CONFIG_SND_SOC_IMX_3STACK_WM8580 is not set
++# CONFIG_SND_SOC_IMX_3STACK_BLUETOOTH is not set
+ # CONFIG_SND_SOC_ALL_CODECS is not set
+ CONFIG_SND_SOC_SGTL5000=y
+ # CONFIG_SOUND_PRIME is not set
+@@ -1586,6 +1588,7 @@ CONFIG_MXC_BLUETOOTH=m
+ #
+ # Broadcom GPS ioctrl support
+ #
++CONFIG_GPS_IOCTRL=m
+ 
+ #
+ # MXC Media Local Bus Driver
+diff --git a/drivers/mxc/gps_ioctrl/Kconfig b/drivers/mxc/gps_ioctrl/Kconfig
+index dd84144..0a85d16 100644
+--- a/drivers/mxc/gps_ioctrl/Kconfig
++++ b/drivers/mxc/gps_ioctrl/Kconfig
+@@ -7,7 +7,6 @@ menu "Broadcom GPS ioctrl support"
+ config GPS_IOCTRL
+ 	tristate "GPS ioctrl support"
+ 	depends on MACH_MX31_3DS || MACH_MX35_3DS || MACH_MX37_3DS || MACH_MX51_3DS
+-	default m
+ 	---help---
+ 	  Say Y to enable Broadcom GPS ioctrl on MXC platform.
+ 
+-- 
+1.5.4.4
+

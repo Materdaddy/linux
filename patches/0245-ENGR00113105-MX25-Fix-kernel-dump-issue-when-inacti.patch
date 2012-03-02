@@ -1,0 +1,41 @@
+From 153ce5d7afd74ce56d868c11525c4aff7cd546d5 Mon Sep 17 00:00:00 2001
+From: Xiexiaobo <X.Xie@freescale.com>
+Date: Fri, 12 Jun 2009 14:20:52 +0800
+Subject: [PATCH] ENGR00113105 MX25: Fix kernel dump issue when inactivate ESAI ports
+
+Because ESAI ports' pins don't work on GPIO mode, So inactivate
+ESAI ports don't need call mxc_request_gpio(). Remove these functions
+from gpio_deactivate_esai_ports().
+
+Signed-off-by: Xie Xiaobo <X.Xie@freescale.com>
+---
+ arch/arm/mach-mx25/mx25_3stack_gpio.c |   13 -------------
+ 1 files changed, 0 insertions(+), 13 deletions(-)
+
+diff --git a/arch/arm/mach-mx25/mx25_3stack_gpio.c b/arch/arm/mach-mx25/mx25_3stack_gpio.c
+index 9ad503a..83fbc9d 100644
+--- a/arch/arm/mach-mx25/mx25_3stack_gpio.c
++++ b/arch/arm/mach-mx25/mx25_3stack_gpio.c
+@@ -1090,19 +1090,6 @@ EXPORT_SYMBOL(gpio_activate_esai_ports);
+  */
+ void gpio_deactivate_esai_ports(void)
+ {
+-	mxc_request_gpio(MX25_PIN_CSI_D2); /*SCKR*/
+-	mxc_request_gpio(MX25_PIN_CSI_D3); /*FSR*/
+-	mxc_request_gpio(MX25_PIN_CSI_D4); /*HCKR*/
+-	mxc_request_gpio(MX25_PIN_CSI_D5); /*SCKT*/
+-	mxc_request_gpio(MX25_PIN_CSI_D6); /*FST*/
+-	mxc_request_gpio(MX25_PIN_CSI_D7); /*HCKT*/
+-	mxc_request_gpio(MX25_PIN_CSI_D8); /*TX5_RX0*/
+-	mxc_request_gpio(MX25_PIN_CSI_D9); /*TX4_RX1*/
+-	mxc_request_gpio(MX25_PIN_CSI_MCLK); /*TX3_RX2*/
+-	mxc_request_gpio(MX25_PIN_CSI_VSYNC); /*TX2_RX3*/
+-	mxc_request_gpio(MX25_PIN_CSI_HSYNC); /*TX1*/
+-	mxc_request_gpio(MX25_PIN_CSI_PIXCLK); /*TX0*/
+-
+ 	mxc_free_iomux(MX25_PIN_CSI_D2, MUX_CONFIG_FUNC);
+ 	mxc_free_iomux(MX25_PIN_CSI_D3, MUX_CONFIG_FUNC);
+ 	mxc_free_iomux(MX25_PIN_CSI_D4, MUX_CONFIG_FUNC);
+-- 
+1.5.4.4
+

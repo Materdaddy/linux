@@ -1,0 +1,43 @@
+From dd5adafa8f6ae7fe43afa1e91a2351fd6e5c2ff5 Mon Sep 17 00:00:00 2001
+From: Alan Tull <r80115@freescale.com>
+Date: Fri, 6 Mar 2009 11:38:50 -0600
+Subject: [PATCH] ENGR00109149 mx51 sgtl5000: correct platform data to vddd 1.2v
+
+Change vddd setting to 1.2V in sgtl5000 platform data
+instead of 12V.
+
+Signed-off-by: Alan Tull <r80115@freescale.com>
+---
+ arch/arm/mach-mx51/mx51_3stack.c  |    2 +-
+ arch/arm/mach-mx51/mx51_babbage.c |    2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm/mach-mx51/mx51_3stack.c b/arch/arm/mach-mx51/mx51_3stack.c
+index cb4dcab..e1a8d00 100644
+--- a/arch/arm/mach-mx51/mx51_3stack.c
++++ b/arch/arm/mach-mx51/mx51_3stack.c
+@@ -855,7 +855,7 @@ static struct mxc_audio_platform_data sgtl5000_data = {
+ 	.amp_enable = mxc_sgtl5000_amp_enable,
+ 	.vddio = 1800000,
+ 	.vdda = 1800000,
+-	.vddd = 12000000,
++	.vddd = 1200000,
+ 	.sysclk = 12000000,
+ 	.init = mxc_sgtl5000_plat_init,
+ 	.finit = mxc_sgtl5000_plat_finit,
+diff --git a/arch/arm/mach-mx51/mx51_babbage.c b/arch/arm/mach-mx51/mx51_babbage.c
+index ebcfc92..faa3176 100644
+--- a/arch/arm/mach-mx51/mx51_babbage.c
++++ b/arch/arm/mach-mx51/mx51_babbage.c
+@@ -439,7 +439,7 @@ static struct mxc_audio_platform_data sgtl5000_data = {
+ 	.amp_enable = mxc_sgtl5000_amp_enable,
+ 	.vddio = 2775000,
+ 	.vdda = 1650000,
+-	.vddd = 12000000,
++	.vddd = 1200000,
+ 	.sysclk = 12288000,
+ };
+ 
+-- 
+1.5.4.4
+

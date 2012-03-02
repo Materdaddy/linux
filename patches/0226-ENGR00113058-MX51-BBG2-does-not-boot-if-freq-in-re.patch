@@ -1,0 +1,54 @@
+From da8d286093f89d2d5e51dc06cde5a4a77dcaa948 Mon Sep 17 00:00:00 2001
+From: Ranjani Vaidyanathan-RA5478 <Ranjani.Vaidyanathan@freescale.com>
+Date: Tue, 19 May 2009 17:36:56 -0500
+Subject: [PATCH] ENGR00113058: MX51: BBG2 does not boot if freq in redboot is not set to 1GHz.
+
+Fix the non-booting issue in BBG2 when the freq in redboot is set to
+something other than 1GHz.
+
+Signed-off-by: Ranjani Vaidyanathan-RA5478 <Ranjani.Vaidyanathan@freescale.com>
+---
+ arch/arm/mach-mx51/mx51_babbage.c |   10 +++++++++-
+ 1 files changed, 9 insertions(+), 1 deletions(-)
+
+diff --git a/arch/arm/mach-mx51/mx51_babbage.c b/arch/arm/mach-mx51/mx51_babbage.c
+index 5077e6a..2ef209e 100644
+--- a/arch/arm/mach-mx51/mx51_babbage.c
++++ b/arch/arm/mach-mx51/mx51_babbage.c
+@@ -60,6 +60,8 @@
+  */
+ extern void __init mx51_babbage_io_init(void);
+ extern struct cpu_wp *(*get_cpu_wp)(int *wp);
++extern void (*set_num_cpu_wp)(int num);
++static int num_cpu_wp = 3;
+ 
+ /* working point(wp): 0 - 1GHz; 1 - 800MHz, 2 - 167MHz; */
+ static struct cpu_wp cpu_wp_auto[] = {
+@@ -94,10 +96,15 @@ static struct cpu_wp cpu_wp_auto[] = {
+ 
+ struct cpu_wp *mx51_babbage_get_cpu_wp(int *wp)
+ {
+-	*wp = 3;
++	*wp = num_cpu_wp;
+ 	return cpu_wp_auto;
+ }
+ 
++void mx51_babbage_set_num_cpu_wp(int num)
++{
++	num_cpu_wp = num;
++	return;
++}
+ static void mxc_nop_release(struct device *dev)
+ {
+ 	/* Nothing */
+@@ -566,6 +573,7 @@ static void __init fixup_mxc_board(struct machine_desc *desc, struct tag *tags,
+ 	mxc_cpu_init();
+ 
+ 	get_cpu_wp = mx51_babbage_get_cpu_wp;
++	set_num_cpu_wp = mx51_babbage_set_num_cpu_wp;
+ 
+ 	for_each_tag(t, tags) {
+ 		if (t->hdr.tag != ATAG_MEM)
+-- 
+1.5.4.4
+

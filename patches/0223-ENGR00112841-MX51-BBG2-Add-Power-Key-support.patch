@@ -1,0 +1,87 @@
+From 76b29dbe08f3a9a02fef50d073d1cc3e7eeac1d6 Mon Sep 17 00:00:00 2001
+From: Lily Zhang <r58066@freescale.com>
+Date: Wed, 27 May 2009 16:53:21 +0800
+Subject: [PATCH] ENGR00112841 MX51 BBG2: Add Power Key support
+
+Set power key as wakeup resource
+
+Signed-off-by: Lily Zhang <r58066@freescale.com>
+---
+ arch/arm/mach-mx51/mx51_babbage.c      |   28 ++++++++++++++++++++++++++++
+ arch/arm/mach-mx51/mx51_babbage_gpio.c |   14 ++++++++------
+ 2 files changed, 36 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm/mach-mx51/mx51_babbage.c b/arch/arm/mach-mx51/mx51_babbage.c
+index 803800b..720d6bf 100644
+--- a/arch/arm/mach-mx51/mx51_babbage.c
++++ b/arch/arm/mach-mx51/mx51_babbage.c
+@@ -585,6 +585,34 @@ static void mxc_power_off(void)
+ }
+ 
+ /*!
++ * Power Key interrupt handler.
++ */
++static irqreturn_t power_key_int(int irq, void *dev_id)
++{
++	pr_info(KERN_INFO "PWR key pressed\n");
++	return 0;
++}
++
++/*!
++ * Power Key initialization.
++ */
++static int __init mxc_init_power_key(void)
++{
++	/* Set power key as wakeup resource */
++	int irq, ret;
++	irq = IOMUX_TO_IRQ(MX51_PIN_EIM_A27);
++	set_irq_type(irq, IRQF_TRIGGER_RISING);
++	ret = request_irq(irq, power_key_int, 0, "power_key", 0);
++	if (ret)
++		pr_info("register on-off key interrupt failed\n");
++	else
++		enable_irq_wake(irq);
++	return ret;
++}
++
++late_initcall(mxc_init_power_key);
++
++/*!
+  * Board specific initialization.
+  */
+ static void __init mxc_board_init(void)
+diff --git a/arch/arm/mach-mx51/mx51_babbage_gpio.c b/arch/arm/mach-mx51/mx51_babbage_gpio.c
+index e3f4304..d971ba5 100644
+--- a/arch/arm/mach-mx51/mx51_babbage_gpio.c
++++ b/arch/arm/mach-mx51/mx51_babbage_gpio.c
+@@ -121,12 +121,6 @@ static struct mxc_iomux_pin_cfg __initdata mxc_iomux_pins[] = {
+ 	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
+ 	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
+ 	 },
+-	/* USBH2_NXT */
+-	{
+-	 MX51_PIN_EIM_A27, IOMUX_CONFIG_ALT2,
+-	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
+-	  PAD_CTL_PUE_KEEPER | PAD_CTL_PKE_ENABLE | PAD_CTL_HYS_ENABLE),
+-	 },
+ 	{			/*MDIO */
+ 	 MX51_PIN_EIM_EB2, IOMUX_CONFIG_ALT3,
+ 	 (PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | PAD_CTL_ODE_OPENDRAIN_ENABLE |
+@@ -570,6 +564,14 @@ void __init mx51_babbage_io_init(void)
+ 				  PAD_CTL_PKE_ENABLE | PAD_CTL_SRE_FAST);
+ 		mxc_set_gpio_direction(MX51_PIN_CSPI1_RDY, 0);
+ 		mxc_set_gpio_dataout(MX51_PIN_CSPI1_RDY, 0);
++
++		/* power key */
++		mxc_request_iomux(MX51_PIN_EIM_A27, IOMUX_CONFIG_ALT1);
++		mxc_iomux_set_pad(MX51_PIN_EIM_A27, PAD_CTL_SRE_FAST |
++				  PAD_CTL_ODE_OPENDRAIN_NONE |
++				  PAD_CTL_DRV_HIGH | PAD_CTL_100K_PU |
++				  PAD_CTL_HYS_NONE);
++		mxc_set_gpio_direction(MX51_PIN_EIM_A27, 1);
+ 	}
+ 
+ 	/* Deassert VGA reset to free i2c bus */
+-- 
+1.5.4.4
+

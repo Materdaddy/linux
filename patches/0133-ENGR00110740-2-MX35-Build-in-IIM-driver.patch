@@ -1,0 +1,28 @@
+From de09347f720784487533b64515bc594152aed81b Mon Sep 17 00:00:00 2001
+From: Liu Ying <b17645@freescale.com>
+Date: Fri, 3 Apr 2009 09:20:14 +0800
+Subject: [PATCH] ENGR00110740-2 MX35:Build-in IIM driver
+
+Build-in IIM driver.
+
+Signed-off-by: Liu Ying <b17645@freescale.com>
+---
+ arch/arm/configs/imx35_3stack_defconfig |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/arch/arm/configs/imx35_3stack_defconfig b/arch/arm/configs/imx35_3stack_defconfig
+index 2d1d103..d97ed54 100644
+--- a/arch/arm/configs/imx35_3stack_defconfig
++++ b/arch/arm/configs/imx35_3stack_defconfig
+@@ -747,7 +747,7 @@ CONFIG_HW_CONSOLE=y
+ CONFIG_DEVKMEM=y
+ # CONFIG_SERIAL_NONSTANDARD is not set
+ CONFIG_FM_SI4702=m
+-CONFIG_MXC_IIM=m
++CONFIG_MXC_IIM=y
+ 
+ #
+ # Serial drivers
+-- 
+1.5.4.4
+

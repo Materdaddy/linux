@@ -1,0 +1,32 @@
+From 630628ca80d930153e6ed14d6c856b36ad601682 Mon Sep 17 00:00:00 2001
+From: Lily Zhang <r58066@freescale.com>
+Date: Thu, 26 Mar 2009 15:57:05 +0800
+Subject: [PATCH] ENGR00107688 ASOC: Resolve 24/32-bit mono wav playing problem on sgtl5000
+
+Wav sound plays twice faster than normal when it's format is 24 or 32
+bit mono. In ssi normal operating mode, DC=0 provides continuous
+periodic data word transfer and a bit-length frame sync must be used
+in this case. Sgtl5000 codec master provides word length frame sync,
+so DC should be set as frame/WL-1.
+
+Signed-off-by: Lionel Xu <r63889@freescale.com>
+---
+ sound/soc/imx/imx-3stack-sgtl5000.c |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/sound/soc/imx/imx-3stack-sgtl5000.c b/sound/soc/imx/imx-3stack-sgtl5000.c
+index 58fae69..74f5e11 100644
+--- a/sound/soc/imx/imx-3stack-sgtl5000.c
++++ b/sound/soc/imx/imx-3stack-sgtl5000.c
+@@ -110,7 +110,7 @@ static int imx_3stack_audio_hw_params(struct snd_pcm_substream *substream,
+ 	/* set i.MX active slot mask */
+ 	snd_soc_dai_set_tdm_slot(cpu_dai,
+ 				 channels == 1 ? 0xfffffffe : 0xfffffffc,
+-				 channels);
++				 2);
+ 
+ 	/* set the SSI system clock as input (unused) */
+ 	snd_soc_dai_set_sysclk(cpu_dai, IMX_SSP_SYS_CLK, 0, SND_SOC_CLOCK_IN);
+-- 
+1.5.4.4
+

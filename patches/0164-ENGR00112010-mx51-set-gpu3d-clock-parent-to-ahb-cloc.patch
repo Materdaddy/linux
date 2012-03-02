@@ -1,0 +1,29 @@
+From 76a02a8f65ae2c027417528954191480bcb7bcfe Mon Sep 17 00:00:00 2001
+From: Wu Guoxing <b02248@freescale.com>
+Date: Wed, 29 Apr 2009 19:00:39 +0800
+Subject: [PATCH] ENGR00112010 mx51:set gpu3d clock parent to ahb clock
+
+set gpu3d clock parent to ahb clock at init
+
+Signed-off-by: Wu Guoxing <b02248@freescale.com>
+---
+ arch/arm/mach-mx51/clock.c |    3 +++
+ 1 files changed, 3 insertions(+), 0 deletions(-)
+
+diff --git a/arch/arm/mach-mx51/clock.c b/arch/arm/mach-mx51/clock.c
+index 9d59576..52b8b37 100644
+--- a/arch/arm/mach-mx51/clock.c
++++ b/arch/arm/mach-mx51/clock.c
+@@ -3035,6 +3035,9 @@ int __init mxc_clocks_init(unsigned long ckil, unsigned long osc, unsigned long
+ 		clk_set_parent(&vpu_clk[1], &axi_a_clk);
+ 	}
+ 
++	clk_set_parent(&gpu3d_clk, &ahb_clk);
++	clk_set_parent(&gpu2d_clk, &ahb_clk);
++
+ 	/* Set the current working point. */
+ 	cpu_wp_tbl = get_cpu_wp(&cpu_wp_nr);
+ 	for (i = 0; i < cpu_wp_nr; i++) {
+-- 
+1.5.4.4
+

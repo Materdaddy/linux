@@ -1,0 +1,28 @@
+From ce75fa9464f931815b9330eb4f168de20f817079 Mon Sep 17 00:00:00 2001
+From: b02550 <b02550@freescale.com>
+Date: Fri, 22 May 2009 16:08:30 +0800
+Subject: [PATCH] ENGR00112566 IPUv3: Reduce waiting time of ipu interrupt.
+
+Reduce the waiting time of ipu interrupt from 2HZ to HZ/10.
+
+Signed-off-by: DingQiang <b02550@freescale.com>
+---
+ drivers/mxc/ipu3/ipu_device.c |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/drivers/mxc/ipu3/ipu_device.c b/drivers/mxc/ipu3/ipu_device.c
+index c81c82b..2f4cc0c 100644
+--- a/drivers/mxc/ipu3/ipu_device.c
++++ b/drivers/mxc/ipu3/ipu_device.c
+@@ -358,7 +358,7 @@ static int mxc_ipu_ioctl(struct inode *inode, struct file *file,
+ 			r = get_events(&info);
+ 			if (r == -1) {
+ 				wait_event_interruptible_timeout(waitq,
+-						(pending_events != 0), 2 * HZ);
++						(pending_events != 0), HZ/10);
+ 				r = get_events(&info);
+ 			}
+ 			ret = -1;
+-- 
+1.5.4.4
+
