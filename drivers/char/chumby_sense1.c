@@ -172,6 +172,9 @@ static g_gpio_button_request_success = 0;
 
 #define FIXEDPOINT_NORM 1000
 
+static wait_queue_head_t	gWaitQ;
+static bool switch_changed = false;
+
 struct sense1data {
 	unsigned char bent;
 	unsigned char isDebounce;
@@ -207,7 +210,7 @@ static ssize_t chumby_sense1_read(struct file *file, char *buf,
 				  size_t count, loff_t * ppos);
 //static ssize_t chumby_sense1_write(struct file *file, const unsigned char *buf,
 //                               size_t count, loff_t *ppos );
-//static unsigned int chumby_sense1_poll(struct file * filp, struct poll_table_struct * wait);
+static unsigned int chumby_sense1_poll(struct file * filp, struct poll_table_struct * wait);
 
 static unsigned int gDebounce = 10;
 
@@ -249,6 +252,7 @@ static struct file_operations sense1_fops = {
 	.read =		chumby_sense1_read,
 	.open =		chumby_sense1_open,
 	.release =	chumby_sense1_release,
+	.poll =     chumby_sense1_poll,
 };
 
 ///////////// code /////////////
@@ -353,6 +357,13 @@ void sense1_task_record(unsigned long ptr)
 			data->lastTransitionTime = data->currentTransitionTime;
 			data->lastTransitionState = state;
 			data->isDebounce = 0;
+
+			// wake up our poll wq
+			if ( !switch_changed )
+			{
+				switch_changed = true;
+				wake_up(&gWaitQ);
+			}
 		} else {
 			// just wait until our turn comes
 		}
@@ -696,6 +707,9 @@ static int __init chumby_sense1_init(void)
 		gSysCtlHeader->ctl_table->child->de->owner = THIS_MODULE;
 #endif
 
+	// We must init our wait queue before the add_timer below
+	init_waitqueue_head(&gWaitQ);
+
 	///// initialize periodic task queue
 	sense1task_data.bent = 0;
 	sense1task_data.lastTransitionTime = jiffies;
@@ -746,6 +760,16 @@ static ssize_t chumby_sense1_read(struct file *file, char *buf,
 	char retval = 0;
 	size_t retlen = 1;
 
+	if (file->f_flags & O_NONBLOCK)
+	{
+		if ( switch_changed != true )
+			return -EBUSY;
+	}
+	
+	wait_event_interruptible(gWaitQ, switch_changed == true);
+
+	switch_changed = false;
+
 	retval = sense1task_data.bent;
 
 	//	CHUMSENSE1_DEBUG(Trace, "sense1 read exit with: %d\n", retval);
@@ -753,6 +777,18 @@ static ssize_t chumby_sense1_read(struct file *file, char *buf,
 	copy_to_user(buf, &retval, retlen);
 
 	return retlen;
+}
+
+static unsigned int chumby_sense1_poll(struct file * filp, struct poll_table_struct * wait)
+{
+	unsigned int mask = 0;
+
+	poll_wait(filp, &gWaitQ, wait);
+
+	if ( switch_changed )
+		mask |= POLLIN | POLLRDNORM;
+
+	return mask;
 }
 
 static void __exit chumby_sense1_exit(void)
